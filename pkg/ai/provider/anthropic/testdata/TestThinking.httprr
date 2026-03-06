@@ -1,0 +1,44 @@
+httprr trace v1
+447 1530
+POST https://api.anthropic.com/v1/messages HTTP/1.1
+Host: api.anthropic.com
+User-Agent: Go-http-client/1.1
+Content-Length: 282
+Content-Type: application/json
+
+{"max_tokens":5120,"messages":[{"content":[{"text":"What is the square root of 144?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-20250514","system":[{"text":"You are a helpful assistant.","type":"text"}],"thinking":{"budget_tokens":1024,"type":"enabled"},"stream":true}HTTP/1.1 200 OK
+Content-Length: 1394
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_gen003","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":30,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me calculate the square root of 144. 12 × 12 = 144, so the answer is 12."}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"ErUBCkYIBBgCKkDummysignaturefortest"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"The square root of 144 is 12."}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":50}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

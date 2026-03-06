@@ -1,0 +1,33 @@
+httprr trace v1
+792 419
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse HTTP/1.1
+Host: generativelanguage.googleapis.com
+User-Agent: Go-http-client/1.1
+Content-Length: 546
+Content-Type: application/json
+
+{"contents":[{"parts":[{"text":"What is the weather in Paris?"}],"role":"user"}],"generationConfig":{},"systemInstruction":{"parts":[{"text":"You are a helpful assistant. Always use the get_weather tool to answer weather questions."}],"role":"user"},"toolConfig":{"functionCallingConfig":{"mode":"AUTO"}},"tools":[{"functionDeclarations":[{"description":"Get the current weather for a city","name":"get_weather","parameters":{"properties":{"location":{"description":"The city name","type":"STRING"}},"required":["location"],"type":"OBJECT"}}]}]}
+HTTP/1.1 200 OK
+Content-Length: 284
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"location":"Paris"}}}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":20,"totalTokenCount":70},"modelVersion":"gemini-2.5-flash"}
+
+1073 394
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse HTTP/1.1
+Host: generativelanguage.googleapis.com
+User-Agent: Go-http-client/1.1
+Content-Length: 827
+Content-Type: application/json
+
+{"contents":[{"parts":[{"text":"What is the weather in Paris?"}],"role":"user"},{"parts":[{"functionCall":{"args":{"location":"Paris"},"id":"test-tool-call-id","name":"get_weather"}}],"role":"model"},{"parts":[{"functionResponse":{"id":"test-tool-call-id","name":"get_weather","response":{"result":{"condition":"sunny","temperature":"22°C"}}}}],"role":"user"}],"generationConfig":{},"systemInstruction":{"parts":[{"text":"You are a helpful assistant. Always use the get_weather tool to answer weather questions."}],"role":"user"},"toolConfig":{"functionCallingConfig":{"mode":"AUTO"}},"tools":[{"functionDeclarations":[{"description":"Get the current weather for a city","name":"get_weather","parameters":{"properties":{"location":{"description":"The city name","type":"STRING"}},"required":["location"],"type":"OBJECT"}}]}]}
+HTTP/1.1 200 OK
+Content-Length: 259
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+data: {"candidates":[{"content":{"parts":[{"text":"In Paris it is 22°C and sunny."}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":80,"candidatesTokenCount":12,"totalTokenCount":92},"modelVersion":"gemini-2.5-flash"}
+

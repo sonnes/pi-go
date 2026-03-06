@@ -1,0 +1,15 @@
+httprr trace v1
+760 345
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent HTTP/1.1
+Host: generativelanguage.googleapis.com
+User-Agent: Go-http-client/1.1
+Content-Length: 528
+Content-Type: application/json
+
+{"contents":[{"parts":[{"text":"Generate information about a person named Alice who is 30 years old and lives in Paris."}],"role":"user"}],"generationConfig":{"maxOutputTokens":4000,"responseJsonSchema":{"additionalProperties":false,"properties":{"age":{"description":"The person's age","type":"integer"},"city":{"description":"The city where the person lives","type":"string"},"name":{"description":"The person's name","type":"string"}},"required":["name","age","city"],"type":"object"},"responseMimeType":"application/json"}}
+HTTP/1.1 200 OK
+Content-Length: 236
+Content-Type: application/json
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+{"candidates":[{"content":{"parts":[{"text":"{\"name\":\"Alice\",\"age\":30,\"city\":\"Paris\"}"}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":20,"totalTokenCount":70}}

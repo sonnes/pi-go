@@ -1,0 +1,17 @@
+httprr trace v1
+720 422
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse HTTP/1.1
+Host: generativelanguage.googleapis.com
+User-Agent: Go-http-client/1.1
+Content-Length: 474
+Content-Type: application/json
+
+{"contents":[{"parts":[{"text":"Hello, how are you?"}],"role":"user"}],"generationConfig":{},"systemInstruction":{"parts":[{"text":"You are a helpful assistant."}],"role":"user"},"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"tools":[{"functionDeclarations":[{"description":"Get the current weather for a city","name":"get_weather","parameters":{"properties":{"location":{"description":"The city name","type":"STRING"}},"required":["location"],"type":"OBJECT"}}]}]}
+HTTP/1.1 200 OK
+Content-Length: 287
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"location":"New York"}}}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":40,"candidatesTokenCount":15,"totalTokenCount":55},"modelVersion":"gemini-2.5-flash"}
+
