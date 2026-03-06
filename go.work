@@ -1,0 +1,8 @@
+go 1.24.0
+
+use (
+	.
+	./pkg/ai/provider/anthropic
+	./pkg/ai/provider/openai
+	./pkg/ai/provider/google
+)

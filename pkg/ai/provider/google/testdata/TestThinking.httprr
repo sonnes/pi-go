@@ -1,0 +1,19 @@
+httprr trace v1
+510 586
+POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-thinking:streamGenerateContent?alt=sse HTTP/1.1
+Host: generativelanguage.googleapis.com
+User-Agent: Go-http-client/1.1
+Content-Length: 255
+Content-Type: application/json
+
+{"contents":[{"parts":[{"text":"What is the square root of 144?"}],"role":"user"}],"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingBudget":2048}},"systemInstruction":{"parts":[{"text":"You are a helpful assistant."}],"role":"user"}}
+HTTP/1.1 200 OK
+Content-Length: 451
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+data: {"candidates":[{"content":{"parts":[{"thought":true,"text":"Let me calculate: 12 × 12 = 144. So the square root of 144 is 12."}],"role":"model"},"index":0}],"usageMetadata":{}}
+
+data: {"candidates":[{"content":{"parts":[{"text":"The square root of 144 is 12."}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":40,"totalTokenCount":70},"modelVersion":"gemini-2.5-flash-thinking"}
+

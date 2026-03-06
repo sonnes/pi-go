@@ -1,0 +1,22 @@
+httprr trace v1
+377 769
+POST https://api.openai.com/v1/chat/completions HTTP/1.1
+Host: api.openai.com
+User-Agent: Go-http-client/1.1
+Content-Length: 210
+Content-Type: application/json
+
+{"messages":[{"content":"You are a helpful assistant","role":"system"},{"content":"Say hi in Portuguese","role":"user"}],"model":"gpt-4o","max_tokens":4000,"stream_options":{"include_usage":true},"stream":true}HTTP/1.1 200 OK
+Content-Length: 634
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+data: {"id":"chatcmpl-gen001","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":null},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-gen001","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Olá! Como posso ajudá-lo?"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-gen001","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":25,"completion_tokens":8,"total_tokens":33}}
+
+data: [DONE]
+

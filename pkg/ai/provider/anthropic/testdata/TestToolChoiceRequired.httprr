@@ -1,0 +1,32 @@
+httprr trace v1
+628 1028
+POST https://api.anthropic.com/v1/messages HTTP/1.1
+Host: api.anthropic.com
+User-Agent: Go-http-client/1.1
+Content-Length: 463
+Content-Type: application/json
+
+{"max_tokens":4096,"messages":[{"content":[{"text":"Hello, how are you?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-20250514","system":[{"text":"You are a helpful assistant.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"input_schema":{"properties":{"location":{"description":"The city name","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather","description":"Get the current weather for a city"}],"stream":true}HTTP/1.1 200 OK
+Content-Length: 893
+Cache-Control: no-cache
+Content-Type: text/event-stream
+Date: Wed, 18 Feb 2026 06:38:46 GMT
+
+event: message_start
+data: {"type":"message_start","message":{"id":"msg_gen002","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4-20250514","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":40,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_gen02","name":"get_weather","input":{}}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\":\"New York\"}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":12}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
