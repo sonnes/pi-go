@@ -14,10 +14,12 @@ Every agent entry point (`Send`, `SendMessages`, `Continue`) returns an `*EventS
 
 `EventStream` supports two modes:
 
-- **Streaming** — iterate events as they arrive via `Events()` (`iter.Seq2[Event, error]`).
+- **Streaming** — iterate events as they arrive via `Events(ctx)` (`iter.Seq2[Event, error]`).
 - **Blocking** — wait for completion and get all new messages via `Result()`.
 
-Both modes consume the same underlying channel. Call one or the other, not both.
+## Multi-subscriber
+
+`EventStream` is backed by a `pubsub.Broker[Event]` with blocking publish. Multiple goroutines can call `Events(ctx)` concurrently — each gets an independent subscription. Late subscribers replay buffered events via the broker's ring buffer before switching to live events. Cancel the context to unsubscribe early.
 
 ## Event lifecycle
 
@@ -50,7 +52,6 @@ Go doesn't have discriminated unions. Events are a single `Event` struct with a 
 ## Stream utilities
 
 - **`NewStream`** — create a stream with a producer goroutine.
-- **`NewBridgedStream`** — wrap a stream, calling `onEvent` for each event before yielding. Enables logging, metrics, and UI bridging without consuming the stream.
 - **`ErrStream`** — return a stream that immediately emits an error `agent_end`. Useful for early-exit error paths that still need to return a stream.
 
 ## Related

@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -67,12 +68,10 @@ func TestBroker_Publish(t *testing.T) {
 
 	events := broker.Subscribe(ctx)
 
-	const testEvent EventType = "test.created"
-	broker.Publish(testEvent, "test-payload")
+	broker.Publish("test-payload")
 
 	select {
 	case event := <-events:
-		assert.Equal(t, testEvent, event.Type())
 		assert.Equal(t, "test-payload", event.Payload())
 		assert.Equal(t, int64(1), event.Seq())
 		assert.False(t, event.Timestamp().IsZero())
@@ -93,14 +92,12 @@ func TestBroker_Publish_ToMultipleSubscribers(t *testing.T) {
 	events1 := broker.Subscribe(ctx1)
 	events2 := broker.Subscribe(ctx2)
 
-	const testEvent EventType = "test.updated"
-	broker.Publish(testEvent, "shared-payload")
+	broker.Publish("shared-payload")
 
 	// Both subscribers should receive the event
 	for _, events := range []<-chan Event[string]{events1, events2} {
 		select {
 		case event := <-events:
-			assert.Equal(t, testEvent, event.Type())
 			assert.Equal(t, "shared-payload", event.Payload())
 		case <-time.After(100 * time.Millisecond):
 			t.Fatal("timeout waiting for event")
@@ -176,7 +173,7 @@ func TestBroker_Publish_AfterShutdown(t *testing.T) {
 	broker.Shutdown()
 
 	// Should not panic
-	broker.Publish("test.event", "ignored")
+	broker.Publish("ignored")
 }
 
 func TestBroker_Publish_NonBlocking(t *testing.T) {
@@ -190,13 +187,13 @@ func TestBroker_Publish_NonBlocking(t *testing.T) {
 	broker.Subscribe(ctx)
 
 	// Fill the buffer
-	broker.Publish("test.event", "event-1")
+	broker.Publish("event-1")
 
 	// This should not block even though buffer is full
 	done := make(chan struct{})
 	go func() {
-		broker.Publish("test.event", "event-2")
-		broker.Publish("test.event", "event-3")
+		broker.Publish("event-2")
+		broker.Publish("event-3")
 		close(done)
 	}()
 
@@ -231,7 +228,7 @@ func TestBroker_ConcurrentOperations(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			broker.Publish("test.event", n)
+			broker.Publish(n)
 		}(i)
 	}
 
@@ -256,7 +253,7 @@ func TestBroker_GenericTypes(t *testing.T) {
 		ID:   "test-123",
 		Data: map[string]any{"key": "value"},
 	}
-	broker.Publish("custom.created", payload)
+	broker.Publish(payload)
 
 	select {
 	case event := <-events:
@@ -286,14 +283,14 @@ func TestBroker_Publish_StoresInRingBuffer(t *testing.T) {
 	broker := NewBroker[string](WithMaxEvents(3))
 	defer broker.Shutdown()
 
-	broker.Publish("e1", "a")
-	broker.Publish("e2", "b")
-	broker.Publish("e3", "c")
+	broker.Publish("a")
+	broker.Publish("b")
+	broker.Publish("c")
 
 	assert.Equal(t, 3, broker.ring.Len())
 
 	// Publishing a 4th event should evict the oldest
-	broker.Publish("e4", "d")
+	broker.Publish("d")
 	assert.Equal(t, 3, broker.ring.Len())
 
 	// Verify ring buffer contents (oldest to newest: b, c, d)
@@ -308,9 +305,9 @@ func TestBroker_Subscribe_After_ReplaysBuffered(t *testing.T) {
 	broker := NewBroker[string](WithMaxEvents(10))
 	defer broker.Shutdown()
 
-	broker.Publish("e1", "first")  // seq 1
-	broker.Publish("e2", "second") // seq 2
-	broker.Publish("e3", "third")  // seq 3
+	broker.Publish("first")  // seq 1
+	broker.Publish("second") // seq 2
+	broker.Publish("third")  // seq 3
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -335,9 +332,9 @@ func TestBroker_Subscribe_After_ZeroReplaysAll(t *testing.T) {
 	broker := NewBroker[string](WithMaxEvents(10))
 	defer broker.Shutdown()
 
-	broker.Publish("e1", "a")
-	broker.Publish("e2", "b")
-	broker.Publish("e3", "c")
+	broker.Publish("a")
+	broker.Publish("b")
+	broker.Publish("c")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -361,7 +358,7 @@ func TestBroker_Subscribe_After_HighSeq_ReplaysNothing(t *testing.T) {
 	broker := NewBroker[string](WithMaxEvents(10))
 	defer broker.Shutdown()
 
-	broker.Publish("e1", "a") // seq 1
+	broker.Publish("a") // seq 1
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -377,7 +374,7 @@ func TestBroker_Subscribe_After_HighSeq_ReplaysNothing(t *testing.T) {
 	}
 
 	// But live events should still work
-	broker.Publish("e2", "live")
+	broker.Publish("live")
 	select {
 	case event := <-events:
 		assert.Equal(t, "live", event.Payload())
@@ -403,12 +400,12 @@ func TestBroker_RingBuffer_WrapAround(t *testing.T) {
 
 	// Fill buffer: [0, 1, 2]
 	for i := range 3 {
-		broker.Publish("num", i)
+		broker.Publish(i)
 	}
 
 	// Overwrite with more: [3, 4, 5] wrapping around
 	for i := 3; i < 6; i++ {
-		broker.Publish("num", i)
+		broker.Publish(i)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -433,9 +430,9 @@ func TestBroker_Subscribe_After_ReplayedEventsHaveSeq(t *testing.T) {
 	broker := NewBroker[string](WithMaxEvents(10))
 	defer broker.Shutdown()
 
-	broker.Publish("e1", "a") // seq 1
-	broker.Publish("e2", "b") // seq 2
-	broker.Publish("e3", "c") // seq 3
+	broker.Publish("a") // seq 1
+	broker.Publish("b") // seq 2
+	broker.Publish("c") // seq 3
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -455,6 +452,76 @@ func TestBroker_Subscribe_After_ReplayedEventsHaveSeq(t *testing.T) {
 	assert.Equal(t, []int64{1, 2, 3}, seqs)
 }
 
+func TestBroker_Publish_Blocking(t *testing.T) {
+	// Buffer size 1 — without blocking, events would be dropped
+	broker := NewBroker[string](
+		WithBufferSize(1),
+		WithBlockingPublish(),
+	)
+	defer broker.Shutdown()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := broker.Subscribe(ctx)
+
+	// Publish 5 events — these will block until consumed
+	const count = 5
+	done := make(chan struct{})
+	go func() {
+		for i := range count {
+			broker.Publish(fmt.Sprintf("event-%d", i))
+		}
+		close(done)
+	}()
+
+	var received []string
+	for range count {
+		event := <-events
+		received = append(received, event.Payload())
+	}
+
+	<-done
+
+	expected := []string{"event-0", "event-1", "event-2", "event-3", "event-4"}
+	assert.Equal(t, expected, received)
+}
+
+func TestBroker_Publish_Blocking_ShutdownUnblocks(t *testing.T) {
+	broker := NewBroker[string](
+		WithBufferSize(1),
+		WithBlockingPublish(),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	broker.Subscribe(ctx)
+
+	// Fill the buffer
+	broker.Publish("fill")
+
+	// This publish will block because buffer is full
+	done := make(chan struct{})
+	go func() {
+		broker.Publish("blocked")
+		close(done)
+	}()
+
+	// Give the goroutine time to block
+	time.Sleep(20 * time.Millisecond)
+
+	// Shutdown should unblock the publish
+	broker.Shutdown()
+
+	select {
+	case <-done:
+		// Success — shutdown unblocked the publish
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("shutdown did not unblock blocked publish")
+	}
+}
+
 func TestEvent_Timestamp(t *testing.T) {
 	before := time.Now()
 	broker := NewBroker[string](WithMaxEvents(10))
@@ -464,7 +531,7 @@ func TestEvent_Timestamp(t *testing.T) {
 	defer cancel()
 
 	events := broker.Subscribe(ctx)
-	broker.Publish("test", "payload")
+	broker.Publish("payload")
 
 	select {
 	case event := <-events:

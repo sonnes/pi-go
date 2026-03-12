@@ -13,6 +13,7 @@ type Option func(*brokerOptions)
 type brokerOptions struct {
 	bufferSize int
 	maxEvents  int
+	blocking   bool
 }
 
 // WithBufferSize sets the channel buffer size for subscriber channels.
@@ -34,6 +35,15 @@ func WithMaxEvents(max int) Option {
 		if max > 0 {
 			o.maxEvents = max
 		}
+	}
+}
+
+// WithBlockingPublish configures the broker to block on publish when a
+// subscriber's channel is full, instead of dropping the event. The publish
+// unblocks if the broker is shut down.
+func WithBlockingPublish() Option {
+	return func(o *brokerOptions) {
+		o.blocking = true
 	}
 }
 
