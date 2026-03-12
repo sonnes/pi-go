@@ -17,6 +17,7 @@ type Broker[T any] struct {
 	mu         sync.Mutex
 	done       chan struct{}
 	bufferSize int
+	blocking   bool
 	ring       *buffer.Ring[Event[T]]
 }
 
@@ -37,6 +38,7 @@ func NewBroker[T any](opts ...Option) *Broker[T] {
 		subs:       make(map[chan Event[T]]struct{}),
 		done:       make(chan struct{}),
 		bufferSize: o.bufferSize,
+		blocking:   o.blocking,
 		ring:       buffer.NewRing[Event[T]](o.maxEvents),
 	}
 }
@@ -109,32 +111,50 @@ func (b *Broker[T]) Subscribe(
 
 // Publish sends an event to all current subscribers.
 //
-// Publishing is non-blocking: if a subscriber's channel is full, the event
-// is dropped for that subscriber. This prevents slow subscribers from
-// blocking the publisher or other subscribers.
-func (b *Broker[T]) Publish(eventType EventType, payload T) {
+// Publishing is non-blocking by default: if a subscriber's channel is full,
+// the event is dropped for that subscriber. Use [WithBlockingPublish] to
+// block until all subscribers receive the event.
+func (b *Broker[T]) Publish(payload T) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	// Check if broker is shut down
 	select {
 	case <-b.done:
+		b.mu.Unlock()
 		return
 	default:
 	}
 
-	event := newEvent(eventType, payload)
+	event := Event[T]{payload: payload}
 	event.timestamp = time.Now()
 
 	// Store in ring buffer; seq is assigned by the ring
 	event.seq = b.ring.Write(event)
 
+	if !b.blocking {
+		for sub := range b.subs {
+			select {
+			case sub <- event:
+			default:
+			}
+		}
+		b.mu.Unlock()
+		return
+	}
+
+	// Blocking mode: collect subscribers, release lock, then send.
+	// This avoids deadlock when a subscriber drains under a separate lock.
+	subs := make([]chan Event[T], 0, len(b.subs))
 	for sub := range b.subs {
+		subs = append(subs, sub)
+	}
+	b.mu.Unlock()
+
+	for _, sub := range subs {
 		select {
 		case sub <- event:
-			// Event sent successfully
-		default:
-			// Channel full, subscriber is slow - skip this event
+		case <-b.done:
+			return
 		}
 	}
 }

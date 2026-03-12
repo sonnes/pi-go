@@ -26,17 +26,18 @@ The agent holds an `atomic.Pointer[State]`. On each state change (streaming star
 | `StreamMessage()`    | Partial assistant message during streaming, or nil |
 | `PendingToolCalls()` | Set of in-flight tool call IDs (defensive copy)    |
 | `Err()`              | Last error from the agent loop, or nil             |
-| `Messages()`         | Full conversation history (defensive copy)         |
+| `Messages()`         | Full conversation history including custom messages (defensive copy) |
+| `LLMMessages()`      | LLM-only messages, filtering out custom messages   |
 
-`Messages()` and `PendingToolCalls()` return copies — callers cannot corrupt internal state.
+`Messages()`, `LLMMessages()`, and `PendingToolCalls()` return copies — callers cannot corrupt internal state.
 
 ## Initial state
 
-`WithHistory(msgs...)` copies messages into the first snapshot. The caller's slice is not aliased. Initial state: not streaming, no stream message, no pending tool calls, no error.
+`WithHistory(msgs...)` copies messages into the first snapshot. The caller's slice is not aliased. `msgs` are `Message` values — both `LLMMessage` and custom messages are preserved. Initial state: not streaming, no stream message, no pending tool calls, no error.
 
 ## No convenience wrappers
 
-`Runner` exposes a single `State()` method. There are no `Messages()` or `IsRunning()` shortcuts on the interface — callers read what they need from the snapshot. This keeps the interface small and avoids redundant methods that just delegate.
+`Agent` exposes a single `State()` method. There are no `Messages()` or `IsRunning()` shortcuts on the interface — callers read what they need from the snapshot. This keeps the interface small and avoids redundant methods that just delegate.
 
 ## Concurrency
 
@@ -46,4 +47,5 @@ The agent holds an `atomic.Pointer[State]`. On each state change (streaming star
 ## Related
 
 - [Agent](/concepts/agent/agent) — construction, options, entry points
+- [Agent Messages](/concepts/agent/messages) — extensible message type with custom message support
 - [Streaming](/concepts/agent/streaming) — event stream and consumption patterns
