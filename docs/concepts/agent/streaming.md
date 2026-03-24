@@ -27,9 +27,9 @@ A complete run emits events in this order:
 
 ```
 agent_start
+  message_start (user)      ← input messages emitted before first turn
+  message_end
   turn_start
-    message_start (user)
-    message_end
     message_start (assistant)
       message_update  ← repeated as tokens stream
     message_end

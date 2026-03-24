@@ -11,7 +11,9 @@ type Agent interface {
 	Send(ctx context.Context, input string) *EventStream
 	SendMessages(ctx context.Context, msgs ...Message) *EventStream
 	Continue(ctx context.Context) *EventStream
-	State() State
+	Messages() []Message
+	IsRunning() bool
+	Err() error
 }
 
 // Factory creates an [Agent] from a model and options.

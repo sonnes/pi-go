@@ -20,7 +20,7 @@ The agent manages an agentic conversation loop: prompt assembly → model infere
 
 **Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...Message` — both `LLMMessage` and custom messages. See [Agent Messages](/concepts/agent/messages).
 
-**Immutable config, mutable state.** Construction parameters never change after `New`. Runtime state (messages, streaming status, pending tools) evolves during runs and is observable via `State()`. This separation makes it safe to read state from any goroutine without worrying about config mutations.
+**Immutable config, mutable state.** Construction parameters never change after `New`. Runtime state (messages, running status, last error) evolves during runs and is observable via `Messages()`, `IsRunning()`, and `Err()`. This separation makes it safe to read state from any goroutine without worrying about config mutations.
 
 ## Entry points
 
@@ -32,7 +32,7 @@ All return an `*EventStream`. See [Streaming](/concepts/agent/streaming).
 
 ## Agent interface
 
-`Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. `Default` is the standard implementation. `Factory` is a function type for constructing agents.
+`Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. The interface includes `Messages()`, `IsRunning()`, and `Err()` for state observation. `Default` is the standard implementation. `Factory` is a function type for constructing agents.
 
 ## System prompt
 
