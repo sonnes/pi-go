@@ -26,9 +26,10 @@ import (
 //	  ... repeat if tool_use and under maxTurns ...
 //	agent_end
 type Default struct {
-	config   config
-	toolMap  map[string]ai.Tool
-	toolInfo []ai.ToolInfo
+	config     config
+	toolMap    map[string]ai.Tool
+	toolInfo   []ai.ToolInfo
+	middleware Middleware
 
 	mu       sync.Mutex
 	running  bool
@@ -57,10 +58,11 @@ func New(model ai.Model, opts ...Option) *Default {
 	copy(msgs, c.history)
 
 	return &Default{
-		config:   c,
-		toolMap:  toolMap,
-		toolInfo: toolInfo,
-		messages: msgs,
+		config:     c,
+		toolMap:    toolMap,
+		toolInfo:   toolInfo,
+		middleware: c.middleware,
+		messages:   msgs,
 	}
 }
 
@@ -398,7 +400,8 @@ func (a *Default) executeTools(
 }
 
 // executeSingleTool runs one tool call with panic recovery, emitting
-// start/update/end events.
+// start/update/end events. If middleware is set, the tool execution
+// is wrapped by it.
 func (a *Default) executeSingleTool(
 	ctx context.Context,
 	push func(Event),
@@ -417,14 +420,57 @@ func (a *Default) executeSingleTool(
 		}
 	}()
 
+	runner := func(ctx context.Context) (ai.ToolResult, error) {
+		return a.runTool(ctx, push, tc)
+	}
+
+	var toolResult ai.ToolResult
+	var err error
+	if a.middleware != nil {
+		toolResult, err = a.middleware(ctx, tc, runner)
+	} else {
+		toolResult, err = runner(ctx)
+	}
+
+	if err != nil {
+		return finishToolError(push, tc, err.Error())
+	}
+
+	if toolResult.IsError {
+		return finishToolError(push, tc, toolResult.Content)
+	}
+
+	msg := ai.ToolResultMessage(tc.ID, tc.Name, ai.Text{Text: toolResult.Content})
+	push(Event{
+		Type:       EventToolExecutionEnd,
+		ToolCallID: tc.ID,
+		ToolName:   tc.Name,
+		Result:     toolResult.Content,
+	})
+	return msg
+}
+
+// runTool executes a single tool call and returns the [ai.ToolResult].
+// This is the innermost function that [Middleware] wraps.
+func (a *Default) runTool(
+	ctx context.Context,
+	push func(Event),
+	tc ai.ToolCall,
+) (ai.ToolResult, error) {
 	tool, ok := a.toolMap[tc.Name]
 	if !ok {
-		return finishToolError(push, tc, fmt.Sprintf("tool %q not found", tc.Name))
+		return ai.NewErrorResult(
+			tc.ID,
+			fmt.Sprintf("tool %q not found", tc.Name),
+		), nil
 	}
 
 	inputJSON, err := json.Marshal(tc.Arguments)
 	if err != nil {
-		return finishToolError(push, tc, fmt.Sprintf("failed to marshal arguments: %v", err))
+		return ai.NewErrorResult(
+			tc.ID,
+			fmt.Sprintf("failed to marshal arguments: %v", err),
+		), nil
 	}
 
 	req := ai.ToolCallReq{
@@ -443,21 +489,10 @@ func (a *Default) executeSingleTool(
 
 	toolResult, err := tool.Run(ctx, req)
 	if err != nil {
-		return finishToolError(push, tc, err.Error())
+		return ai.NewErrorResult(tc.ID, err.Error()), nil
 	}
 
-	if toolResult.IsError {
-		return finishToolError(push, tc, toolResult.Content)
-	}
-
-	msg := ai.ToolResultMessage(tc.ID, tc.Name, ai.Text{Text: toolResult.Content})
-	push(Event{
-		Type:       EventToolExecutionEnd,
-		ToolCallID: tc.ID,
-		ToolName:   tc.Name,
-		Result:     toolResult.Content,
-	})
-	return msg
+	return toolResult, nil
 }
 
 // finishToolError creates an error tool result message and emits the

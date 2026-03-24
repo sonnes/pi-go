@@ -27,6 +27,7 @@ type config struct {
 	systemPrompt Prompt
 	streamOpts   []ai.Option
 	maxTurns     int
+	middleware   Middleware
 }
 
 // Option configures an [Agent].
@@ -56,4 +57,19 @@ func WithStreamOpts(opts ...ai.Option) Option {
 // Zero means unlimited.
 func WithMaxTurns(n int) Option {
 	return func(c *config) { c.maxTurns = n }
+}
+
+// WithMiddleware sets tool execution middleware. Multiple middleware are
+// chained left-to-right: the first is the outermost wrapper.
+func WithMiddleware(mw ...Middleware) Option {
+	return func(c *config) {
+		switch len(mw) {
+		case 0:
+			return
+		case 1:
+			c.middleware = mw[0]
+		default:
+			c.middleware = Chain(mw...)
+		}
+	}
 }
