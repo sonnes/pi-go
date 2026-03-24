@@ -60,22 +60,22 @@ instruction := agent.CustomMessage{
 }
 ```
 
-Custom messages participate in the conversation history, are visible via `State().Messages()`, and survive across turns. They are invisible to the model — `LLMMessages` filters them out.
+Custom messages participate in the conversation history, are visible via `Messages()`, and survive across turns. They are invisible to the model — `LLMMessages` filters them out.
 
 ## Filtering
 
 `LLMMessages([]Message) []ai.Message` extracts only the `LLMMessage` values, returning their underlying `ai.Message` values. The agent loop calls this before each model invocation.
 
-`State` exposes both views:
-- `Messages()` — full history including custom messages.
-- `LLMMessages()` — LLM-only view for inspection or debugging.
+The agent exposes both views:
+- `Messages()` on the `Agent` interface — full history including custom messages.
+- `LLMMessages([]Message)` utility function — LLM-only view for inspection or debugging.
 
 ## Type switching
 
 Use standard Go type switches to handle messages:
 
 ```go
-for _, m := range state.Messages() {
+for _, m := range agent.Messages() {
     switch v := m.(type) {
     case agent.LLMMessage:
         // v.Message is an ai.Message
@@ -91,4 +91,4 @@ for _, m := range state.Messages() {
 
 - [ai.Message](/concepts/ai/messages) — the LLM-level message type that `LLMMessage` wraps
 - [ai.Content](/concepts/ai/content) — uses the same sealed-interface pattern
-- [Agent State](/concepts/agent/agent-state) — exposes `Messages()` and `LLMMessages()`
+- [Agent State](/concepts/agent/agent-state) — runtime state observability
