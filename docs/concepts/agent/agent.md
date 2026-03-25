@@ -18,7 +18,7 @@ The agent manages an agentic conversation loop: prompt assembly → model infere
 
 **Model is a required positional argument.** Every agent needs a model. Making it a required parameter (not an option) prevents misconfiguration and makes the constructor signature self-documenting. `New` returns `*Default`, which satisfies the `Agent` interface.
 
-**Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...Message` — both `LLMMessage` and custom messages. See [Agent Messages](/concepts/agent/messages).
+**Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, `WithHooks`, `WithMiddleware` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...Message` — both `LLMMessage` and custom messages. See [Agent Messages](/concepts/agent/messages).
 
 **Immutable config, mutable state.** Construction parameters never change after `New`. Runtime state (messages, running status, last error) evolves during runs and is observable via `Messages()`, `IsRunning()`, and `Err()`. This separation makes it safe to read state from any goroutine without worrying about config mutations.
 
@@ -36,7 +36,23 @@ All return an `*EventStream`. See [Streaming](/concepts/agent/streaming).
 
 ## System prompt
 
-System prompts are built from composable, lazily-rendered `PromptSection`s. Each section has a `Key()` for deduplication and `Content(ctx)` for lazy rendering. This supports dynamic prompts that depend on runtime context (time, workspace state, etc.) without eager string concatenation at construction.
+System prompts are built from composable `prompt.Section`s (defined in the `prompt` package). Each section has a `Key()` for identification and `Content()` for rendering. Sections are concatenated with double newlines before each LLM call.
+
+## Hooks
+
+`WithHooks(Hooks{...})` registers lifecycle callbacks that extend the agent loop without modifying its core. All hooks are optional — nil hooks are skipped.
+
+- **`TransformMessages`** — called before each LLM call. Replaces the default `LLMMessages` conversion, giving full control over what the model sees. Receives `[]Message` (including custom messages) and returns `[]ai.Message`. See [Agent Messages](/concepts/agent/messages).
+- **`AfterTurn`** — called after each turn completes. Receives the current messages and a `TurnResult`. If it returns a non-nil slice, that slice replaces the agent's message history (e.g. for compaction).
+- **`FollowUp`** — called when the agent would stop (no tool calls). If it returns messages, they are appended and the loop continues for another turn. Respects `MaxTurns`.
+
+Design: hooks are function fields on a `Hooks` struct rather than interfaces. This avoids forcing callers to implement methods they don't need. Each hook has a package-internal default method that falls back to standard behavior when nil.
+
+## Middleware
+
+`WithMiddleware(mw ...)` wraps tool execution. Middleware receives the `ai.ToolCall` and a `ToolRunner` and controls whether the tool runs by calling or skipping `next`. Multiple middleware are chained left-to-right. Middleware must be safe for concurrent use when tools run in parallel.
+
+Design: middleware is separate from hooks because it wraps a single function call (tool execution), while hooks observe or influence the loop at specific points. The two compose independently.
 
 ## Turn limits
 
@@ -51,3 +67,4 @@ The agent respects `context.Context`. Cancelling aborts the current LLM stream a
 - [Agent Messages](/concepts/agent/messages) — extensible message type with custom message support
 - [Agent State](/concepts/agent/agent-state) — runtime state observability
 - [Streaming](/concepts/agent/streaming) — event stream and consumption patterns
+- [prompt package](/concepts/prompt) — composable system prompt sections

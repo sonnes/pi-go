@@ -3,4 +3,8 @@
 // It manages prompt building, tool execution, event streaming, and turn
 // management. The [Agent] interface is the main entry point, with
 // [Default] as the standard implementation.
+//
+// The loop is extensible via [Hooks] (lifecycle callbacks for message
+// transformation, post-turn processing, and follow-up injection) and
+// [Middleware] (tool execution wrapping).
 package agent

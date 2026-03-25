@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/prompt"
 )
 
 // Default is the standard [Agent] implementation that manages an
@@ -173,12 +174,6 @@ func (a *Default) loop(
 		})
 	}()
 
-	system, err := a.renderSystem(ctx)
-	if err != nil {
-		loopErr = err
-		return
-	}
-
 	emitMessages(push, inputMsgs)
 
 	for turn := 0; ; turn++ {
@@ -190,7 +185,7 @@ func (a *Default) loop(
 			return
 		}
 
-		tr, err := a.executeTurn(ctx, push, system)
+		tr, err := a.executeTurn(ctx, push)
 		if err != nil {
 			loopErr = err
 			return
@@ -206,9 +201,37 @@ func (a *Default) loop(
 			newMessages = append(newMessages, trMsg)
 		}
 
-		if !tr.cont {
+		// AfterTurn: let hooks replace the message history.
+		hookTR := TurnResult{
+			AssistantMsg: tr.assistantMsg,
+			ToolResults:  tr.toolResults,
+			Usage:        tr.usage,
+		}
+		if replaced := a.config.hooks.afterTurn(ctx, a.messages, hookTR); replaced != nil {
+			a.messages = replaced
+		}
+
+		if tr.cont {
+			continue
+		}
+
+		// FollowUp: let hooks inject messages to keep the loop going.
+		// Check that another turn is allowed before injecting.
+		nextTurn := turn + 1
+		if a.config.maxTurns > 0 && nextTurn >= a.config.maxTurns {
 			return
 		}
+		followMsgs := a.config.hooks.followUp(ctx, a.messages)
+		if len(followMsgs) == 0 {
+			return
+		}
+		a.messages = append(a.messages, followMsgs...)
+		for _, m := range followMsgs {
+			if lm, ok := AsLLMMessage(m); ok {
+				newMessages = append(newMessages, lm.Message)
+			}
+		}
+		emitMessages(push, followMsgs)
 	}
 }
 
@@ -219,7 +242,6 @@ func (a *Default) loop(
 func (a *Default) executeTurn(
 	ctx context.Context,
 	push func(Event),
-	system string,
 ) (tr turnResult, err error) {
 	var turnMsg *ai.Message
 
@@ -232,7 +254,10 @@ func (a *Default) executeTurn(
 		})
 	}()
 
-	prompt := a.buildPrompt(system)
+	prompt, err := a.buildPrompt(ctx)
+	if err != nil {
+		return tr, err
+	}
 	aiStream := ai.StreamText(ctx, a.config.model, prompt, a.config.streamOpts...)
 
 	assistantMsg, err := streamTurn(push, aiStream)
@@ -257,38 +282,33 @@ func (a *Default) executeTurn(
 	return tr, nil
 }
 
-// renderSystem renders the system prompt sections once. Panics in
-// [PromptSection.Content] are recovered and returned as errors.
-func (a *Default) renderSystem(ctx context.Context) (system string, err error) {
+// buildPrompt assembles an [ai.Prompt] from the system prompt sections
+// and the current message history. Panics in [prompt.Section.Content]
+// are recovered and returned as errors.
+func (a *Default) buildPrompt(ctx context.Context) (p ai.Prompt, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("agent: panic in system prompt section: %v", r)
 		}
 	}()
-	return renderSystemPrompt(ctx, a.config.systemPrompt), nil
-}
-
-// buildPrompt assembles an [ai.Prompt] from a pre-rendered system string
-// and the current message history.
-func (a *Default) buildPrompt(system string) ai.Prompt {
 	return ai.Prompt{
-		System:   system,
-		Messages: LLMMessages(a.messages),
+		System:   renderSystemPrompt(a.config.systemPrompt),
+		Messages: a.config.hooks.transformMessages(ctx, a.messages),
 		Tools:    a.toolInfo,
-	}
+	}, nil
 }
 
 // renderSystemPrompt concatenates all prompt sections with double newlines.
-func renderSystemPrompt(ctx context.Context, p Prompt) string {
-	if len(p.Sections) == 0 {
+func renderSystemPrompt(p prompt.Prompt) string {
+	if len(p) == 0 {
 		return ""
 	}
 	var sb strings.Builder
-	for i, section := range p.Sections {
+	for i, section := range p {
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
-		sb.WriteString(section.Content(ctx))
+		sb.WriteString(section.Content())
 	}
 	return sb.String()
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/prompt"
 )
 
 // Agent is the interface for an agentic conversation loop.
@@ -24,9 +25,10 @@ type config struct {
 	model        ai.Model
 	tools        []ai.Tool
 	history      []Message
-	systemPrompt Prompt
+	systemPrompt prompt.Prompt
 	streamOpts   []ai.Option
 	maxTurns     int
+	hooks        Hooks
 	middleware   Middleware
 }
 
@@ -44,7 +46,7 @@ func WithHistory(msgs ...Message) Option {
 }
 
 // WithSystemPrompt sets the system prompt.
-func WithSystemPrompt(p Prompt) Option {
+func WithSystemPrompt(p prompt.Prompt) Option {
 	return func(c *config) { c.systemPrompt = p }
 }
 
@@ -57,6 +59,11 @@ func WithStreamOpts(opts ...ai.Option) Option {
 // Zero means unlimited.
 func WithMaxTurns(n int) Option {
 	return func(c *config) { c.maxTurns = n }
+}
+
+// WithHooks sets lifecycle hooks for the agent loop.
+func WithHooks(h Hooks) Option {
+	return func(c *config) { c.hooks = h }
 }
 
 // WithMiddleware sets tool execution middleware. Multiple middleware are
