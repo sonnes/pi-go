@@ -207,6 +207,51 @@ func TestCustomMessage_StructLiteral(t *testing.T) {
 	assert.Equal(t, RoleSystem, m.Role())
 }
 
+func TestFilterMessages(t *testing.T) {
+	msgs := []Message{
+		LLMMessage{Message: ai.UserMessage("hello")},
+		CustomMessage{Kind: "status"},
+		LLMMessage{Message: ai.AssistantMessage(ai.Text{Text: "hi"})},
+		artifactMessage{
+			CustomMessage: CustomMessage{Kind: "artifact"},
+			Title:         "code",
+		},
+		LLMMessage{Message: ai.ToolResultMessage("id", "name", ai.Text{Text: "ok"})},
+	}
+
+	t.Run("filter LLMMessage", func(t *testing.T) {
+		got := FilterMessages[LLMMessage](msgs)
+		require.Len(t, got, 3)
+		assert.Equal(t, RoleUser, got[0].Role())
+		assert.Equal(t, RoleAssistant, got[1].Role())
+		assert.Equal(t, RoleToolResult, got[2].Role())
+	})
+
+	t.Run("filter CustomMessage", func(t *testing.T) {
+		got := FilterMessages[CustomMessage](msgs)
+		require.Len(t, got, 1)
+		assert.Equal(t, "status", got[0].Kind)
+	})
+
+	t.Run("filter artifactMessage", func(t *testing.T) {
+		got := FilterMessages[artifactMessage](msgs)
+		require.Len(t, got, 1)
+		assert.Equal(t, "code", got[0].Title)
+	})
+
+	t.Run("empty input", func(t *testing.T) {
+		got := FilterMessages[LLMMessage](nil)
+		assert.Nil(t, got)
+	})
+
+	t.Run("no matches", func(t *testing.T) {
+		got := FilterMessages[artifactMessage]([]Message{
+			LLMMessage{Message: ai.UserMessage("hello")},
+		})
+		assert.Nil(t, got)
+	})
+}
+
 func TestMessageTypeSwitch(t *testing.T) {
 	msgs := []Message{
 		LLMMessage{Message: ai.UserMessage("hello")},

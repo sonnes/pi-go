@@ -28,8 +28,7 @@ type config struct {
 	systemPrompt prompt.Prompt
 	streamOpts   []ai.Option
 	maxTurns     int
-	hooks        Hooks
-	middleware   Middleware
+	hooks        hooks
 }
 
 // Option configures an [Agent].
@@ -61,22 +60,13 @@ func WithMaxTurns(n int) Option {
 	return func(c *config) { c.maxTurns = n }
 }
 
-// WithHooks sets lifecycle hooks for the agent loop.
-func WithHooks(h Hooks) Option {
-	return func(c *config) { c.hooks = h }
-}
-
-// WithMiddleware sets tool execution middleware. Multiple middleware are
-// chained left-to-right: the first is the outermost wrapper.
-func WithMiddleware(mw ...Middleware) Option {
+// WithHook registers a lifecycle hook for the given event. Multiple
+// hooks per event run in registration order.
+func WithHook(event HookEvent, h Hook) Option {
 	return func(c *config) {
-		switch len(mw) {
-		case 0:
-			return
-		case 1:
-			c.middleware = mw[0]
-		default:
-			c.middleware = Chain(mw...)
+		if c.hooks == nil {
+			c.hooks = make(hooks)
 		}
+		c.hooks[event] = append(c.hooks[event], h)
 	}
 }
