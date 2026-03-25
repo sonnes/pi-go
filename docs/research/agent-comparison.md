@@ -55,35 +55,21 @@ Equivalent fields via discriminated union types. Notable differences:
 
 ## Missing from Go
 
-### 1. Steering & Follow-up Hooks
+### ~~1. Steering & Follow-up Hooks~~ — Partially implemented
 
-TS `AgentLoopConfig` has callback hooks for mid-run message injection:
+Go now has `Hooks.FollowUp`, which covers the `getFollowUpMessages` use case: when the agent would stop, the hook can inject messages to continue the loop.
 
-- **`getSteeringMessages`** — checked after each tool execution. If messages returned, remaining tools are skipped and these messages are injected before the next LLM call. Also checked initially before the first LLM call. Enables user interruption mid-run.
-- **`getFollowUpMessages`** — checked when the agent would otherwise stop. If messages returned, the loop continues. Enables queued follow-up processing.
-- **`steer(m)` / `followUp(m)`** — queue methods on the `Agent` class with configurable delivery modes (`"all"` vs `"one-at-a-time"`).
-- **Queue management** — `clearSteeringQueue()`, `clearFollowUpQueue()`, `clearAllQueues()`, `hasQueuedMessages()`.
+**Still missing**: `getSteeringMessages` (mid-tool-execution interruption), queue management methods (`steer()`, `clearSteeringQueue()`), and delivery modes (`"all"` vs `"one-at-a-time"`).
 
-Go has no equivalent. The loop runs to completion; the only interruption is `context.Context` cancellation.
+### ~~2. Context Transform Pipeline~~ — Implemented
 
-### 2. Context Transform Pipeline
+Go now has `Hooks.TransformMessages`: a single-stage transform that replaces the default `LLMMessages` conversion. It receives `[]Message` (including custom messages) and returns `[]ai.Message`, combining both TS stages (`transformContext` + `convertToLlm`) into one hook.
 
-TS has a two-stage message transform before each LLM call:
+Additionally, `Hooks.AfterTurn` enables post-turn message history mutation (e.g. compaction), which TS handles via `transformContext`.
 
-```
-AgentMessage[] → transformContext() → convertToLlm() → Message[]
-```
+### ~~3. Extensible Message Types~~ — Implemented
 
-- **`transformContext`** — `(messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>`. Operates on `AgentMessage[]` for context pruning, token management, injecting external context. Optional, async, supports abort.
-- **`convertToLlm`** — `(messages: AgentMessage[]) => Message[] | Promise<Message[]>`. Converts extensible `AgentMessage[]` to LLM-compatible `Message[]`, filtering out custom/UI-only messages. Required (defaults to filtering by role: user/assistant/toolResult).
-
-Go builds the prompt directly from `Config.History` with no transform hooks.
-
-### 3. Extensible Message Types
-
-TS defines `AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages]`, allowing apps to add custom message types (artifacts, notifications, UI state) via declaration merging. Custom messages pass through the agent but are filtered out by `convertToLlm` before LLM calls.
-
-Go uses `ai.Message` directly — no extension point for custom message types.
+Go has `CustomMessage` — applications embed it to define their own message types. Custom messages participate in the conversation history and are visible to hooks. The `TransformMessages` hook controls how they are converted (or filtered out) for LLM calls.
 
 ### 4. Observable State (`AgentState`)
 
@@ -176,36 +162,43 @@ Go abstracts the agent behind an `Agent` interface, with `Default` as the standa
 
 Go's `EventStream` is backed by `pubsub.Broker[Event]` with blocking publish, supporting multiple concurrent subscribers with replay for late joiners. TS uses `subscribe()` callbacks — similar in spirit but push-based rather than pull-based.
 
-### 3. `Prompt` with `PromptSection` Interface
+### 3. `prompt.Prompt` with `Section` Interface
 
-Go defines a composable system prompt with lazily-rendered sections:
+Go defines a composable system prompt via the `prompt` package:
 
 ```go
-type PromptSection interface {
+type Section interface {
     Key() string
-    Content(ctx context.Context) string
+    Content() string
 }
 
-type Prompt struct {
-    Sections []PromptSection
-}
+type Prompt []Section
 ```
 
 TS uses a plain `string` for `systemPrompt` with a simple setter.
 
-### 4. `MaxTurns` Guard
+### 4. Lifecycle `Hooks` + `Middleware`
+
+Go separates extension points into two mechanisms:
+
+- **`Hooks`** — lifecycle callbacks (`TransformMessages`, `AfterTurn`, `FollowUp`) that observe or influence the loop at specific points.
+- **`Middleware`** — wraps tool execution with chainable interceptors.
+
+TS combines these into callback fields on `AgentLoopConfig` (`beforeToolCall`, `afterToolCall`, `transformContext`, `convertToLlm`, `getSteeringMessages`, `getFollowUpMessages`).
+
+### 5. `MaxTurns` Guard
 
 Go `Config.MaxTurns` prevents infinite tool-call loops. TS has no turn limit.
 
-### 5. `ErrStream` Utility
+### 6. `ErrStream` Utility
 
 Go provides `ErrStream(err error) *EventStream` for creating a stream that immediately emits an error `agent_end`. TS has no equivalent convenience function.
 
-### 6. Typed `Event` with Custom JSON Serialization
+### 7. Typed `Event` with Custom JSON Serialization
 
 Go's `Event` struct has a custom `MarshalJSON` that only includes fields relevant to each event type, keeping the wire format clean. TS uses discriminated union types which achieve similar at the type level.
 
-### 7. Dual Consumption Patterns
+### 8. Dual Consumption Patterns
 
 Go's `EventStream` supports both streaming (`Events(ctx) iter.Seq2[Event, error]`) and blocking (`Result() ([]ai.Message, error)`) consumption, with multi-subscriber support. TS uses `subscribe()` for streaming and `await prompt()` for blocking.
 
@@ -213,10 +206,10 @@ Go's `EventStream` supports both streaming (`Events(ctx) iter.Seq2[Event, error]
 
 Features to consider porting to Go, in priority order:
 
-1. **Steering hooks** — essential for interactive use (CLI, UI). Without this, users can't interrupt a long tool-execution phase.
-2. **Context transform** — needed for token management in long conversations. Could be a simple `func(context.Context, []ai.Message) []ai.Message` field on `Config`.
+1. ~~**Steering hooks**~~ — partially done via `Hooks.FollowUp`. Still missing: mid-tool-execution steering (`getSteeringMessages`), queue management, delivery modes.
+2. ~~**Context transform**~~ — done via `Hooks.TransformMessages` and `Hooks.AfterTurn`.
 3. **`AgentState` observability** — expose `streamMessage` and `pendingToolCalls` for UI consumers.
 4. **Dynamic API key** — important for OAuth-based providers. Could be an `ai.Option` rather than agent-level.
-5. **Custom message types** — useful for rich UIs but can be deferred; Go's interface system could handle this via a wrapper type.
+5. ~~**Custom message types**~~ — done via `CustomMessage` embedding.
 6. **Message management** — runtime methods like `ReplaceMessages`, `AppendMessage` for managing conversation history.
 7. **Custom stream function** — swappable LLM streaming for proxy backends and testing.
