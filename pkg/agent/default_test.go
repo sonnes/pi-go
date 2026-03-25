@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/prompt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -212,20 +213,20 @@ func blockingTool(name string) ai.Tool {
 	)
 }
 
-// staticSection implements [PromptSection] with a fixed key and content.
+// staticSection implements [prompt.Section] with a fixed key and content.
 type staticSection struct {
 	key     string
 	content string
 }
 
-func (s staticSection) Key() string                      { return s.key }
-func (s staticSection) Content(_ context.Context) string { return s.content }
+func (s staticSection) Key() string     { return s.key }
+func (s staticSection) Content() string { return s.content }
 
-// panicSection implements [PromptSection] that panics.
+// panicSection implements [prompt.Section] that panics.
 type panicSection struct{}
 
-func (panicSection) Key() string                      { return "panic" }
-func (panicSection) Content(_ context.Context) string { panic("section panic") }
+func (panicSection) Key() string     { return "panic" }
+func (panicSection) Content() string { panic("section panic") }
 
 // --- Existing constructor tests ---
 
@@ -292,11 +293,11 @@ func TestNewDefault_WithMaxTurns(t *testing.T) {
 
 func TestNewDefault_WithSystemPrompt(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	prompt := Prompt{Sections: []PromptSection{}}
+	p := prompt.Prompt{}
 
-	a := New(model, WithSystemPrompt(prompt))
+	a := New(model, WithSystemPrompt(p))
 
-	assert.Equal(t, prompt, a.config.systemPrompt)
+	assert.Equal(t, p, a.config.systemPrompt)
 }
 
 func TestNewDefault_WithStreamOpts(t *testing.T) {
@@ -678,14 +679,12 @@ func TestSend_ToolPanics(t *testing.T) {
 func TestSend_SystemPromptRendering(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	prompt := Prompt{
-		Sections: []PromptSection{
-			staticSection{key: "role", content: "You are a helper."},
-			staticSection{key: "rules", content: "Be concise."},
-		},
+	p := prompt.Prompt{
+		staticSection{key: "role", content: "You are a helper."},
+		staticSection{key: "rules", content: "Be concise."},
 	}
 
-	a := New(testModel(), WithSystemPrompt(prompt))
+	a := New(testModel(), WithSystemPrompt(p))
 	stream := a.Send(t.Context(), "hi")
 
 	_, err := stream.Result()
@@ -941,7 +940,7 @@ func TestSend_SectionPanics(t *testing.T) {
 
 	a := New(
 		testModel(),
-		WithSystemPrompt(Prompt{Sections: []PromptSection{panicSection{}}}),
+		WithSystemPrompt(prompt.Prompt{panicSection{}}),
 	)
 	stream := a.Send(t.Context(), "hi")
 
