@@ -55,21 +55,24 @@ Equivalent fields via discriminated union types. Notable differences:
 
 ## Missing from Go
 
-### ~~1. Steering & Follow-up Hooks~~ — Partially implemented
+### ~~1. Steering & Follow-up Hooks~~ — Implemented
 
-Go now has `Hooks.FollowUp`, which covers the `getFollowUpMessages` use case: when the agent would stop, the hook can inject messages to continue the loop.
+Go covers both TS hook points via the unified hook system:
 
-**Still missing**: `getSteeringMessages` (mid-tool-execution interruption), queue management methods (`steer()`, `clearSteeringQueue()`), and delivery modes (`"all"` vs `"one-at-a-time"`).
+- `getFollowUpMessages` → `HookBeforeStop`: when the agent would stop, the hook can inject messages to continue the loop.
+- `getSteeringMessages` → `HookAfterTurn`: hooks can inspect `TurnResult.ToolResults` and append steering messages to the history mid-run.
+
+**Still missing**: queue management methods (`steer()`, `clearSteeringQueue()`) and delivery modes (`"all"` vs `"one-at-a-time"`).
 
 ### ~~2. Context Transform Pipeline~~ — Implemented
 
-Go now has `Hooks.TransformMessages`: a single-stage transform that replaces the default `LLMMessages` conversion. It receives `[]Message` (including custom messages) and returns `[]ai.Message`, combining both TS stages (`transformContext` + `convertToLlm`) into one hook.
+Go's `HookBeforeCall` combines both TS stages (`transformContext` + `convertToLlm`) into one hook event. Hooks can filter at the agent message level (via `HookOutput.Messages`) or override the final LLM messages (via `HookOutput.LLMMessages`). Multiple hooks chain: each sees the previous hook's filtered messages.
 
-Additionally, `Hooks.AfterTurn` enables post-turn message history mutation (e.g. compaction), which TS handles via `transformContext`.
+Additionally, `HookAfterTurn` enables post-turn message history mutation (e.g. compaction), which TS handles via `transformContext`.
 
 ### ~~3. Extensible Message Types~~ — Implemented
 
-Go has `CustomMessage` — applications embed it to define their own message types. Custom messages participate in the conversation history and are visible to hooks. The `TransformMessages` hook controls how they are converted (or filtered out) for LLM calls.
+Go has `CustomMessage` — applications embed it to define their own message types. Custom messages participate in the conversation history and are visible to hooks. The `HookBeforeCall` hook controls how they are converted (or filtered out) for LLM calls.
 
 ### 4. Observable State (`AgentState`)
 
@@ -177,14 +180,11 @@ type Prompt []Section
 
 TS uses a plain `string` for `systemPrompt` with a simple setter.
 
-### 4. Lifecycle `Hooks` + `Middleware`
+### 4. Unified Hook System
 
-Go separates extension points into two mechanisms:
+Go uses a single `Hook` callback type registered per event via `WithHook(event, hook)`. Five events cover the full lifecycle: `HookBeforeCall`, `HookBeforeTool`, `HookAfterTool`, `HookAfterTurn`, `HookBeforeStop`. Multiple hooks per event run in registration order with event-specific merging semantics (chaining, first-deny-wins, last-writer-wins).
 
-- **`Hooks`** — lifecycle callbacks (`TransformMessages`, `AfterTurn`, `FollowUp`) that observe or influence the loop at specific points.
-- **`Middleware`** — wraps tool execution with chainable interceptors.
-
-TS combines these into callback fields on `AgentLoopConfig` (`beforeToolCall`, `afterToolCall`, `transformContext`, `convertToLlm`, `getSteeringMessages`, `getFollowUpMessages`).
+TS uses separate callback fields on `AgentLoopConfig` (`beforeToolCall`, `afterToolCall`, `transformContext`, `convertToLlm`, `getSteeringMessages`, `getFollowUpMessages`), each with a different function signature.
 
 ### 5. `MaxTurns` Guard
 
