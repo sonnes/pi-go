@@ -117,3 +117,168 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, "get_weather", tc.Name)
 	assert.Equal(t, "Paris", tc.Arguments["location"])
 }
+
+func TestMessage_Text(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  ai.Message
+		want string
+	}{
+		{
+			name: "single text block",
+			msg:  ai.UserMessage("hello"),
+			want: "hello",
+		},
+		{
+			name: "multiple text blocks",
+			msg: ai.AssistantMessage(
+				ai.Text{Text: "hello "},
+				ai.Text{Text: "world"},
+			),
+			want: "hello world",
+		},
+		{
+			name: "mixed content",
+			msg: ai.AssistantMessage(
+				ai.Thinking{Thinking: "hmm"},
+				ai.Text{Text: "answer"},
+				ai.ToolCall{ID: "1", Name: "read"},
+			),
+			want: "answer",
+		},
+		{
+			name: "no text blocks",
+			msg: ai.AssistantMessage(
+				ai.Thinking{Thinking: "hmm"},
+			),
+			want: "",
+		},
+		{
+			name: "empty content",
+			msg:  ai.Message{Role: ai.RoleUser},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.msg.Text())
+		})
+	}
+}
+
+func TestMessage_ToolCalls(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  ai.Message
+		want []ai.ToolCall
+	}{
+		{
+			name: "no tool calls",
+			msg:  ai.UserMessage("hello"),
+			want: nil,
+		},
+		{
+			name: "single tool call",
+			msg: ai.AssistantMessage(
+				ai.Text{Text: "let me check"},
+				ai.ToolCall{ID: "tc-1", Name: "read", Arguments: map[string]any{"path": "/tmp"}},
+			),
+			want: []ai.ToolCall{
+				{ID: "tc-1", Name: "read", Arguments: map[string]any{"path": "/tmp"}},
+			},
+		},
+		{
+			name: "multiple tool calls",
+			msg: ai.AssistantMessage(
+				ai.ToolCall{ID: "tc-1", Name: "read"},
+				ai.Text{Text: "and also"},
+				ai.ToolCall{ID: "tc-2", Name: "write"},
+			),
+			want: []ai.ToolCall{
+				{ID: "tc-1", Name: "read"},
+				{ID: "tc-2", Name: "write"},
+			},
+		},
+		{
+			name: "empty content",
+			msg:  ai.Message{Role: ai.RoleAssistant},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.msg.ToolCalls())
+		})
+	}
+}
+
+func TestMessage_String(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  ai.Message
+		want string
+	}{
+		{
+			name: "user message",
+			msg:  ai.UserMessage("hello world"),
+			want: "user: hello world",
+		},
+		{
+			name: "assistant text",
+			msg:  ai.AssistantMessage(ai.Text{Text: "hi there"}),
+			want: "assistant: hi there",
+		},
+		{
+			name: "assistant with tool calls",
+			msg: ai.AssistantMessage(
+				ai.Text{Text: "let me check"},
+				ai.ToolCall{ID: "1", Name: "read"},
+				ai.ToolCall{ID: "2", Name: "write"},
+			),
+			want: "assistant: let me check [tool_calls: read, write]",
+		},
+		{
+			name: "assistant tool calls only",
+			msg: ai.AssistantMessage(
+				ai.ToolCall{ID: "1", Name: "bash"},
+			),
+			want: "assistant: [tool_calls: bash]",
+		},
+		{
+			name: "tool result",
+			msg:  ai.ToolResultMessage("tc-1", "read", ai.Text{Text: "file contents"}),
+			want: "tool_result(read): file contents",
+		},
+		{
+			name: "tool result error",
+			msg:  ai.ErrorToolResultMessage("tc-1", "bash", "exit code 1"),
+			want: "tool_result(bash) ERROR: exit code 1",
+		},
+		{
+			name: "long text truncated",
+			msg:  ai.UserMessage(longString(200)),
+			want: "user: " + longString(100) + "...",
+		},
+		{
+			name: "empty message",
+			msg:  ai.Message{Role: ai.RoleUser},
+			want: "user:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.msg.String())
+		})
+	}
+}
+
+func longString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = 'a'
+	}
+	return string(b)
+}

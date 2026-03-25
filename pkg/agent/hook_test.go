@@ -10,16 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test 1: Middleware passes through — calls next, tool runs normally.
-func TestMiddleware_PassesThrough(t *testing.T) {
+// --- BeforeTool hook tests ---
+
+// Test: BeforeTool passes through — tool runs normally.
+func TestBeforeTool_PassesThrough(t *testing.T) {
 	var called bool
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
+	hook := func(
+		_ context.Context,
+		input *HookInput,
+	) (*HookOutput, error) {
 		called = true
-		return next(ctx)
+		assert.Equal(t, HookBeforeTool, input.Event)
+		assert.Equal(t, "echo", input.ToolCall.Name)
+		return nil, nil
 	}
 
 	toolCall := ai.ToolCall{
@@ -32,20 +35,24 @@ func TestMiddleware_PassesThrough(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	a := New(testModel(), WithTools(echoTool()), WithMiddleware(mw))
+	a := New(
+		testModel(),
+		WithTools(echoTool()),
+		WithHook(HookBeforeTool, hook),
+	)
 	msgs, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	assert.True(t, called, "middleware should have been called")
+	assert.True(t, called, "hook should have been called")
 
 	toolResult := findToolResult(t, msgs)
 	assert.False(t, toolResult.IsError)
 }
 
-// Test 2: Middleware blocks execution — returns without calling next.
-func TestMiddleware_BlocksExecution(t *testing.T) {
+// Test: BeforeTool blocks execution — returns Deny.
+func TestBeforeTool_BlocksExecution(t *testing.T) {
 	var toolRan bool
-	blockingTool := ai.DefineTool[toolInput, string](
+	guardedTool := ai.DefineTool[toolInput, string](
 		"guarded",
 		"guarded tool",
 		func(_ context.Context, in toolInput) (string, error) {
@@ -54,12 +61,11 @@ func TestMiddleware_BlocksExecution(t *testing.T) {
 		},
 	)
 
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		return ai.NewErrorResult(call.ID, "blocked by policy"), nil
+	hook := func(
+		_ context.Context,
+		_ *HookInput,
+	) (*HookOutput, error) {
+		return &HookOutput{Deny: true, DenyReason: "blocked by policy"}, nil
 	}
 
 	toolCall := ai.ToolCall{
@@ -72,7 +78,11 @@ func TestMiddleware_BlocksExecution(t *testing.T) {
 		textStream("ok", ai.Usage{}),
 	)
 
-	a := New(testModel(), WithTools(blockingTool), WithMiddleware(mw))
+	a := New(
+		testModel(),
+		WithTools(guardedTool),
+		WithHook(HookBeforeTool, hook),
+	)
 	msgs, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
@@ -83,50 +93,13 @@ func TestMiddleware_BlocksExecution(t *testing.T) {
 	assert.Contains(t, toolResult.Content[0].(ai.Text).Text, "blocked by policy")
 }
 
-// Test 3: Middleware modifies result.
-func TestMiddleware_ModifiesResult(t *testing.T) {
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		result, err := next(ctx)
-		if err != nil {
-			return result, err
-		}
-		result.Content = "modified"
-		return result, nil
-	}
-
-	toolCall := ai.ToolCall{
-		ID:        "call_1",
-		Name:      "echo",
-		Arguments: map[string]any{"input": "original"},
-	}
-	registerMock(t,
-		toolCallStream([]ai.ToolCall{toolCall}, ai.Usage{}),
-		textStream("done", ai.Usage{}),
-	)
-
-	a := New(testModel(), WithTools(echoTool()), WithMiddleware(mw))
-	msgs, err := a.Send(t.Context(), "go").Result()
-	require.NoError(t, err)
-
-	toolResult := findToolResult(t, msgs)
-	assert.False(t, toolResult.IsError)
-	text, ok := ai.AsContent[ai.Text](toolResult.Content[0])
-	require.True(t, ok)
-	assert.Equal(t, "modified", text.Text)
-}
-
-// Test 4: Middleware returns error.
-func TestMiddleware_ReturnsError(t *testing.T) {
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		return ai.ToolResult{}, assert.AnError
+// Test: BeforeTool returns error.
+func TestBeforeTool_ReturnsError(t *testing.T) {
+	hook := func(
+		_ context.Context,
+		_ *HookInput,
+	) (*HookOutput, error) {
+		return nil, assert.AnError
 	}
 
 	toolCall := ai.ToolCall{
@@ -139,118 +112,28 @@ func TestMiddleware_ReturnsError(t *testing.T) {
 		textStream("ok", ai.Usage{}),
 	)
 
-	a := New(testModel(), WithTools(echoTool()), WithMiddleware(mw))
+	a := New(
+		testModel(),
+		WithTools(echoTool()),
+		WithHook(HookBeforeTool, hook),
+	)
 	msgs, err := a.Send(t.Context(), "go").Result()
-	require.NoError(t, err) // Agent-level error is non-fatal (tool error).
+	require.NoError(t, err)
 
 	toolResult := findToolResult(t, msgs)
 	assert.True(t, toolResult.IsError)
 }
 
-// Test 5: Context flows from middleware to tool.
-func TestMiddleware_ContextFlows(t *testing.T) {
-	type ctxKey struct{}
+// Test: Multiple BeforeTool hooks — first deny short-circuits.
+func TestBeforeTool_FirstDenyWins(t *testing.T) {
+	var h2Called bool
 
-	var toolSawValue string
-	ctxTool := ai.DefineTool[toolInput, string](
-		"ctx_tool",
-		"reads context",
-		func(ctx context.Context, in toolInput) (string, error) {
-			if v, ok := ctx.Value(ctxKey{}).(string); ok {
-				toolSawValue = v
-			}
-			return "ok", nil
-		},
-	)
-
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		ctx = context.WithValue(ctx, ctxKey{}, "from-middleware")
-		return next(ctx)
+	h1 := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
+		return &HookOutput{Deny: true, DenyReason: "blocked"}, nil
 	}
-
-	toolCall := ai.ToolCall{
-		ID:        "call_1",
-		Name:      "ctx_tool",
-		Arguments: map[string]any{"input": "x"},
-	}
-	registerMock(t,
-		toolCallStream([]ai.ToolCall{toolCall}, ai.Usage{}),
-		textStream("done", ai.Usage{}),
-	)
-
-	a := New(testModel(), WithTools(ctxTool), WithMiddleware(mw))
-	_, err := a.Send(t.Context(), "go").Result()
-	require.NoError(t, err)
-
-	assert.Equal(t, "from-middleware", toolSawValue)
-}
-
-// Test 6: Chain order — m1 wraps m2 wraps tool.
-func TestMiddleware_ChainOrder(t *testing.T) {
-	var order []string
-
-	m1 := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		order = append(order, "m1-before")
-		result, err := next(ctx)
-		order = append(order, "m1-after")
-		return result, err
-	}
-
-	m2 := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		order = append(order, "m2-before")
-		result, err := next(ctx)
-		order = append(order, "m2-after")
-		return result, err
-	}
-
-	toolCall := ai.ToolCall{
-		ID:        "call_1",
-		Name:      "echo",
-		Arguments: map[string]any{"input": "x"},
-	}
-	registerMock(t,
-		toolCallStream([]ai.ToolCall{toolCall}, ai.Usage{}),
-		textStream("done", ai.Usage{}),
-	)
-
-	a := New(testModel(), WithTools(echoTool()), WithMiddleware(m1, m2))
-	_, err := a.Send(t.Context(), "go").Result()
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"m1-before", "m2-before", "m2-after", "m1-after"}, order)
-}
-
-// Test 7: Chain early block — first middleware blocks, second never called.
-func TestMiddleware_ChainEarlyBlock(t *testing.T) {
-	var m2Called bool
-
-	m1 := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		return ai.NewErrorResult(call.ID, "blocked"), nil
-	}
-
-	m2 := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		m2Called = true
-		return next(ctx)
+	h2 := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
+		h2Called = true
+		return nil, nil
 	}
 
 	toolCall := ai.ToolCall{
@@ -263,54 +146,24 @@ func TestMiddleware_ChainEarlyBlock(t *testing.T) {
 		textStream("ok", ai.Usage{}),
 	)
 
-	a := New(testModel(), WithTools(echoTool()), WithMiddleware(m1, m2))
+	a := New(
+		testModel(),
+		WithTools(echoTool()),
+		WithHook(HookBeforeTool, h1),
+		WithHook(HookBeforeTool, h2),
+	)
 	_, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	assert.False(t, m2Called, "second middleware should not run when first blocks")
+	assert.False(t, h2Called, "second hook should not run when first denies")
 }
 
-// Test 8: Chain of one — single middleware works like unwrapped.
-func TestMiddleware_ChainOfOne(t *testing.T) {
-	var called bool
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		called = true
-		return next(ctx)
-	}
-
-	toolCall := ai.ToolCall{
-		ID:        "call_1",
-		Name:      "echo",
-		Arguments: map[string]any{"input": "x"},
-	}
-	registerMock(t,
-		toolCallStream([]ai.ToolCall{toolCall}, ai.Usage{}),
-		textStream("done", ai.Usage{}),
-	)
-
-	a := New(testModel(), WithTools(echoTool()), WithMiddleware(mw))
-	msgs, err := a.Send(t.Context(), "go").Result()
-	require.NoError(t, err)
-
-	assert.True(t, called)
-	toolResult := findToolResult(t, msgs)
-	assert.False(t, toolResult.IsError)
-}
-
-// Test 9: Parallel tools — middleware called for both concurrently.
-func TestMiddleware_ParallelTools(t *testing.T) {
+// Test: BeforeTool with parallel tools — hook called for each.
+func TestBeforeTool_ParallelTools(t *testing.T) {
 	var count atomic.Int32
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
+	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 		count.Add(1)
-		return next(ctx)
+		return nil, nil
 	}
 
 	calls := []ai.ToolCall{
@@ -325,16 +178,16 @@ func TestMiddleware_ParallelTools(t *testing.T) {
 	a := New(
 		testModel(),
 		WithTools(parallelEchoTool("par_a"), parallelEchoTool("par_b")),
-		WithMiddleware(mw),
+		WithHook(HookBeforeTool, hook),
 	)
 	_, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	assert.Equal(t, int32(2), count.Load(), "middleware should be called for both parallel tools")
+	assert.Equal(t, int32(2), count.Load(), "hook should be called for both parallel tools")
 }
 
-// Test 10: No middleware — nil middleware, identical behavior.
-func TestMiddleware_NilMiddleware(t *testing.T) {
+// Test: No hooks — nil hooks, identical behavior.
+func TestHook_NilHooks(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -356,41 +209,115 @@ func TestMiddleware_NilMiddleware(t *testing.T) {
 	assert.Equal(t, "hello", text.Text)
 }
 
-// --- TransformMessages hook tests ---
+// --- AfterTool hook tests ---
 
-// Test: TransformMessages replaces LLMMessages conversion.
-func TestTransformMessages_ReplacesDefault(t *testing.T) {
+// Test: AfterTool modifies result.
+func TestAfterTool_ModifiesResult(t *testing.T) {
+	hook := func(
+		_ context.Context,
+		input *HookInput,
+	) (*HookOutput, error) {
+		assert.Equal(t, HookAfterTool, input.Event)
+		assert.NotNil(t, input.ToolResult)
+		modified := *input.ToolResult
+		modified.Content = "modified"
+		return &HookOutput{ToolResult: &modified}, nil
+	}
+
+	toolCall := ai.ToolCall{
+		ID:        "call_1",
+		Name:      "echo",
+		Arguments: map[string]any{"input": "original"},
+	}
+	registerMock(t,
+		toolCallStream([]ai.ToolCall{toolCall}, ai.Usage{}),
+		textStream("done", ai.Usage{}),
+	)
+
+	a := New(
+		testModel(),
+		WithTools(echoTool()),
+		WithHook(HookAfterTool, hook),
+	)
+	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, err)
+
+	toolResult := findToolResult(t, msgs)
+	assert.False(t, toolResult.IsError)
+	text, ok := ai.AsContent[ai.Text](toolResult.Content[0])
+	require.True(t, ok)
+	assert.Equal(t, "modified", text.Text)
+}
+
+// Test: Multiple AfterTool hooks chain — each sees previous result.
+func TestAfterTool_Chains(t *testing.T) {
+	h1 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		modified := *input.ToolResult
+		modified.Content = modified.Content + "+h1"
+		return &HookOutput{ToolResult: &modified}, nil
+	}
+	h2 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		modified := *input.ToolResult
+		modified.Content = modified.Content + "+h2"
+		return &HookOutput{ToolResult: &modified}, nil
+	}
+
+	toolCall := ai.ToolCall{
+		ID:        "call_1",
+		Name:      "echo",
+		Arguments: map[string]any{"input": "base"},
+	}
+	registerMock(t,
+		toolCallStream([]ai.ToolCall{toolCall}, ai.Usage{}),
+		textStream("done", ai.Usage{}),
+	)
+
+	a := New(
+		testModel(),
+		WithTools(echoTool()),
+		WithHook(HookAfterTool, h1),
+		WithHook(HookAfterTool, h2),
+	)
+	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, err)
+
+	toolResult := findToolResult(t, msgs)
+	text, ok := ai.AsContent[ai.Text](toolResult.Content[0])
+	require.True(t, ok)
+	assert.Equal(t, "base+h1+h2", text.Text)
+}
+
+// --- BeforeCall hook tests ---
+
+// Test: BeforeCall replaces LLM messages.
+func TestBeforeCall_ReplacesLLMMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
 	var received []Message
-	transform := func(_ context.Context, msgs []Message) []ai.Message {
-		received = msgs
-		return LLMMessages(msgs)
+	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		received = input.Messages
+		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
 	}
 
-	a := New(testModel(), WithHooks(Hooks{
-		TransformMessages: transform,
-	}))
+	a := New(testModel(), WithHook(HookBeforeCall, hook))
 	_, err := a.Send(t.Context(), "hello").Result()
 	require.NoError(t, err)
 
-	// Transform should have received the agent messages (user message).
 	require.Len(t, received, 1)
 	assert.Equal(t, RoleUser, received[0].Role())
 
-	// Provider should still get the correct messages.
 	require.Len(t, mock.prompts, 1)
 	require.Len(t, mock.prompts[0].Messages, 1)
 	assert.Equal(t, ai.RoleUser, mock.prompts[0].Messages[0].Role)
 }
 
-// Test: TransformMessages can filter messages.
-func TestTransformMessages_FiltersMessages(t *testing.T) {
+// Test: BeforeCall can filter messages.
+func TestBeforeCall_FiltersMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	// Drop all messages — send empty slice to provider.
-	transform := func(_ context.Context, _ []Message) []ai.Message {
-		return nil
+	// Return an empty slice (not nil) to explicitly send zero messages.
+	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
+		return &HookOutput{LLMMessages: []ai.Message{}}, nil
 	}
 
 	history := []Message{
@@ -400,18 +327,17 @@ func TestTransformMessages_FiltersMessages(t *testing.T) {
 	a := New(
 		testModel(),
 		WithHistory(history...),
-		WithHooks(Hooks{TransformMessages: transform}),
+		WithHook(HookBeforeCall, hook),
 	)
 	_, err := a.Send(t.Context(), "new").Result()
 	require.NoError(t, err)
 
-	// Provider should have received zero messages.
 	require.Len(t, mock.prompts, 1)
 	assert.Empty(t, mock.prompts[0].Messages)
 }
 
-// Test: TransformMessages receives custom messages.
-func TestTransformMessages_ReceivesCustomMessages(t *testing.T) {
+// Test: BeforeCall receives custom messages.
+func TestBeforeCall_ReceivesCustomMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
 	type artifact struct {
@@ -420,13 +346,13 @@ func TestTransformMessages_ReceivesCustomMessages(t *testing.T) {
 	}
 
 	var sawCustom bool
-	transform := func(_ context.Context, msgs []Message) []ai.Message {
-		for _, m := range msgs {
+	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		for _, m := range input.Messages {
 			if _, ok := m.(artifact); ok {
 				sawCustom = true
 			}
 		}
-		return LLMMessages(msgs)
+		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
 	}
 
 	history := []Message{
@@ -438,21 +364,19 @@ func TestTransformMessages_ReceivesCustomMessages(t *testing.T) {
 	a := New(
 		testModel(),
 		WithHistory(history...),
-		WithHooks(Hooks{TransformMessages: transform}),
+		WithHook(HookBeforeCall, hook),
 	)
 	_, err := a.Send(t.Context(), "hi").Result()
 	require.NoError(t, err)
 
-	assert.True(t, sawCustom, "transform should see custom messages")
-	// Custom messages should be filtered out by LLMMessages, so provider
-	// should only see the user message.
+	assert.True(t, sawCustom, "hook should see custom messages")
 	require.Len(t, mock.prompts, 1)
 	require.Len(t, mock.prompts[0].Messages, 1)
 	assert.Equal(t, ai.RoleUser, mock.prompts[0].Messages[0].Role)
 }
 
-// Test: TransformMessages called each turn (multi-turn).
-func TestTransformMessages_CalledEachTurn(t *testing.T) {
+// Test: BeforeCall called each turn (multi-turn).
+func TestBeforeCall_CalledEachTurn(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -464,32 +388,67 @@ func TestTransformMessages_CalledEachTurn(t *testing.T) {
 	)
 
 	var callCount int
-	transform := func(_ context.Context, msgs []Message) []ai.Message {
+	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
 		callCount++
-		return LLMMessages(msgs)
+		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
 	}
 
 	a := New(
 		testModel(),
 		WithTools(echoTool()),
-		WithHooks(Hooks{TransformMessages: transform}),
+		WithHook(HookBeforeCall, hook),
 	)
 	_, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	assert.Equal(t, 2, callCount, "transform should be called once per turn")
+	assert.Equal(t, 2, callCount, "hook should be called once per turn")
 }
 
-// Test: Nil TransformMessages falls back to LLMMessages.
-func TestTransformMessages_NilFallback(t *testing.T) {
+// Test: Nil BeforeCall falls back to LLMMessages.
+func TestBeforeCall_NilFallback(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	a := New(testModel(), WithHooks(Hooks{}))
+	a := New(testModel())
 	_, err := a.Send(t.Context(), "hi").Result()
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 1)
 	require.Len(t, mock.prompts[0].Messages, 1)
+}
+
+// Test: Multiple BeforeCall hooks chain — Messages field chains.
+func TestBeforeCall_ChainsMessages(t *testing.T) {
+	mock := registerMock(t, textStream("ok", ai.Usage{}))
+
+	// First hook filters agent messages (keep only last one).
+	h1 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		if len(input.Messages) > 1 {
+			return &HookOutput{Messages: input.Messages[len(input.Messages)-1:]}, nil
+		}
+		return nil, nil
+	}
+	// Second hook converts to LLM messages.
+	h2 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
+	}
+
+	history := []Message{
+		NewLLMMessage(ai.UserMessage("old")),
+		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "old reply"})),
+	}
+	a := New(
+		testModel(),
+		WithHistory(history...),
+		WithHook(HookBeforeCall, h1),
+		WithHook(HookBeforeCall, h2),
+	)
+	_, err := a.Send(t.Context(), "new").Result()
+	require.NoError(t, err)
+
+	// h1 kept only "new" message, h2 converted it.
+	require.Len(t, mock.prompts, 1)
+	require.Len(t, mock.prompts[0].Messages, 1)
+	assert.Equal(t, ai.RoleUser, mock.prompts[0].Messages[0].Role)
 }
 
 // --- AfterTurn hook tests ---
@@ -507,26 +466,26 @@ func TestAfterTurn_CalledWithState(t *testing.T) {
 	)
 
 	var turns []TurnResult
-	afterTurn := func(_ context.Context, _ []Message, tr TurnResult) []Message {
-		turns = append(turns, tr)
-		return nil
+	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		assert.Equal(t, HookAfterTurn, input.Event)
+		assert.NotNil(t, input.Turn)
+		turns = append(turns, *input.Turn)
+		return nil, nil
 	}
 
 	a := New(
 		testModel(),
 		WithTools(echoTool()),
-		WithHooks(Hooks{AfterTurn: afterTurn}),
+		WithHook(HookAfterTurn, hook),
 	)
 	_, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
 	require.Len(t, turns, 2)
 
-	// Turn 1: tool call, has tool results, continues.
 	assert.Equal(t, ai.StopReasonToolUse, turns[0].AssistantMsg.StopReason)
 	assert.Len(t, turns[0].ToolResults, 1)
 
-	// Turn 2: text response, no tool results, stops.
 	assert.Equal(t, ai.StopReasonStop, turns[1].AssistantMsg.StopReason)
 	assert.Empty(t, turns[1].ToolResults)
 }
@@ -549,111 +508,110 @@ func TestAfterTurn_ReplacesMessages(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	afterTurn := func(_ context.Context, msgs []Message, _ TurnResult) []Message {
-		// After turn 1: [user, assistant, tool_result] = 3, no compaction.
-		// After turn 2: [user, assistant, tool_result, assistant, tool_result] = 5, compact.
-		if len(msgs) >= 5 {
-			return msgs[len(msgs)-2:]
+	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		if len(input.Messages) >= 5 {
+			return &HookOutput{Messages: input.Messages[len(input.Messages)-2:]}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	a := New(
 		testModel(),
 		WithTools(echoTool()),
-		WithHooks(Hooks{AfterTurn: afterTurn}),
+		WithHook(HookAfterTurn, hook),
 	)
 	_, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	// Turn 3 buildPrompt should see the compacted 2 messages.
 	require.Len(t, mock.prompts, 3)
 	assert.Len(t, mock.prompts[2].Messages, 2, "third turn should see compacted messages")
 }
 
-// Test: AfterTurn nil means no change.
+// Test: AfterTurn nil output means no change.
 func TestAfterTurn_NilNoChange(t *testing.T) {
 	registerMock(t, textStream("ok", ai.Usage{}))
 
-	a := New(testModel(), WithHooks(Hooks{}))
+	a := New(testModel())
 	_, err := a.Send(t.Context(), "hi").Result()
 	require.NoError(t, err)
 
 	assert.Len(t, a.Messages(), 2) // user + assistant
 }
 
-// --- FollowUp hook tests ---
+// --- BeforeStop hook tests ---
 
-// Test: FollowUp injects messages to continue the loop.
-func TestFollowUp_ContinuesLoop(t *testing.T) {
+// Test: BeforeStop injects messages to continue the loop.
+func TestBeforeStop_ContinuesLoop(t *testing.T) {
 	registerMock(t,
 		textStream("first answer", ai.Usage{}),
 		textStream("second answer", ai.Usage{}),
 	)
 
 	calls := 0
-	followUp := func(_ context.Context, _ []Message) []Message {
+	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 		calls++
 		if calls == 1 {
-			return []Message{
-				NewLLMMessage(ai.UserMessage("now verify that")),
-			}
+			return &HookOutput{
+				FollowUp: []Message{
+					NewLLMMessage(ai.UserMessage("now verify that")),
+				},
+			}, nil
 		}
-		return nil // stop on second call
+		return nil, nil
 	}
 
-	a := New(testModel(), WithHooks(Hooks{FollowUp: followUp}))
+	a := New(testModel(), WithHook(HookBeforeStop, hook))
 	msgs, err := a.Send(t.Context(), "do something").Result()
 	require.NoError(t, err)
 
-	// first answer + injected user msg + second answer
 	require.Len(t, msgs, 3)
 	assert.Equal(t, ai.RoleAssistant, msgs[0].Role)
 	assert.Equal(t, ai.RoleUser, msgs[1].Role)
 	assert.Equal(t, ai.RoleAssistant, msgs[2].Role)
 }
 
-// Test: FollowUp returning nil lets agent stop.
-func TestFollowUp_NilStops(t *testing.T) {
+// Test: BeforeStop returning nil lets agent stop.
+func TestBeforeStop_NilStops(t *testing.T) {
 	registerMock(t, textStream("done", ai.Usage{}))
 
-	followUp := func(_ context.Context, _ []Message) []Message {
-		return nil
+	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
+		return nil, nil
 	}
 
-	a := New(testModel(), WithHooks(Hooks{FollowUp: followUp}))
+	a := New(testModel(), WithHook(HookBeforeStop, hook))
 	msgs, err := a.Send(t.Context(), "hi").Result()
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 1)
 }
 
-// Test: FollowUp respects maxTurns.
-func TestFollowUp_RespectsMaxTurns(t *testing.T) {
+// Test: BeforeStop respects maxTurns.
+func TestBeforeStop_RespectsMaxTurns(t *testing.T) {
 	registerMock(t,
 		textStream("turn 1", ai.Usage{}),
 		textStream("turn 2", ai.Usage{}),
 		textStream("unreachable", ai.Usage{}),
 	)
 
-	followUp := func(_ context.Context, _ []Message) []Message {
-		return []Message{NewLLMMessage(ai.UserMessage("continue"))}
+	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
+		return &HookOutput{
+			FollowUp: []Message{NewLLMMessage(ai.UserMessage("continue"))},
+		}, nil
 	}
 
 	a := New(
 		testModel(),
 		WithMaxTurns(2),
-		WithHooks(Hooks{FollowUp: followUp}),
+		WithHook(HookBeforeStop, hook),
 	)
 	msgs, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	// 2 turns max: assistant + injected user + assistant
 	require.Len(t, msgs, 3)
 }
 
-// Test: FollowUp not called when tool calls continue the loop.
-func TestFollowUp_NotCalledOnToolContinue(t *testing.T) {
+// Test: BeforeStop not called when tool calls continue the loop.
+func TestBeforeStop_NotCalledOnToolContinue(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -665,68 +623,67 @@ func TestFollowUp_NotCalledOnToolContinue(t *testing.T) {
 	)
 
 	var called int
-	followUp := func(_ context.Context, _ []Message) []Message {
+	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 		called++
-		return nil
+		return nil, nil
 	}
 
 	a := New(
 		testModel(),
 		WithTools(echoTool()),
-		WithHooks(Hooks{FollowUp: followUp}),
+		WithHook(HookBeforeStop, hook),
 	)
 	_, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	// Only called once — after the final text response, not after tool turn.
 	assert.Equal(t, 1, called)
 }
 
-// Test: FollowUp + AfterTurn + TransformMessages all work together.
+// --- Combined hook tests ---
+
+// Test: All hooks work together.
 func TestHooks_AllTogether(t *testing.T) {
 	mock := registerMock(t,
 		textStream("first", ai.Usage{}),
 		textStream("second", ai.Usage{}),
 	)
 
-	var transformCalls int
+	var beforeCallCalls int
 	var afterTurnCalls int
 
-	a := New(testModel(), WithHooks(Hooks{
-		TransformMessages: func(_ context.Context, msgs []Message) []ai.Message {
-			transformCalls++
-			return LLMMessages(msgs)
-		},
-		AfterTurn: func(_ context.Context, _ []Message, _ TurnResult) []Message {
+	a := New(testModel(),
+		WithHook(HookBeforeCall, func(_ context.Context, input *HookInput) (*HookOutput, error) {
+			beforeCallCalls++
+			return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
+		}),
+		WithHook(HookAfterTurn, func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 			afterTurnCalls++
-			return nil
-		},
-		FollowUp: func(_ context.Context, _ []Message) []Message {
+			return nil, nil
+		}),
+		WithHook(HookBeforeStop, func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 			if afterTurnCalls == 1 {
-				return []Message{NewLLMMessage(ai.UserMessage("more"))}
+				return &HookOutput{
+					FollowUp: []Message{NewLLMMessage(ai.UserMessage("more"))},
+				}, nil
 			}
-			return nil
-		},
-	}))
+			return nil, nil
+		}),
+	)
 	msgs, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
-	assert.Equal(t, 2, transformCalls, "transform called each turn")
+	assert.Equal(t, 2, beforeCallCalls, "beforeCall called each turn")
 	assert.Equal(t, 2, afterTurnCalls, "afterTurn called each turn")
-	require.Len(t, msgs, 3) // first + injected + second
+	require.Len(t, msgs, 3)
 	require.Len(t, mock.prompts, 2)
 }
 
-// Test 11: Full scenario — middleware + multi-turn tool calls.
-func TestMiddleware_FullScenario(t *testing.T) {
+// Test: Full scenario — BeforeTool + AfterTool + multi-turn tool calls.
+func TestHooks_FullScenario(t *testing.T) {
 	var callNames []string
-	mw := func(
-		ctx context.Context,
-		call ai.ToolCall,
-		next ToolRunner,
-	) (ai.ToolResult, error) {
-		callNames = append(callNames, call.Name)
-		return next(ctx)
+	beforeHook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
+		callNames = append(callNames, input.ToolCall.Name)
+		return nil, nil
 	}
 
 	call1 := ai.ToolCall{ID: "call_1", Name: "echo", Arguments: map[string]any{"input": "a"}}
@@ -737,9 +694,55 @@ func TestMiddleware_FullScenario(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	a := New(testModel(), WithTools(echoTool()), WithMiddleware(mw))
+	a := New(
+		testModel(),
+		WithTools(echoTool()),
+		WithHook(HookBeforeTool, beforeHook),
+	)
 	_, err := a.Send(t.Context(), "go").Result()
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"echo", "echo"}, callNames)
+}
+
+// Test: Context flows through BeforeTool to tool execution.
+func TestBeforeTool_ContextFlows(t *testing.T) {
+	type ctxKey struct{}
+
+	var toolSawValue string
+	ctxTool := ai.DefineTool[toolInput, string](
+		"ctx_tool",
+		"reads context",
+		func(ctx context.Context, in toolInput) (string, error) {
+			if v, ok := ctx.Value(ctxKey{}).(string); ok {
+				toolSawValue = v
+			}
+			return "ok", nil
+		},
+	)
+
+	// This test verifies the hook receives the correct context.
+	var hookCtxOK bool
+	hook := func(ctx context.Context, _ *HookInput) (*HookOutput, error) {
+		hookCtxOK = ctx != nil
+		return nil, nil
+	}
+
+	toolCall := ai.ToolCall{
+		ID:        "call_1",
+		Name:      "ctx_tool",
+		Arguments: map[string]any{"input": "x"},
+	}
+	registerMock(t,
+		toolCallStream([]ai.ToolCall{toolCall}, ai.Usage{}),
+		textStream("done", ai.Usage{}),
+	)
+
+	ctx := context.WithValue(t.Context(), ctxKey{}, "from-test")
+	a := New(testModel(), WithTools(ctxTool), WithHook(HookBeforeTool, hook))
+	_, err := a.Send(ctx, "go").Result()
+	require.NoError(t, err)
+
+	assert.True(t, hookCtxOK)
+	assert.Equal(t, "from-test", toolSawValue)
 }

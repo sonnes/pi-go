@@ -18,7 +18,7 @@ The agent manages an agentic conversation loop: prompt assembly → model infere
 
 **Model is a required positional argument.** Every agent needs a model. Making it a required parameter (not an option) prevents misconfiguration and makes the constructor signature self-documenting. `New` returns `*Default`, which satisfies the `Agent` interface.
 
-**Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, `WithHooks`, `WithMiddleware` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...Message` — both `LLMMessage` and custom messages. See [Agent Messages](/concepts/agent/messages).
+**Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, `WithHook` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...Message` — both `LLMMessage` and custom messages. See [Agent Messages](/concepts/agent/messages).
 
 **Immutable config, mutable state.** Construction parameters never change after `New`. Runtime state (messages, running status, last error) evolves during runs and is observable via `Messages()`, `IsRunning()`, and `Err()`. This separation makes it safe to read state from any goroutine without worrying about config mutations.
 
@@ -40,19 +40,17 @@ System prompts are built from composable `prompt.Section`s (defined in the `prom
 
 ## Hooks
 
-`WithHooks(Hooks{...})` registers lifecycle callbacks that extend the agent loop without modifying its core. All hooks are optional — nil hooks are skipped.
+`WithHook(event, hook)` registers lifecycle callbacks that extend the agent loop without modifying its core. All hooks share a single callback signature — `func(ctx, *HookInput) (*HookOutput, error)` — with event-specific fields on `HookInput` and `HookOutput`. Multiple hooks per event run in registration order.
 
-- **`TransformMessages`** — called before each LLM call. Replaces the default `LLMMessages` conversion, giving full control over what the model sees. Receives `[]Message` (including custom messages) and returns `[]ai.Message`. See [Agent Messages](/concepts/agent/messages).
-- **`AfterTurn`** — called after each turn completes. Receives the current messages and a `TurnResult`. If it returns a non-nil slice, that slice replaces the agent's message history (e.g. for compaction).
-- **`FollowUp`** — called when the agent would stop (no tool calls). If it returns messages, they are appended and the loop continues for another turn. Respects `MaxTurns`.
+Five events cover the lifecycle:
 
-Design: hooks are function fields on a `Hooks` struct rather than interfaces. This avoids forcing callers to implement methods they don't need. Each hook has a package-internal default method that falls back to standard behavior when nil.
+- **`HookBeforeCall`** — fires before each LLM call. Hooks can filter agent messages (via `HookOutput.Messages`) or override the final `[]ai.Message` sent to the model (via `HookOutput.LLMMessages`). Multiple hooks chain: each sees the previous hook's filtered messages. Falls back to `LLMMessages()` when no hook overrides. See [Agent Messages](/concepts/agent/messages).
+- **`HookBeforeTool`** — fires before a tool executes. Return `HookOutput{Deny: true}` to block execution (produces an error tool result). First deny short-circuits — later hooks are skipped.
+- **`HookAfterTool`** — fires after a tool executes. Return `HookOutput{ToolResult: &modified}` to override the result. Multiple hooks chain: each sees the previous hook's modified result.
+- **`HookAfterTurn`** — fires after each turn completes. `HookInput.Turn` carries the assistant message, tool results, and usage. Return `HookOutput{Messages: replacement}` to replace the message history (e.g. for compaction or steering message injection).
+- **`HookBeforeStop`** — fires when the agent would stop (no tool calls). Return `HookOutput{FollowUp: msgs}` to inject messages and continue the loop. Respects `MaxTurns`. First non-empty follow-up wins.
 
-## Middleware
-
-`WithMiddleware(mw ...)` wraps tool execution. Middleware receives the `ai.ToolCall` and a `ToolRunner` and controls whether the tool runs by calling or skipping `next`. Multiple middleware are chained left-to-right. Middleware must be safe for concurrent use when tools run in parallel.
-
-Design: middleware is separate from hooks because it wraps a single function call (tool execution), while hooks observe or influence the loop at specific points. The two compose independently.
+Design: a uniform callback type with event-specific input/output fields replaces the previous approach of separate function signatures per hook point. This makes the API simpler to learn (one type) while keeping event-specific semantics documented on the field types.
 
 ## Turn limits
 

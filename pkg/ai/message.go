@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -90,6 +91,66 @@ func ErrorToolResultMessage(toolCallID, toolName, errMsg string) Message {
 		IsError:    true,
 		Timestamp:  time.Now(),
 	}
+}
+
+// Text returns the concatenated text of all [Text] content blocks.
+func (m Message) Text() string {
+	var sb strings.Builder
+	for _, c := range m.Content {
+		if t, ok := AsContent[Text](c); ok {
+			sb.WriteString(t.Text)
+		}
+	}
+	return sb.String()
+}
+
+// ToolCalls returns all [ToolCall] content blocks, or nil if none exist.
+func (m Message) ToolCalls() []ToolCall {
+	var calls []ToolCall
+	for _, c := range m.Content {
+		if tc, ok := AsContent[ToolCall](c); ok {
+			calls = append(calls, tc)
+		}
+	}
+	return calls
+}
+
+// String returns a short debug representation of the message.
+// Text is truncated to 100 characters.
+func (m Message) String() string {
+	const maxLen = 100
+
+	text := m.Text()
+	if len(text) > maxLen {
+		text = text[:maxLen] + "..."
+	}
+
+	calls := m.ToolCalls()
+
+	switch {
+	case m.Role == RoleToolResult && m.IsError:
+		return fmt.Sprintf("tool_result(%s) ERROR: %s", m.ToolName, text)
+	case m.Role == RoleToolResult:
+		return fmt.Sprintf("tool_result(%s): %s", m.ToolName, text)
+	case len(calls) > 0 && text != "":
+		names := toolCallNames(calls)
+		return fmt.Sprintf("%s: %s [tool_calls: %s]", m.Role, text, names)
+	case len(calls) > 0:
+		names := toolCallNames(calls)
+		return fmt.Sprintf("%s: [tool_calls: %s]", m.Role, names)
+	case text != "":
+		return fmt.Sprintf("%s: %s", m.Role, text)
+	default:
+		return fmt.Sprintf("%s:", m.Role)
+	}
+}
+
+func toolCallNames(calls []ToolCall) string {
+	names := make([]string, len(calls))
+	for i, tc := range calls {
+		names[i] = tc.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 // --- JSON marshaling ---

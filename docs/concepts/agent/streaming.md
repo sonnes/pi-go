@@ -42,7 +42,7 @@ agent_start
   turn_start  ← next turn if tools were called
     ...
   turn_end
-  message_start (follow-up)  ← if FollowUp hook injects messages
+  message_start (follow-up)  ← if HookBeforeStop injects messages
   message_end
   turn_start  ← loop continues
     ...

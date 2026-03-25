@@ -66,7 +66,7 @@ Custom messages participate in the conversation history, are visible via `Messag
 
 `LLMMessages([]Message) []ai.Message` extracts only the `LLMMessage` values, returning their underlying `ai.Message` values. By default, the agent loop calls this before each model invocation.
 
-The `TransformMessages` hook (set via `WithHooks`) replaces this default conversion, giving extensions full control over what the model sees. The hook receives the full `[]Message` — including custom messages — and returns `[]ai.Message`. This enables use cases like converting custom messages into LLM-visible context, pruning old messages, or injecting synthetic messages.
+The `HookBeforeCall` hook (registered via `WithHook`) can override this default conversion, giving extensions full control over what the model sees. The hook receives the full `[]Message` — including custom messages — via `HookInput.Messages` and can return `HookOutput{LLMMessages: ...}` to override the `[]ai.Message` sent to the model, or `HookOutput{Messages: ...}` to filter at the agent level before the default conversion runs. This enables use cases like converting custom messages into LLM-visible context, pruning old messages, or injecting synthetic messages.
 
 The agent exposes both views:
 - `Messages()` on the `Agent` interface — full history including custom messages.

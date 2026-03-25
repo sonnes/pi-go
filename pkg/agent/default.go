@@ -27,10 +27,9 @@ import (
 //	  ... repeat if tool_use and under maxTurns ...
 //	agent_end
 type Default struct {
-	config     config
-	toolMap    map[string]ai.Tool
-	toolInfo   []ai.ToolInfo
-	middleware Middleware
+	config   config
+	toolMap  map[string]ai.Tool
+	toolInfo []ai.ToolInfo
 
 	mu       sync.Mutex
 	running  bool
@@ -59,11 +58,10 @@ func New(model ai.Model, opts ...Option) *Default {
 	copy(msgs, c.history)
 
 	return &Default{
-		config:     c,
-		toolMap:    toolMap,
-		toolInfo:   toolInfo,
-		middleware: c.middleware,
-		messages:   msgs,
+		config:   c,
+		toolMap:  toolMap,
+		toolInfo: toolInfo,
+		messages: msgs,
 	}
 }
 
@@ -207,7 +205,12 @@ func (a *Default) loop(
 			ToolResults:  tr.toolResults,
 			Usage:        tr.usage,
 		}
-		if replaced := a.config.hooks.afterTurn(ctx, a.messages, hookTR); replaced != nil {
+		replaced, err := a.config.hooks.runAfterTurn(ctx, a.messages, hookTR)
+		if err != nil {
+			loopErr = err
+			return
+		}
+		if replaced != nil {
 			a.messages = replaced
 		}
 
@@ -221,7 +224,11 @@ func (a *Default) loop(
 		if a.config.maxTurns > 0 && nextTurn >= a.config.maxTurns {
 			return
 		}
-		followMsgs := a.config.hooks.followUp(ctx, a.messages)
+		followMsgs, err := a.config.hooks.runBeforeStop(ctx, a.messages)
+		if err != nil {
+			loopErr = err
+			return
+		}
 		if len(followMsgs) == 0 {
 			return
 		}
@@ -273,7 +280,7 @@ func (a *Default) executeTurn(
 		return tr, nil
 	}
 
-	toolCalls := extractToolCalls(assistantMsg)
+	toolCalls := assistantMsg.ToolCalls()
 	tr.toolResults = a.executeTools(ctx, push, toolCalls)
 	tr.cont = true
 
@@ -291,9 +298,13 @@ func (a *Default) buildPrompt(ctx context.Context) (p ai.Prompt, err error) {
 			err = fmt.Errorf("agent: panic in system prompt section: %v", r)
 		}
 	}()
+	llmMsgs, err := a.config.hooks.runBeforeCall(ctx, a.messages)
+	if err != nil {
+		return p, err
+	}
 	return ai.Prompt{
 		System:   renderSystemPrompt(a.config.systemPrompt),
-		Messages: a.config.hooks.transformMessages(ctx, a.messages),
+		Messages: llmMsgs,
 		Tools:    a.toolInfo,
 	}, nil
 }
@@ -365,17 +376,6 @@ func streamTurn(
 	return finalMsg, nil
 }
 
-// extractToolCalls filters [ai.ToolCall] content blocks from a message.
-func extractToolCalls(msg *ai.Message) []ai.ToolCall {
-	var calls []ai.ToolCall
-	for _, c := range msg.Content {
-		if tc, ok := ai.AsContent[ai.ToolCall](c); ok {
-			calls = append(calls, tc)
-		}
-	}
-	return calls
-}
-
 // executeTools runs tool calls, emitting execution events for each.
 // If all tools in the batch are marked parallel-safe, they run concurrently.
 // Otherwise, they run sequentially. Per-tool panics are recovered and
@@ -420,8 +420,8 @@ func (a *Default) executeTools(
 }
 
 // executeSingleTool runs one tool call with panic recovery, emitting
-// start/update/end events. If middleware is set, the tool execution
-// is wrapped by it.
+// start/update/end events. BeforeTool hooks can deny execution;
+// AfterTool hooks can modify the result.
 func (a *Default) executeSingleTool(
 	ctx context.Context,
 	push func(Event),
@@ -440,18 +440,26 @@ func (a *Default) executeSingleTool(
 		}
 	}()
 
-	runner := func(ctx context.Context) (ai.ToolResult, error) {
-		return a.runTool(ctx, push, tc)
+	// BeforeTool: hooks can deny execution.
+	denied, err := a.config.hooks.runBeforeTool(ctx, a.messages, tc)
+	if err != nil {
+		return finishToolError(push, tc, err.Error())
+	}
+	if denied != nil && denied.Deny {
+		reason := denied.DenyReason
+		if reason == "" {
+			reason = "tool execution was blocked"
+		}
+		return finishToolError(push, tc, reason)
 	}
 
-	var toolResult ai.ToolResult
-	var err error
-	if a.middleware != nil {
-		toolResult, err = a.middleware(ctx, tc, runner)
-	} else {
-		toolResult, err = runner(ctx)
+	toolResult, err := a.runTool(ctx, push, tc)
+	if err != nil {
+		return finishToolError(push, tc, err.Error())
 	}
 
+	// AfterTool: hooks can modify the result.
+	toolResult, err = a.config.hooks.runAfterTool(ctx, a.messages, tc, toolResult)
 	if err != nil {
 		return finishToolError(push, tc, err.Error())
 	}
@@ -471,7 +479,6 @@ func (a *Default) executeSingleTool(
 }
 
 // runTool executes a single tool call and returns the [ai.ToolResult].
-// This is the innermost function that [Middleware] wraps.
 func (a *Default) runTool(
 	ctx context.Context,
 	push func(Event),

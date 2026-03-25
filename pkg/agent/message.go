@@ -62,6 +62,20 @@ func AsLLMMessage(m Message) (LLMMessage, bool) {
 	return lm, ok
 }
 
+// FilterMessages returns all messages that match the concrete type T.
+func FilterMessages[T Message](msgs []Message) []T {
+	if len(msgs) == 0 {
+		return nil
+	}
+	var out []T
+	for _, m := range msgs {
+		if v, ok := m.(T); ok {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // LLMMessages filters a slice of [Message] down to the underlying
 // [ai.Message] values, dropping any custom messages.
 func LLMMessages(msgs []Message) []ai.Message {
