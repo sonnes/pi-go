@@ -1,4 +1,4 @@
-.PHONY: test check tidy
+.PHONY: test check tidy run
 
 test:
 	go test ./...
@@ -13,8 +13,12 @@ check:
 	go vet ./pkg/ai/provider/google/...
 	gofmt -l .
 
+run:
+	go run github.com/sonnes/pi-go/cmd/pi $(ARGS)
+
 tidy:
 	go mod tidy
+	cd cmd/pi && go mod tidy
 	cd pkg/ai/provider/anthropic && go mod tidy
 	cd pkg/ai/provider/openai && go mod tidy
 	cd pkg/ai/provider/google && go mod tidy
