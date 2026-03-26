@@ -21,6 +21,10 @@ import (
 	"github.com/sonnes/pi-go/pkg/agent/claude"
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
+	"github.com/sonnes/pi-go/pkg/ai/provider/google"
+	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
+
+	oaioption "github.com/openai/openai-go/option"
 )
 
 func main() {
@@ -97,7 +101,7 @@ func createAgent(mode, model string, turns int, tools string) (agent.Agent, erro
 	case "claude":
 		return createClaudeAgent(model, turns, tools), nil
 	case "api":
-		return createAPIAgent(model, turns), nil
+		return createAPIAgent(model, turns)
 	default:
 		return nil, fmt.Errorf("unknown agent mode: %s (use claude or api)", mode)
 	}
@@ -116,15 +120,62 @@ func createClaudeAgent(model string, turns int, tools string) agent.Agent {
 	return claude.New(opts...)
 }
 
-func createAPIAgent(model string, turns int) agent.Agent {
-	p := anthropic.New()
+// providerEntry describes how to detect and create an AI provider from
+// an environment variable. Entries are checked in order; the first
+// match wins.
+type providerEntry struct {
+	envKey string
+	name   string
+	create func(apiKey string) (ai.Provider, error)
+}
+
+var providers = []providerEntry{
+	{
+		envKey: "ANTHROPIC_API_KEY",
+		name:   "Anthropic",
+		create: func(apiKey string) (ai.Provider, error) {
+			return anthropic.New(anthropic.WithAPIKey(apiKey)), nil
+		},
+	},
+	{
+		envKey: "OPENROUTER_API_KEY",
+		name:   "OpenRouter",
+		create: func(apiKey string) (ai.Provider, error) {
+			return openai.New(
+				oaioption.WithAPIKey(apiKey),
+				oaioption.WithBaseURL("https://openrouter.ai/api/v1"),
+			), nil
+		},
+	},
+	{
+		envKey: "OPENAI_API_KEY",
+		name:   "OpenAI",
+		create: func(apiKey string) (ai.Provider, error) {
+			return openai.New(oaioption.WithAPIKey(apiKey)), nil
+		},
+	},
+	{
+		envKey: "GOOGLE_API_KEY",
+		name:   "Google",
+		create: func(apiKey string) (ai.Provider, error) {
+			return google.New(google.WithAPIKey(apiKey))
+		},
+	},
+}
+
+func createAPIAgent(model string, turns int) (agent.Agent, error) {
+	p, name, err := detectProvider()
+	if err != nil {
+		return nil, err
+	}
+
 	ai.RegisterProvider(p.API(), p)
 
 	m := ai.Model{
 		ID:       model,
 		Name:     model,
 		API:      p.API(),
-		Provider: "Anthropic",
+		Provider: name,
 	}
 
 	var opts []agent.Option
@@ -132,7 +183,28 @@ func createAPIAgent(model string, turns int) agent.Agent {
 		opts = append(opts, agent.WithMaxTurns(turns))
 	}
 
-	return agent.New(m, opts...)
+	return agent.New(m, opts...), nil
+}
+
+func detectProvider() (ai.Provider, string, error) {
+	for _, pe := range providers {
+		apiKey := os.Getenv(pe.envKey)
+		if apiKey == "" {
+			continue
+		}
+
+		p, err := pe.create(apiKey)
+		if err != nil {
+			return nil, "", fmt.Errorf("init %s provider: %w", pe.name, err)
+		}
+
+		fmt.Fprintf(os.Stderr, "[provider: %s via %s]\n", pe.name, pe.envKey)
+		return p, pe.name, nil
+	}
+
+	return nil, "", fmt.Errorf(
+		"no API key found; set one of: ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY",
+	)
 }
 
 func sendAndPrint(ctx context.Context, a agent.Agent, prompt string) error {

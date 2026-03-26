@@ -25,3 +25,4 @@ Thumbs.db
 # Environment
 .env
 .env.*
+.envrc
