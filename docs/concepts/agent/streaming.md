@@ -1,6 +1,6 @@
 ---
 title: "Streaming"
-summary: "EventStream consumption patterns, event lifecycle, and event types"
+summary: "Agent event subscription, event lifecycle, and event types"
 read_when:
   - Consuming agent events (streaming or blocking)
   - Understanding the event lifecycle and types
@@ -8,18 +8,16 @@ read_when:
 
 # Streaming
 
-Every agent entry point (`Send`, `SendMessages`, `Continue`) returns an `*EventStream`. The stream carries lifecycle events as the agent thinks, calls tools, and streams output.
+The agent embeds `pubsub.Subscriber[Event]`, exposing a single event stream per agent. All entry points (`Send`, `SendMessages`, `Continue`) publish events to the agent's broker. Consumers subscribe once and receive events across all calls.
 
 ## Dual consumption
 
-`EventStream` supports two modes:
-
-- **Streaming** — iterate events as they arrive via `Events(ctx)` (`iter.Seq2[Event, error]`).
-- **Blocking** — wait for completion and get all new messages via `Result()`.
+- **Streaming** — subscribe to events via `Subscribe(ctx)`, iterate the channel.
+- **Blocking** — call `Wait(ctx)` to block until the current run completes and get all new messages.
 
 ## Multi-subscriber
 
-`EventStream` is backed by a `pubsub.Broker[Event]` with blocking publish. Multiple goroutines can call `Events(ctx)` concurrently — each gets an independent subscription. Late subscribers replay buffered events via the broker's ring buffer before switching to live events. Cancel the context to unsubscribe early.
+The agent's broker uses blocking publish, so events are never dropped. Multiple goroutines can call `Subscribe(ctx)` concurrently — each gets an independent subscription. Late subscribers replay buffered events via the broker's ring buffer (default 1000 events) using `pubsub.After(seq)`. Cancel the context to unsubscribe.
 
 ## Event lifecycle
 
@@ -53,11 +51,6 @@ agent_end
 ## Event design: flat struct, not union types
 
 Go doesn't have discriminated unions. Events are a single `Event` struct with a `Type` discriminator and fields populated per type. Unused fields are zero-valued. Custom `MarshalJSON` includes only relevant fields per event type for a clean wire format.
-
-## Stream utilities
-
-- **`NewStream`** — create a stream with a producer goroutine.
-- **`ErrStream`** — return a stream that immediately emits an error `agent_end`. Useful for early-exit error paths that still need to return a stream.
 
 ## Related
 

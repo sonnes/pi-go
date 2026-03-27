@@ -42,4 +42,4 @@ Each provider handles request/response conversion between the SDK's types and th
 
 - [Models](/concepts/ai/models) — model metadata and the `API` field
 - [Options](/concepts/ai/options) — `StreamOptions` passed to providers
-- [Streaming](/concepts/agent/streaming) — `EventStream` returned by providers
+- [Streaming](/concepts/agent/streaming) — agent event subscription and lifecycle

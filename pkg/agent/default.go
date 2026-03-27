@@ -10,6 +10,7 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/prompt"
+	"github.com/sonnes/pi-go/pkg/pubsub"
 )
 
 // Default is the standard [Agent] implementation that manages an
@@ -30,9 +31,12 @@ type Default struct {
 	config   config
 	toolMap  map[string]ai.Tool
 	toolInfo []ai.ToolInfo
+	broker   *pubsub.Broker[Event]
 
 	mu       sync.Mutex
 	running  bool
+	done     chan struct{}
+	lastMsgs []ai.Message
 	messages []Message
 	err      error
 }
@@ -61,23 +65,63 @@ func New(model ai.Model, opts ...Option) *Default {
 		config:   c,
 		toolMap:  toolMap,
 		toolInfo: toolInfo,
+		broker:   pubsub.NewBroker[Event](pubsub.WithBlockingPublish()),
 		messages: msgs,
 	}
 }
 
 // Send adds a user message and runs the agent loop.
-func (a *Default) Send(ctx context.Context, input string) *EventStream {
+func (a *Default) Send(ctx context.Context, input string) error {
 	return a.SendMessages(ctx, NewLLMMessage(ai.UserMessage(input)))
 }
 
 // SendMessages adds messages and runs the agent loop.
-func (a *Default) SendMessages(ctx context.Context, msgs ...Message) *EventStream {
+func (a *Default) SendMessages(ctx context.Context, msgs ...Message) error {
 	return a.run(ctx, msgs)
 }
 
 // Continue resumes from current message state without adding new messages.
-func (a *Default) Continue(ctx context.Context) *EventStream {
+func (a *Default) Continue(ctx context.Context) error {
 	return a.run(ctx, nil)
+}
+
+// Subscribe returns a channel of agent events. Each call creates an
+// independent subscription. Use [pubsub.After] to replay buffered events.
+func (a *Default) Subscribe(
+	ctx context.Context,
+	opts ...pubsub.SubscribeOption,
+) <-chan pubsub.Event[Event] {
+	return a.broker.Subscribe(ctx, opts...)
+}
+
+// Wait blocks until the current agent loop completes and returns
+// all new messages produced during the run. If the agent is not
+// running, Wait returns the result of the last completed run.
+func (a *Default) Wait(ctx context.Context) ([]ai.Message, error) {
+	a.mu.Lock()
+	if !a.running {
+		msgs, err := a.lastMsgs, a.err
+		a.mu.Unlock()
+		return msgs, err
+	}
+	done := a.done
+	a.mu.Unlock()
+
+	select {
+	case <-done:
+		a.mu.Lock()
+		msgs, err := a.lastMsgs, a.err
+		a.mu.Unlock()
+		return msgs, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// Close shuts down the agent's event broker, closing all subscriber
+// channels. Subsequent calls to [Default.Subscribe] return closed channels.
+func (a *Default) Close() {
+	a.broker.Shutdown()
 }
 
 // Messages returns a copy of the current conversation history.
@@ -108,32 +152,40 @@ func (a *Default) Err() error {
 
 // run starts the agent loop. It acquires the mutex to check for concurrent
 // runs and set up initial state, then launches the loop in a goroutine
-// via [NewStream].
-func (a *Default) run(ctx context.Context, newMsgs []Message) *EventStream {
+// that publishes events to the agent's broker.
+func (a *Default) run(ctx context.Context, newMsgs []Message) error {
 	a.mu.Lock()
 
 	if a.running {
 		a.mu.Unlock()
-		return ErrStream(errors.New("agent: already streaming"))
+		return errors.New("agent: already streaming")
 	}
 
 	a.running = true
 	a.err = nil
+	a.lastMsgs = nil
+	a.done = make(chan struct{})
 	a.messages = append(a.messages, newMsgs...)
 	inputMsgs := newMsgs
 	a.mu.Unlock()
 
-	return NewStream(func(push func(Event)) {
+	go func() {
 		defer a.stop()
-		a.loop(ctx, push, inputMsgs)
-	})
+		a.loop(ctx, a.broker.Publish, inputMsgs)
+	}()
+
+	return nil
 }
 
-// stop marks the agent as no longer running.
+// stop marks the agent as no longer running and signals [Wait].
 func (a *Default) stop() {
 	a.mu.Lock()
 	a.running = false
+	done := a.done
 	a.mu.Unlock()
+	if done != nil {
+		close(done)
+	}
 }
 
 // turnResult holds the output of a single turn, returned by executeTurn
@@ -145,7 +197,7 @@ type turnResult struct {
 	cont         bool // true = tool calls made, keep looping
 }
 
-// loop is the core agent loop, running inside the [NewStream] producer goroutine.
+// loop is the core agent loop, running inside the producer goroutine.
 func (a *Default) loop(
 	ctx context.Context,
 	push func(Event),
@@ -161,6 +213,7 @@ func (a *Default) loop(
 
 	defer func() {
 		a.mu.Lock()
+		a.lastMsgs = newMessages
 		a.err = loopErr
 		a.mu.Unlock()
 

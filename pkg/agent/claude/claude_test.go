@@ -49,12 +49,18 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 	_, restore := stubSend(a, simpleTextNDJSON, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "hi")
+	ctx := context.Background()
+	ch := a.Subscribe(ctx)
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
 
 	var events []agent.Event
-	for evt, err := range stream.Events(context.Background()) {
-		require.NoError(t, err)
+	for pe := range ch {
+		evt := pe.Payload()
 		events = append(events, evt)
+		if evt.Type == agent.EventAgentEnd {
+			break
+		}
 	}
 
 	types := eventTypes(events)
@@ -82,12 +88,18 @@ func TestAgent_Send_MultiTurn(t *testing.T) {
 	_, restore := stubSend(a, multiTurnNDJSON, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "read /tmp/foo")
+	ctx := context.Background()
+	ch := a.Subscribe(ctx)
+	err := a.Send(ctx, "read /tmp/foo")
+	require.NoError(t, err)
 
 	var events []agent.Event
-	for evt, err := range stream.Events(context.Background()) {
-		require.NoError(t, err)
+	for pe := range ch {
+		evt := pe.Payload()
 		events = append(events, evt)
+		if evt.Type == agent.EventAgentEnd {
+			break
+		}
 	}
 
 	types := eventTypes(events)
@@ -120,8 +132,10 @@ func TestAgent_SessionID(t *testing.T) {
 	_, restore := stubSend(a, simpleTextNDJSON, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "hi")
-	_, err := stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+	_, err = a.Wait(ctx)
 	require.NoError(t, err)
 
 	assert.Equal(t, "sess-1", a.SessionID())
@@ -132,8 +146,10 @@ func TestAgent_Messages_Accumulate(t *testing.T) {
 	_, restore := stubSend(a, simpleTextNDJSON, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "hi")
-	_, err := stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+	_, err = a.Wait(ctx)
 	require.NoError(t, err)
 
 	msgs := a.Messages()
@@ -149,8 +165,10 @@ func TestAgent_IsRunning(t *testing.T) {
 
 	assert.False(t, a.IsRunning())
 
-	stream := a.Send(context.Background(), "hi")
-	_, _ = stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+	_, _ = a.Wait(ctx)
 	assert.False(t, a.IsRunning())
 }
 
@@ -163,7 +181,8 @@ func TestAgent_ConcurrentSend_Rejected(t *testing.T) {
 		return r, func() error { return nil }, nil
 	}
 
-	_ = a.Send(context.Background(), "first")
+	err := a.Send(context.Background(), "first")
+	require.NoError(t, err)
 
 	// Spin until the goroutine sets running=true.
 	for i := 0; i < 100; i++ {
@@ -172,8 +191,7 @@ func TestAgent_ConcurrentSend_Rejected(t *testing.T) {
 		}
 	}
 
-	stream2 := a.Send(context.Background(), "second")
-	_, err := stream2.Result()
+	err = a.Send(context.Background(), "second")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already running")
 
@@ -185,8 +203,10 @@ func TestAgent_SendError(t *testing.T) {
 	_, restore := stubSend(a, "", fmt.Errorf("cli not found"))
 	defer restore()
 
-	stream := a.Send(context.Background(), "hi")
-	_, err := stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+	_, err = a.Wait(ctx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cli not found")
 	assert.False(t, a.IsRunning())
@@ -195,8 +215,7 @@ func TestAgent_SendError(t *testing.T) {
 func TestAgent_Continue_NoSession(t *testing.T) {
 	a := New()
 
-	stream := a.Continue(context.Background())
-	_, err := stream.Result()
+	err := a.Continue(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no session")
 }
@@ -206,13 +225,16 @@ func TestAgent_Continue_WithSession(t *testing.T) {
 	lastArgs, restore := stubSend(a, simpleTextNDJSON, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "hi")
-	_, err := stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+	_, err = a.Wait(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "sess-1", a.SessionID())
 
-	stream = a.Continue(context.Background())
-	_, err = stream.Result()
+	err = a.Continue(ctx)
+	require.NoError(t, err)
+	_, err = a.Wait(ctx)
 	require.NoError(t, err)
 
 	assert.True(t, lastArgs().resume)
@@ -229,8 +251,10 @@ func TestAgent_MalformedNDJSON(t *testing.T) {
 	_, restore := stubSend(a, ndjson, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "test")
-	msgs, err := stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "test")
+	require.NoError(t, err)
+	msgs, err := a.Wait(ctx)
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 	assert.Equal(t, "Still works", msgs[0].Text())
@@ -241,8 +265,10 @@ func TestAgent_EmptyOutput(t *testing.T) {
 	_, restore := stubSend(a, "", nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "hi")
-	msgs, err := stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+	msgs, err := a.Wait(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, msgs)
 }
@@ -260,12 +286,18 @@ func TestAgent_Send_FullToolLoop(t *testing.T) {
 	_, restore := stubSend(a, toolLoopNDJSON, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "read /tmp/foo")
+	ctx := context.Background()
+	ch := a.Subscribe(ctx)
+	err := a.Send(ctx, "read /tmp/foo")
+	require.NoError(t, err)
 
 	var events []agent.Event
-	for evt, err := range stream.Events(context.Background()) {
-		require.NoError(t, err)
+	for pe := range ch {
+		evt := pe.Payload()
 		events = append(events, evt)
+		if evt.Type == agent.EventAgentEnd {
+			break
+		}
 	}
 
 	//
@@ -350,8 +382,10 @@ func TestAgent_Send_ErrorResult(t *testing.T) {
 	_, restore := stubSend(a, ndjson, nil)
 	defer restore()
 
-	stream := a.Send(context.Background(), "hi")
-	_, err := stream.Result()
+	ctx := context.Background()
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+	_, err = a.Wait(ctx)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Rate limited")
 }
