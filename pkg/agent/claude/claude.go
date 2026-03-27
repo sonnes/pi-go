@@ -197,12 +197,17 @@ func (a *Agent) run(ctx context.Context, prompt string, resume bool) error {
 	sid := a.sessionID
 	a.mu.Unlock()
 
-	push := a.broker.Publish
+	var sessionID string
+	publish := a.broker.Publish
+	push := func(evt agent.Event) {
+		if evt.Type == agent.EventAgentStart && evt.SessionID != "" {
+			sessionID = evt.SessionID
+		}
+		publish(evt)
+	}
 
 	go func() {
 		defer a.stop()
-
-		push(agent.Event{Type: agent.EventAgentStart})
 
 		for _, m := range inputMsgs {
 			if lm, ok := agent.AsLLMMessage(m); ok {
@@ -241,8 +246,8 @@ func (a *Agent) run(ctx context.Context, prompt string, resume bool) error {
 		}
 
 		a.mu.Lock()
-		if m.sessionID != "" {
-			a.sessionID = m.sessionID
+		if sessionID != "" {
+			a.sessionID = sessionID
 		}
 		for _, msg := range m.messages {
 			a.messages = append(a.messages, agent.NewLLMMessage(msg))
