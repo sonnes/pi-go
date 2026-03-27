@@ -27,12 +27,13 @@ The agent manages an agentic conversation loop: prompt assembly → model infere
 - **`Send`** — add a user text message and run the loop.
 - **`SendMessages`** — add arbitrary `Message` values (LLM or custom) and run the loop.
 - **`Continue`** — resume from current state without adding messages.
+- **`Wait`** — block until the current run completes and return all new messages.
 
-All return an `*EventStream`. See [Streaming](/concepts/agent/streaming).
+All entry points return `error` for immediate failures (e.g. already running). Events flow through `Subscribe(ctx)`. See [Streaming](/concepts/agent/streaming).
 
 ## Agent interface
 
-`Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. The interface includes `Messages()`, `IsRunning()`, and `Err()` for state observation. `Default` is the standard implementation. `Factory` is a function type for constructing agents.
+`Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. The interface embeds `pubsub.Subscriber[Event]` so consumers can subscribe to events. It includes `Wait()` for blocking completion, plus `Messages()`, `IsRunning()`, and `Err()` for state observation. `Default` is the standard implementation. `Factory` is a function type for constructing agents.
 
 ## System prompt
 

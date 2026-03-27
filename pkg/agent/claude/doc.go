@@ -9,9 +9,10 @@
 //	    claude.WithModel("opus"),
 //	    claude.WithAllowedTools("Read", "Edit", "Bash"),
 //	)
-//	stream := a.Send(ctx, "Fix the bug in main.go")
-//	for evt, err := range stream.Events(ctx) {
-//	    // handle events...
+//	ch := a.Subscribe(ctx)
+//	a.Send(ctx, "Fix the bug in main.go")
+//	for pe := range ch {
+//	    // handle pe.Payload() events...
 //	}
 //
 // Session resume:
@@ -21,5 +22,5 @@
 //
 //	// Later, resume with:
 //	a2 := claude.New(claude.WithSessionID(sid))
-//	stream := a2.Continue(ctx)
+//	a2.Continue(ctx)
 package claude

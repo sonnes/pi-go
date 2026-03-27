@@ -16,7 +16,7 @@ The `Default` agent holds `running`, `messages`, and `err` as fields protected b
 
 **Why not atomic snapshots?** An earlier design used `atomic.Pointer[State]` with copy-on-write snapshots. This created ~8 heap allocations per turn for immutable state objects that consumers rarely polled. Since events already deliver all mid-run information (streaming content, tool progress), the snapshot overhead wasn't justified.
 
-**Why not channels/push?** State is pull-based. Callers decide when to read. Events handle the push-based case — subscribe to the `EventStream` for real-time updates.
+**Why not channels/push?** State is pull-based. Callers decide when to read. Events handle the push-based case — subscribe to the agent for real-time updates.
 
 ## Getters
 
@@ -36,11 +36,11 @@ The `Default` agent holds `running`, `messages`, and `err` as fields protected b
 
 - **Reads** — acquire mutex, copy, return. Safe from any goroutine.
 - **Writes** — only the loop's producer goroutine appends to `messages` and sets `err`. The mutex serializes reads against writes.
-- **Guard** — `run()` checks `running` under the lock and rejects concurrent runs with `ErrStream`.
+- **Guard** — `run()` checks `running` under the lock and rejects concurrent runs with an error.
 
 ## Mid-run observability
 
-For real-time updates during a run, use the `EventStream` rather than polling getters:
+For real-time updates during a run, subscribe to the agent rather than polling getters:
 
 - **Streaming content** — `message_update` events carry partial assistant messages as they stream.
 - **Tool progress** — `tool_execution_start`/`update`/`end` events track tool calls.

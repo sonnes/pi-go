@@ -5,13 +5,22 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/prompt"
+	"github.com/sonnes/pi-go/pkg/pubsub"
 )
 
 // Agent is the interface for an agentic conversation loop.
+//
+// Agent embeds [pubsub.Subscriber] so consumers can subscribe to
+// the agent's event stream. Events from all [Agent.Send] calls flow
+// through a single broker per agent. Use [pubsub.After] to replay
+// buffered events.
 type Agent interface {
-	Send(ctx context.Context, input string) *EventStream
-	SendMessages(ctx context.Context, msgs ...Message) *EventStream
-	Continue(ctx context.Context) *EventStream
+	pubsub.Subscriber[Event]
+	Send(ctx context.Context, input string) error
+	SendMessages(ctx context.Context, msgs ...Message) error
+	Continue(ctx context.Context) error
+	Wait(ctx context.Context) ([]ai.Message, error)
+	Close()
 	Messages() []Message
 	IsRunning() bool
 	Err() error
