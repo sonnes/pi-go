@@ -208,13 +208,20 @@ func detectProvider() (ai.Provider, string, error) {
 }
 
 func sendAndPrint(ctx context.Context, a agent.Agent, prompt string) error {
-	stream := a.Send(ctx, prompt)
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ch := a.Subscribe(subCtx)
 
-	for evt, err := range stream.Events(ctx) {
-		if err != nil {
-			return err
-		}
+	if err := a.Send(ctx, prompt); err != nil {
+		return err
+	}
+
+	for pe := range ch {
+		evt := pe.Payload()
 		handleEvent(evt)
+		if evt.Type == agent.EventAgentEnd {
+			return evt.Err
+		}
 	}
 
 	return nil

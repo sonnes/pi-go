@@ -40,7 +40,8 @@ func TestBeforeTool_PassesThrough(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookBeforeTool, hook),
 	)
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, called, "hook should have been called")
@@ -83,7 +84,8 @@ func TestBeforeTool_BlocksExecution(t *testing.T) {
 		WithTools(guardedTool),
 		WithHook(HookBeforeTool, hook),
 	)
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.False(t, toolRan, "tool should not have been called")
@@ -117,7 +119,8 @@ func TestBeforeTool_ReturnsError(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookBeforeTool, hook),
 	)
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	toolResult := findToolResult(t, msgs)
@@ -152,7 +155,8 @@ func TestBeforeTool_FirstDenyWins(t *testing.T) {
 		WithHook(HookBeforeTool, h1),
 		WithHook(HookBeforeTool, h2),
 	)
-	_, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.False(t, h2Called, "second hook should not run when first denies")
@@ -180,7 +184,8 @@ func TestBeforeTool_ParallelTools(t *testing.T) {
 		WithTools(parallelEchoTool("par_a"), parallelEchoTool("par_b")),
 		WithHook(HookBeforeTool, hook),
 	)
-	_, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(2), count.Load(), "hook should be called for both parallel tools")
@@ -199,7 +204,8 @@ func TestHook_NilHooks(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(echoTool()))
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	toolResult := findToolResult(t, msgs)
@@ -239,7 +245,8 @@ func TestAfterTool_ModifiesResult(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookAfterTool, hook),
 	)
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	toolResult := findToolResult(t, msgs)
@@ -278,7 +285,8 @@ func TestAfterTool_Chains(t *testing.T) {
 		WithHook(HookAfterTool, h1),
 		WithHook(HookAfterTool, h2),
 	)
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	toolResult := findToolResult(t, msgs)
@@ -300,7 +308,8 @@ func TestBeforeCall_ReplacesLLMMessages(t *testing.T) {
 	}
 
 	a := New(testModel(), WithHook(HookBeforeCall, hook))
-	_, err := a.Send(t.Context(), "hello").Result()
+	require.NoError(t, a.Send(t.Context(), "hello"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, received, 1)
@@ -329,7 +338,8 @@ func TestBeforeCall_FiltersMessages(t *testing.T) {
 		WithHistory(history...),
 		WithHook(HookBeforeCall, hook),
 	)
-	_, err := a.Send(t.Context(), "new").Result()
+	require.NoError(t, a.Send(t.Context(), "new"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 1)
@@ -366,7 +376,8 @@ func TestBeforeCall_ReceivesCustomMessages(t *testing.T) {
 		WithHistory(history...),
 		WithHook(HookBeforeCall, hook),
 	)
-	_, err := a.Send(t.Context(), "hi").Result()
+	require.NoError(t, a.Send(t.Context(), "hi"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.True(t, sawCustom, "hook should see custom messages")
@@ -398,7 +409,8 @@ func TestBeforeCall_CalledEachTurn(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookBeforeCall, hook),
 	)
-	_, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.Equal(t, 2, callCount, "hook should be called once per turn")
@@ -409,7 +421,8 @@ func TestBeforeCall_NilFallback(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
 	a := New(testModel())
-	_, err := a.Send(t.Context(), "hi").Result()
+	require.NoError(t, a.Send(t.Context(), "hi"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 1)
@@ -442,7 +455,8 @@ func TestBeforeCall_ChainsMessages(t *testing.T) {
 		WithHook(HookBeforeCall, h1),
 		WithHook(HookBeforeCall, h2),
 	)
-	_, err := a.Send(t.Context(), "new").Result()
+	require.NoError(t, a.Send(t.Context(), "new"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	// h1 kept only "new" message, h2 converted it.
@@ -478,7 +492,8 @@ func TestAfterTurn_CalledWithState(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookAfterTurn, hook),
 	)
-	_, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, turns, 2)
@@ -520,7 +535,8 @@ func TestAfterTurn_ReplacesMessages(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookAfterTurn, hook),
 	)
-	_, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 3)
@@ -532,7 +548,8 @@ func TestAfterTurn_NilNoChange(t *testing.T) {
 	registerMock(t, textStream("ok", ai.Usage{}))
 
 	a := New(testModel())
-	_, err := a.Send(t.Context(), "hi").Result()
+	require.NoError(t, a.Send(t.Context(), "hi"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.Len(t, a.Messages(), 2) // user + assistant
@@ -561,7 +578,8 @@ func TestBeforeStop_ContinuesLoop(t *testing.T) {
 	}
 
 	a := New(testModel(), WithHook(HookBeforeStop, hook))
-	msgs, err := a.Send(t.Context(), "do something").Result()
+	require.NoError(t, a.Send(t.Context(), "do something"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 3)
@@ -579,7 +597,8 @@ func TestBeforeStop_NilStops(t *testing.T) {
 	}
 
 	a := New(testModel(), WithHook(HookBeforeStop, hook))
-	msgs, err := a.Send(t.Context(), "hi").Result()
+	require.NoError(t, a.Send(t.Context(), "hi"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 1)
@@ -604,7 +623,8 @@ func TestBeforeStop_RespectsMaxTurns(t *testing.T) {
 		WithMaxTurns(2),
 		WithHook(HookBeforeStop, hook),
 	)
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 3)
@@ -633,7 +653,8 @@ func TestBeforeStop_NotCalledOnToolContinue(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookBeforeStop, hook),
 	)
-	_, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, called)
@@ -669,7 +690,8 @@ func TestHooks_AllTogether(t *testing.T) {
 			return nil, nil
 		}),
 	)
-	msgs, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.Equal(t, 2, beforeCallCalls, "beforeCall called each turn")
@@ -699,7 +721,8 @@ func TestHooks_FullScenario(t *testing.T) {
 		WithTools(echoTool()),
 		WithHook(HookBeforeTool, beforeHook),
 	)
-	_, err := a.Send(t.Context(), "go").Result()
+	require.NoError(t, a.Send(t.Context(), "go"))
+	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"echo", "echo"}, callNames)
@@ -740,7 +763,8 @@ func TestBeforeTool_ContextFlows(t *testing.T) {
 
 	ctx := context.WithValue(t.Context(), ctxKey{}, "from-test")
 	a := New(testModel(), WithTools(ctxTool), WithHook(HookBeforeTool, hook))
-	_, err := a.Send(ctx, "go").Result()
+	require.NoError(t, a.Send(ctx, "go"))
+	_, err := a.Wait(ctx)
 	require.NoError(t, err)
 
 	assert.True(t, hookCtxOK)
