@@ -10,7 +10,13 @@ import (
 type EventType string
 
 const (
-	EventAgentStart          EventType = "agent_start"
+	// EventAgentStart signals that the agent backend is initialized and
+	// ready to produce events. It fires once per [Agent.Send] or
+	// [Agent.Continue] call. Subscribers may not receive this event if
+	// the backend fails before initialization — in that case only
+	// [EventAgentEnd] (with Err set) is emitted.
+	EventAgentStart EventType = "agent_start"
+
 	EventAgentEnd            EventType = "agent_end"
 	EventTurnStart           EventType = "turn_start"
 	EventTurnEnd             EventType = "turn_end"
@@ -26,6 +32,9 @@ const (
 // Fields are populated based on Type — unused fields are zero-valued.
 type Event struct {
 	Type EventType
+
+	// agent_start
+	SessionID string // session identifier from the subprocess
 
 	// agent_end
 	Messages []ai.Message // all new messages produced this run
@@ -60,9 +69,11 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	switch e.Type {
 	case EventAgentStart:
 		return json.Marshal(struct {
-			Type EventType `json:"type"`
+			Type      EventType `json:"type"`
+			SessionID string    `json:"session_id,omitempty"`
 		}{
-			Type: e.Type,
+			Type:      e.Type,
+			SessionID: e.SessionID,
 		})
 
 	case EventAgentEnd:

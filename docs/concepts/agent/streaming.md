@@ -21,12 +21,16 @@ The agent's broker uses blocking publish, so events are never dropped. Multiple 
 
 ## Event lifecycle
 
-A complete run emits events in this order:
+`agent_start` signals that the backend is initialized and ready. It fires once per `Send` or `Continue` call. If the backend fails before initialization (e.g. subprocess crash), only `agent_end` (with `Err`) is emitted — subscribers should not assume `agent_start` always precedes `agent_end`. For the Claude CLI agent, `agent_start` carries a `SessionID` for session resumption.
+
+The ordering of `agent_start` relative to user input messages is implementation-dependent. The Default agent emits `agent_start` first; the Claude CLI agent emits user input messages before `agent_start` (since the subprocess must initialize first).
+
+A complete run emits events in this order (Default agent):
 
 ```
-agent_start
-  message_start (user)      ← input messages emitted before first turn
-  message_end
+agent_start               ← backend ready; carries SessionID if available
+message_start (user)      ← input messages
+message_end
   turn_start
     message_start (assistant)
       message_update  ← repeated as tokens stream
