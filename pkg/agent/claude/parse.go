@@ -168,7 +168,6 @@ func mapStopReason(reason string) ai.StopReason {
 // same turn as the assistant's tool call, matching the Default agent's
 // event protocol.
 type parser struct {
-	sessionID   string
 	usage       ai.Usage
 	messages    []ai.Message
 	toolResults []ai.Message
@@ -182,8 +181,11 @@ type parser struct {
 func (m *parser) handleLine(line rawLine) []agent.Event {
 	switch line.Type {
 	case "system":
-		if line.Subtype == "init" && line.SessionID != "" {
-			m.sessionID = line.SessionID
+		if line.Subtype == "init" {
+			return []agent.Event{{
+				Type:      agent.EventAgentStart,
+				SessionID: line.SessionID,
+			}}
 		}
 		return nil
 

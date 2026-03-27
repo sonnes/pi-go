@@ -267,6 +267,7 @@ func TestMapper_HandleLine(t *testing.T) {
 				{Type: "result", Subtype: "success", Result: "Hello!"},
 			},
 			events: []agent.EventType{
+				agent.EventAgentStart,
 				agent.EventTurnStart,
 				agent.EventMessageStart,
 				agent.EventMessageEnd,
@@ -282,6 +283,7 @@ func TestMapper_HandleLine(t *testing.T) {
 				{Type: "result", Subtype: "success", Result: "The file contains Go code."},
 			},
 			events: []agent.EventType{
+				agent.EventAgentStart,
 				// Turn 1: assistant with tool_use (turn stays open)
 				agent.EventTurnStart,
 				agent.EventMessageStart,
@@ -296,11 +298,13 @@ func TestMapper_HandleLine(t *testing.T) {
 			},
 		},
 		{
-			name: "system init only captures session",
+			name: "system init emits agent start",
 			lines: []rawLine{
 				{Type: "system", Subtype: "init", SessionID: "s1"},
 			},
-			events: []agent.EventType{},
+			events: []agent.EventType{
+				agent.EventAgentStart,
+			},
 		},
 		{
 			name: "unknown line type skipped",
@@ -311,6 +315,7 @@ func TestMapper_HandleLine(t *testing.T) {
 				{Type: "result", Subtype: "success", Result: "Hello!"},
 			},
 			events: []agent.EventType{
+				agent.EventAgentStart,
 				agent.EventTurnStart,
 				agent.EventMessageStart,
 				agent.EventMessageEnd,
@@ -338,8 +343,11 @@ func TestMapper_HandleLine(t *testing.T) {
 
 func TestMapper_SessionID(t *testing.T) {
 	m := &parser{}
-	m.handleLine(rawLine{Type: "system", Subtype: "init", SessionID: "sess-abc"})
-	assert.Equal(t, "sess-abc", m.sessionID)
+	events := m.handleLine(rawLine{Type: "system", Subtype: "init", SessionID: "sess-abc"})
+
+	require.Len(t, events, 1)
+	assert.Equal(t, agent.EventAgentStart, events[0].Type)
+	assert.Equal(t, "sess-abc", events[0].SessionID)
 }
 
 func TestMapper_Usage(t *testing.T) {
@@ -552,6 +560,7 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 	}
 
 	assert.Equal(t, []agent.EventType{
+		agent.EventAgentStart,
 		// Turn 1: assistant calls tool, turn stays open for results
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -571,7 +580,9 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 		// Result (deduplicated — no extra message)
 	}, types)
 
-	assert.Equal(t, "sess-1", m.sessionID)
+	// Session ID is carried on the EventAgentStart event.
+	require.Equal(t, agent.EventAgentStart, allEvents[0].Type)
+	assert.Equal(t, "sess-1", allEvents[0].SessionID)
 	require.Len(t, m.messages, 3) // assistant + tool_result + assistant
 	assert.Equal(t, ai.RoleAssistant, m.messages[0].Role)
 	assert.Equal(t, ai.RoleToolResult, m.messages[1].Role)

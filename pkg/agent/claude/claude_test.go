@@ -65,9 +65,9 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventAgentStart,
 		agent.EventMessageStart, // user input
 		agent.EventMessageEnd,
+		agent.EventAgentStart, // from system init
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant
 		agent.EventMessageEnd,
@@ -104,9 +104,9 @@ func TestAgent_Send_MultiTurn(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventAgentStart,
 		agent.EventMessageStart, // user input
 		agent.EventMessageEnd,
+		agent.EventAgentStart, // from system init
 		// Turn 1: assistant with tool_use (turn stays open)
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -210,6 +210,39 @@ func TestAgent_SendError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cli not found")
 	assert.False(t, a.IsRunning())
+}
+
+func TestAgent_SendError_NoAgentStart(t *testing.T) {
+	a := New()
+	_, restore := stubSend(a, "", fmt.Errorf("cli not found"))
+	defer restore()
+
+	ctx := context.Background()
+	ch := a.Subscribe(ctx)
+	err := a.Send(ctx, "hi")
+	require.NoError(t, err)
+
+	var events []agent.Event
+	for pe := range ch {
+		evt := pe.Payload()
+		events = append(events, evt)
+		if evt.Type == agent.EventAgentEnd {
+			break
+		}
+	}
+
+	// When the subprocess fails before producing an init line,
+	// agent_start is never emitted — only agent_end with the error.
+	types := eventTypes(events)
+	for _, et := range types {
+		assert.NotEqual(t, agent.EventAgentStart, et,
+			"agent_start should not fire when subprocess fails to start",
+		)
+	}
+
+	last := events[len(events)-1]
+	assert.Equal(t, agent.EventAgentEnd, last.Type)
+	assert.Error(t, last.Err)
 }
 
 func TestAgent_Continue_NoSession(t *testing.T) {
@@ -319,10 +352,10 @@ func TestAgent_Send_FullToolLoop(t *testing.T) {
 	//
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventAgentStart,
 		// User input
 		agent.EventMessageStart,
 		agent.EventMessageEnd,
+		agent.EventAgentStart, // from system init
 		// Turn 1: assistant calls a tool (turn stays open)
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant with tool_use
