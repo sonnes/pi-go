@@ -723,8 +723,8 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 	types := eventTypes(events)
 
 	// Expected lifecycle:
+	// message_start (user), message_end (user)
 	// agent_start
-	//   message_start (user), message_end (user)
 	//   turn_start
 	//     message_start (assistant), message_update*, message_end (assistant)
 	//     tool_execution_start, tool_execution_end
@@ -736,7 +736,7 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 	// agent_end
 
 	// Verify key ordering invariants.
-	assert.Equal(t, EventAgentStart, types[0])
+	assert.Equal(t, EventMessageStart, types[0])
 	assert.Equal(t, EventAgentEnd, types[len(types)-1])
 
 	// Every turn_start has a matching turn_end.
@@ -1089,7 +1089,7 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 			break
 		}
 	}
-	assert.Equal(t, EventAgentStart, firstEvents[0].Type)
+	assert.Equal(t, EventMessageStart, firstEvents[0].Type)
 	assert.Equal(t, EventAgentEnd, firstEvents[len(firstEvents)-1].Type)
 
 	// Second Send on the same subscriber.
@@ -1102,7 +1102,7 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 			break
 		}
 	}
-	assert.Equal(t, EventAgentStart, secondEvents[0].Type)
+	assert.Equal(t, EventMessageStart, secondEvents[0].Type)
 	assert.Equal(t, EventAgentEnd, secondEvents[len(secondEvents)-1].Type)
 
 	// History should have both turns.
