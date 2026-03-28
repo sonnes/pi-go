@@ -209,6 +209,8 @@ func (a *Default) loop(
 		loopErr     error
 	)
 
+	emitMessages(push, inputMsgs)
+
 	push(Event{Type: EventAgentStart})
 
 	defer func() {
@@ -224,8 +226,6 @@ func (a *Default) loop(
 			Err:      loopErr,
 		})
 	}()
-
-	emitMessages(push, inputMsgs)
 
 	for turn := 0; ; turn++ {
 		if a.config.maxTurns > 0 && turn >= a.config.maxTurns {

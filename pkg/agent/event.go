@@ -12,9 +12,10 @@ type EventType string
 const (
 	// EventAgentStart signals that the agent backend is initialized and
 	// ready to produce events. It fires once per [Agent.Send] or
-	// [Agent.Continue] call. Subscribers may not receive this event if
-	// the backend fails before initialization — in that case only
-	// [EventAgentEnd] (with Err set) is emitted.
+	// [Agent.Continue] call. Input messages are always emitted before
+	// this event. Subscribers may not receive this event if the backend
+	// fails before initialization — in that case only [EventAgentEnd]
+	// (with Err set) is emitted.
 	EventAgentStart EventType = "agent_start"
 
 	EventAgentEnd            EventType = "agent_end"
