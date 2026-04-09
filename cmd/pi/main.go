@@ -21,6 +21,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/agent/claude"
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
+	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claude"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 
@@ -120,6 +121,10 @@ func createClaudeAgent(model string, turns int, tools string) agent.Agent {
 	return claude.New(opts...)
 }
 
+// claudeCLIModelPrefix selects the stateless claude-cli provider in
+// api mode. Example: --agent api --model claude-cli/sonnet
+const claudeCLIModelPrefix = "claude-cli/"
+
 // providerEntry describes how to detect and create an AI provider from
 // an environment variable. Entries are checked in order; the first
 // match wins.
@@ -164,9 +169,23 @@ var providers = []providerEntry{
 }
 
 func createAPIAgent(model string, turns int) (agent.Agent, error) {
-	p, name, err := detectProvider()
-	if err != nil {
-		return nil, err
+	var (
+		p    ai.Provider
+		name string
+	)
+
+	if rest, ok := strings.CutPrefix(model, claudeCLIModelPrefix); ok {
+		model = rest
+		p = claudeprov.New(claudeprov.WithModel(model))
+		name = "claude-cli"
+		fmt.Fprintln(os.Stderr, "[provider: claude-cli via subprocess]")
+	} else {
+		detected, detectedName, err := detectProvider()
+		if err != nil {
+			return nil, err
+		}
+		p = detected
+		name = detectedName
 	}
 
 	ai.RegisterProvider(p.API(), p)
