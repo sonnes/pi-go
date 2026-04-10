@@ -43,7 +43,15 @@ Each provider handles request/response conversion between the SDK's types and th
 
 ## Authentication
 
-All SDK-based providers authenticate via API keys passed at construction time (`WithAPIKey` or equivalent). The Anthropic provider additionally supports OAuth via `WithOAuth`, which sets up Bearer token auth with automatic token refresh. See [OAuth](/concepts/auth/oauth) for details.
+All SDK-based providers authenticate via API keys passed at construction time (`WithAPIKey` or equivalent). Three providers additionally support OAuth with automatic token refresh:
+
+| Provider    | OAuth constructor                                | Client credentials required     |
+| ----------- | ------------------------------------------------ | ------------------------------- |
+| Anthropic   | `WithOAuth(clientID, creds, ...opts)`            | Client ID                       |
+| OpenAI      | `NewWithOAuth(clientID, creds, ...opts)`         | Client ID                       |
+| Google      | `WithOAuth(clientID, clientSecret, creds, ...opts)` | Client ID + Client Secret    |
+
+See [OAuth](/concepts/auth/oauth) for details on the transport layer and token refresh design.
 
 The Claude CLI provider delegates authentication entirely to the subprocess — it inherits whatever credentials the CLI has configured (OAuth session, API key, or credential helper).
 
