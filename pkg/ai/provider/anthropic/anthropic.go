@@ -50,7 +50,7 @@ func New(opts ...Option) *Provider {
 			clientOpts,
 			option.WithAuthToken(o.oauthCreds.AccessToken),
 		)
-		transport := oauth.NewAnthropicTransport(*o.oauthCreds, o.oauthOpts...)
+		transport := NewOAuthTransport(o.oauthClientID, *o.oauthCreds, o.oauthOpts...)
 		if o.httpClient != nil {
 			transport.Base = o.httpClient.Transport
 		}
@@ -349,12 +349,13 @@ func mapStopReason(reason string) ai.StopReason {
 type Option func(*options)
 
 type options struct {
-	apiKey     string
-	oauthCreds *oauth.Credentials
-	oauthOpts  []oauth.TransportOption
-	baseURL    string
-	headers    map[string]string
-	httpClient *http.Client
+	apiKey        string
+	oauthClientID string
+	oauthCreds    *oauth.Credentials
+	oauthOpts     []oauth.TransportOption
+	baseURL       string
+	headers       map[string]string
+	httpClient    *http.Client
 }
 
 // WithAPIKey sets the API key for authentication.
@@ -366,8 +367,9 @@ func WithAPIKey(apiKey string) Option {
 // It sets up the auth token, OAuth-specific headers, and automatic token
 // refresh via the [oauth.Transport] middleware. Additional transport options
 // (e.g. [oauth.WithOnRefresh] for credential persistence) can be passed.
-func WithOAuth(creds oauth.Credentials, opts ...oauth.TransportOption) Option {
+func WithOAuth(clientID string, creds oauth.Credentials, opts ...oauth.TransportOption) Option {
 	return func(o *options) {
+		o.oauthClientID = clientID
 		o.oauthCreds = &creds
 		o.oauthOpts = opts
 	}
