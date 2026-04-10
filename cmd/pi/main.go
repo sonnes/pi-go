@@ -20,6 +20,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/agent/claude"
 	"github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claude"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
@@ -139,6 +140,14 @@ var providers = []providerEntry{
 		envKey: "ANTHROPIC_API_KEY",
 		name:   "Anthropic",
 		create: func(apiKey string) (ai.Provider, error) {
+			// ANTHROPIC_OAUTH_TOKEN takes priority over ANTHROPIC_API_KEY.
+			if token := os.Getenv("ANTHROPIC_OAUTH_TOKEN"); token != "" {
+				apiKey = token
+			}
+			if isAnthropicOAuthToken(apiKey) {
+				creds := oauth.Credentials{AccessToken: apiKey}
+				return anthropic.New(anthropic.WithOAuth(creds)), nil
+			}
 			return anthropic.New(anthropic.WithAPIKey(apiKey)), nil
 		},
 	},
@@ -205,6 +214,12 @@ func createAPIAgent(model string, turns int) (agent.Agent, error) {
 	return agent.New(m, opts...), nil
 }
 
+// isAnthropicOAuthToken reports whether token is an Anthropic OAuth
+// token based on the "sk-ant-oat" prefix convention.
+func isAnthropicOAuthToken(token string) bool {
+	return strings.Contains(token, "sk-ant-oat")
+}
+
 func detectProvider() (ai.Provider, string, error) {
 	for _, pe := range providers {
 		apiKey := os.Getenv(pe.envKey)
@@ -222,7 +237,7 @@ func detectProvider() (ai.Provider, string, error) {
 	}
 
 	return nil, "", fmt.Errorf(
-		"no API key found; set one of: ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY",
+		"no API key found; set one of: ANTHROPIC_API_KEY, ANTHROPIC_OAUTH_TOKEN, OPENROUTER_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY",
 	)
 }
 
