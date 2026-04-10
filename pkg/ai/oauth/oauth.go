@@ -5,8 +5,9 @@
 // request. Callers opt in by constructing a Transport and passing an
 // [http.Client] that uses it to their provider.
 //
-// Provider-specific helpers like [NewAnthropicTransport] wire up the correct
-// refresher and headers for a given provider.
+// Provider-specific helpers (e.g. NewAnthropicTransport) live in their
+// respective provider packages and wire up the correct refresher and
+// headers for a given provider.
 package oauth
 
 import (

@@ -145,8 +145,9 @@ var providers = []providerEntry{
 				apiKey = token
 			}
 			if isAnthropicOAuthToken(apiKey) {
+				clientID := os.Getenv("ANTHROPIC_OAUTH_CLIENT_ID")
 				creds := oauth.Credentials{AccessToken: apiKey}
-				return anthropic.New(anthropic.WithOAuth(creds)), nil
+				return anthropic.New(anthropic.WithOAuth(clientID, creds)), nil
 			}
 			return anthropic.New(anthropic.WithAPIKey(apiKey)), nil
 		},
@@ -162,10 +163,29 @@ var providers = []providerEntry{
 		},
 	},
 	{
+		envKey: "OPENAI_OAUTH_TOKEN",
+		name:   "OpenAI",
+		create: func(token string) (ai.Provider, error) {
+			clientID := os.Getenv("OPENAI_OAUTH_CLIENT_ID")
+			creds := oauth.Credentials{AccessToken: token}
+			return openai.NewWithOAuth(clientID, creds), nil
+		},
+	},
+	{
 		envKey: "OPENAI_API_KEY",
 		name:   "OpenAI",
 		create: func(apiKey string) (ai.Provider, error) {
 			return openai.New(oaioption.WithAPIKey(apiKey)), nil
+		},
+	},
+	{
+		envKey: "GOOGLE_OAUTH_TOKEN",
+		name:   "Google",
+		create: func(token string) (ai.Provider, error) {
+			clientID := os.Getenv("GOOGLE_OAUTH_CLIENT_ID")
+			clientSecret := os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+			creds := oauth.Credentials{AccessToken: token}
+			return google.New(google.WithOAuth(clientID, clientSecret, creds))
 		},
 	},
 	{
@@ -237,7 +257,7 @@ func detectProvider() (ai.Provider, string, error) {
 	}
 
 	return nil, "", fmt.Errorf(
-		"no API key found; set one of: ANTHROPIC_API_KEY, ANTHROPIC_OAUTH_TOKEN, OPENROUTER_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY",
+		"no API key found; set one of: ANTHROPIC_API_KEY, ANTHROPIC_OAUTH_TOKEN, OPENROUTER_API_KEY, OPENAI_API_KEY, OPENAI_OAUTH_TOKEN, GOOGLE_API_KEY, GOOGLE_OAUTH_TOKEN",
 	)
 }
 

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/genai"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/ai/oauth"
 )
 
 // Verify interface compliance.
@@ -48,6 +49,17 @@ func WithHTTPClient(c *http.Client) Option {
 // WithToolCallIDFunc sets a custom function for generating tool call IDs.
 func WithToolCallIDFunc(fn func() string) Option {
 	return func(p *Provider) { p.toolCallIDFunc = fn }
+}
+
+// WithOAuth configures the provider for OAuth Bearer token authentication.
+// It sets up automatic token refresh via the [oauth.Transport] middleware.
+// Additional transport options (e.g. [oauth.WithOnRefresh] for credential
+// persistence) can be passed.
+func WithOAuth(clientID, clientSecret string, creds oauth.Credentials, opts ...oauth.TransportOption) Option {
+	return func(p *Provider) {
+		transport := NewOAuthTransport(clientID, clientSecret, creds, opts...)
+		p.httpClient = &http.Client{Transport: transport}
+	}
 }
 
 // New creates a new Google AI provider.

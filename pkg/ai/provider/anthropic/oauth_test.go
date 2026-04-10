@@ -1,4 +1,4 @@
-package oauth
+package anthropic
 
 import (
 	"encoding/json"
@@ -8,11 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestAnthropicRefresher_RefreshToken(t *testing.T) {
+func TestRefresher_RefreshToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
@@ -22,7 +23,7 @@ func TestAnthropicRefresher_RefreshToken(t *testing.T) {
 
 		assert.Contains(t, string(body), "grant_type=refresh_token")
 		assert.Contains(t, string(body), "refresh_token=my-refresh")
-		assert.Contains(t, string(body), "client_id="+AnthropicClientID)
+		assert.Contains(t, string(body), "client_id=test-client-id")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -33,12 +34,13 @@ func TestAnthropicRefresher_RefreshToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	refresher := &AnthropicRefresher{
+	refresher := &Refresher{
 		Client:   srv.Client(),
 		TokenURL: srv.URL,
+		ClientID: "test-client-id",
 	}
 
-	creds := Credentials{
+	creds := oauth.Credentials{
 		RefreshToken: "my-refresh",
 		ExpiresAt:    time.Now().Add(-1 * time.Hour),
 	}
@@ -50,30 +52,57 @@ func TestAnthropicRefresher_RefreshToken(t *testing.T) {
 	assert.True(t, got.ExpiresAt.After(time.Now()))
 }
 
-func TestAnthropicRefresher_ErrorResponse(t *testing.T) {
+func TestRefresher_PreservesRefreshToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "new-access",
+			"expires_in":   3600,
+		})
+	}))
+	defer srv.Close()
+
+	refresher := &Refresher{
+		Client:   srv.Client(),
+		TokenURL: srv.URL,
+		ClientID: "test-client-id",
+	}
+
+	creds := oauth.Credentials{
+		RefreshToken: "original-refresh",
+		ExpiresAt:    time.Now().Add(-1 * time.Hour),
+	}
+
+	got, err := refresher.RefreshToken(t.Context(), creds)
+	require.NoError(t, err)
+	assert.Equal(t, "original-refresh", got.RefreshToken)
+}
+
+func TestRefresher_ErrorResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error": "invalid_grant"}`))
 	}))
 	defer srv.Close()
 
-	refresher := &AnthropicRefresher{
+	refresher := &Refresher{
 		Client:   srv.Client(),
 		TokenURL: srv.URL,
+		ClientID: "test-client-id",
 	}
 
-	_, err := refresher.RefreshToken(t.Context(), Credentials{RefreshToken: "bad"})
+	_, err := refresher.RefreshToken(t.Context(), oauth.Credentials{RefreshToken: "bad"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "401")
 }
 
-func TestAnthropicOAuthHeaders(t *testing.T) {
-	h := AnthropicOAuthHeaders()
+func TestOAuthHeaders(t *testing.T) {
+	h := OAuthHeaders()
 	assert.Contains(t, h["anthropic-beta"], "oauth-2025-04-20")
 	assert.Equal(t, "cli", h["x-app"])
 }
 
-func TestNewAnthropicTransport(t *testing.T) {
+func TestNewOAuthTransport(t *testing.T) {
 	var gotHeaders http.Header
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHeaders = r.Header
@@ -81,12 +110,12 @@ func TestNewAnthropicTransport(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	creds := Credentials{
+	creds := oauth.Credentials{
 		AccessToken: "sk-ant-oat01-test",
 		ExpiresAt:   time.Now().Add(1 * time.Hour),
 	}
 
-	tr := NewAnthropicTransport(creds)
+	tr := NewOAuthTransport("test-client-id", creds)
 	client := &http.Client{Transport: tr}
 	resp, err := client.Get(srv.URL)
 	require.NoError(t, err)
