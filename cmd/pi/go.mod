@@ -7,7 +7,7 @@ require (
 	github.com/sonnes/pi-go v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/oauth v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic v0.0.0
-	github.com/sonnes/pi-go/pkg/ai/provider/claude v0.0.0
+	github.com/sonnes/pi-go/pkg/ai/provider/claudecli v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/google v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/openai v0.0.0
 	github.com/urfave/cli/v3 v3.3.3
@@ -59,7 +59,7 @@ replace (
 	github.com/sonnes/pi-go => ../..
 	github.com/sonnes/pi-go/pkg/ai/oauth => ../../pkg/ai/oauth
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic => ../../pkg/ai/provider/anthropic
-	github.com/sonnes/pi-go/pkg/ai/provider/claude => ../../pkg/ai/provider/claude
+	github.com/sonnes/pi-go/pkg/ai/provider/claudecli => ../../pkg/ai/provider/claudecli
 	github.com/sonnes/pi-go/pkg/ai/provider/google => ../../pkg/ai/provider/google
 	github.com/sonnes/pi-go/pkg/ai/provider/openai => ../../pkg/ai/provider/openai
 )

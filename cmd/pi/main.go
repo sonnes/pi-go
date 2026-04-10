@@ -22,7 +22,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
-	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claude"
+	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claudecli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 

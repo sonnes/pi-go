@@ -1,4 +1,4 @@
-// Package claude provides an [ai.Provider] and [ai.ObjectProvider]
+// Package claudecli provides an [ai.Provider] and [ai.ObjectProvider]
 // implementation backed by the `claude` CLI (Claude Code) running
 // in one-shot `--print --no-session-persistence` mode.
 //
@@ -9,8 +9,8 @@
 //
 // Registration:
 //
-//	ai.RegisterProvider("claude-cli", claude.New(claude.WithModel("sonnet")))
-package claude
+//	ai.RegisterProvider("claude-cli", claudecli.New(claudecli.WithModel("sonnet")))
+package claudecli
 
 import (
 	"bufio"

@@ -1,4 +1,4 @@
-module github.com/sonnes/pi-go/pkg/ai/provider/claude
+module github.com/sonnes/pi-go/pkg/ai/provider/claudecli
 
 go 1.25.0
 

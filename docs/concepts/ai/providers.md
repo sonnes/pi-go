@@ -30,16 +30,26 @@ A model's `API` field is looked up in the registry. If no provider is registered
 
 ## Built-in providers
 
-| Package                       | API          | Service   |
-| ----------------------------- | ------------ | --------- |
-| `pkg/ai/provider/anthropic`  | `"anthropic"`| Anthropic |
-| `pkg/ai/provider/openai`     | `"openai"`   | OpenAI    |
-| `pkg/ai/provider/google`     | `"google"`   | Google AI |
+| Package                              | API                      | Service                    |
+| ------------------------------------ | ------------------------ | -------------------------- |
+| `pkg/ai/provider/anthropic`         | `"anthropic-messages"`   | Anthropic Messages API     |
+| `pkg/ai/provider/openai`            | `"openai-completions"`   | OpenAI Chat Completions    |
+| `pkg/ai/provider/openairesponses`   | `"openai-responses"`     | OpenAI Responses API       |
+| `pkg/ai/provider/google`            | `"google-generative"`    | Google AI (Gemini)         |
+| `pkg/ai/provider/geminicli`         | `"google-gemini-cli"`    | Cloud Code Assist (Gemini) |
+| `pkg/ai/provider/claudecli`         | `"claude-cli"`           | Claude CLI subprocess      |
 
 Each provider handles request/response conversion between the SDK's types and the provider's native API format.
+
+## Authentication
+
+All SDK-based providers authenticate via API keys passed at construction time (`WithAPIKey` or equivalent). The Anthropic provider additionally supports OAuth via `WithOAuth`, which sets up Bearer token auth with automatic token refresh. See [OAuth](/concepts/auth/oauth) for details.
+
+The Claude CLI provider delegates authentication entirely to the subprocess — it inherits whatever credentials the CLI has configured (OAuth session, API key, or credential helper).
 
 ## Related
 
 - [Models](/concepts/ai/models) — model metadata and the `API` field
 - [Options](/concepts/ai/options) — `StreamOptions` passed to providers
+- [OAuth](/concepts/auth/oauth) — optional OAuth transport middleware
 - [Streaming](/concepts/agent/streaming) — agent event subscription and lifecycle
