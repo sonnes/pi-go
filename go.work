@@ -5,6 +5,8 @@ use (
 	./cmd/pi
 	./pkg/ai/provider/anthropic
 	./pkg/ai/provider/claude
+	./pkg/ai/provider/geminicli
 	./pkg/ai/provider/google
 	./pkg/ai/provider/openai
+	./pkg/ai/provider/openairesponses
 )
