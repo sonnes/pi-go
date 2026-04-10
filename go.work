@@ -5,7 +5,7 @@ use (
 	./cmd/pi
 	./pkg/ai/oauth
 	./pkg/ai/provider/anthropic
-	./pkg/ai/provider/claude
+	./pkg/ai/provider/claudecli
 	./pkg/ai/provider/geminicli
 	./pkg/ai/provider/google
 	./pkg/ai/provider/openai

@@ -1,4 +1,4 @@
-package claude
+package claudecli
 
 import (
 	"bytes"
