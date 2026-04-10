@@ -1,10 +1,11 @@
 module github.com/sonnes/pi-go/cmd/pi
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/openai/openai-go v1.12.0
 	github.com/sonnes/pi-go v0.0.0
+	github.com/sonnes/pi-go/pkg/ai/oauth v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/claude v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/google v0.0.0
@@ -56,6 +57,7 @@ require (
 
 replace (
 	github.com/sonnes/pi-go => ../..
+	github.com/sonnes/pi-go/pkg/ai/oauth => ../../pkg/ai/oauth
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic => ../../pkg/ai/provider/anthropic
 	github.com/sonnes/pi-go/pkg/ai/provider/claude => ../../pkg/ai/provider/claude
 	github.com/sonnes/pi-go/pkg/ai/provider/google => ../../pkg/ai/provider/google

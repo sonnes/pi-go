@@ -14,6 +14,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/ai/oauth"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -44,7 +45,17 @@ func New(opts ...Option) *Provider {
 		option.WithMaxRetries(0),
 	}
 
-	if o.apiKey != "" {
+	if o.oauthCreds != nil {
+		clientOpts = append(
+			clientOpts,
+			option.WithAuthToken(o.oauthCreds.AccessToken),
+		)
+		transport := oauth.NewAnthropicTransport(*o.oauthCreds, o.oauthOpts...)
+		if o.httpClient != nil {
+			transport.Base = o.httpClient.Transport
+		}
+		o.httpClient = &http.Client{Transport: transport}
+	} else if o.apiKey != "" {
 		clientOpts = append(clientOpts, option.WithAPIKey(o.apiKey))
 	}
 	if o.baseURL != "" {
@@ -339,6 +350,8 @@ type Option func(*options)
 
 type options struct {
 	apiKey     string
+	oauthCreds *oauth.Credentials
+	oauthOpts  []oauth.TransportOption
 	baseURL    string
 	headers    map[string]string
 	httpClient *http.Client
@@ -347,6 +360,17 @@ type options struct {
 // WithAPIKey sets the API key for authentication.
 func WithAPIKey(apiKey string) Option {
 	return func(o *options) { o.apiKey = apiKey }
+}
+
+// WithOAuth configures the provider for OAuth Bearer token authentication.
+// It sets up the auth token, OAuth-specific headers, and automatic token
+// refresh via the [oauth.Transport] middleware. Additional transport options
+// (e.g. [oauth.WithOnRefresh] for credential persistence) can be passed.
+func WithOAuth(creds oauth.Credentials, opts ...oauth.TransportOption) Option {
+	return func(o *options) {
+		o.oauthCreds = &creds
+		o.oauthOpts = opts
+	}
 }
 
 // WithBaseURL sets a custom base URL for the API.
