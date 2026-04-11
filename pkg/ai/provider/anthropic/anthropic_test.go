@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -52,6 +54,14 @@ var testModel = ai.Model{
 
 //go:generate go test -httprecord=Test
 
+// cacheControlRegexp strips cache_control markers from JSON bodies so
+// existing httprr fixtures (recorded before caching was added) still match
+// production requests that now carry markers. Matches both {"type":"ephemeral"}
+// and {"type":"ephemeral","ttl":"1h"} forms with a leading comma (which is
+// always present because cache_control comes after "text" in the SDK's
+// canonical marshal order).
+var cacheControlRegexp = regexp.MustCompile(`,"cache_control":\{[^}]*\}`)
+
 // scrubRequest normalizes requests for deterministic matching.
 func scrubRequest(req *http.Request) error {
 	req.Header.Del("x-api-key")
@@ -64,6 +74,19 @@ func scrubRequest(req *http.Request) error {
 		}
 	}
 	req.Header.Set("User-Agent", "Go-http-client/1.1")
+
+	if req.Body == nil {
+		return nil
+	}
+	body, ok := req.Body.(*httprr.Body)
+	if !ok {
+		return nil
+	}
+	stripped := cacheControlRegexp.ReplaceAll(body.Data, nil)
+	body.Data = stripped
+	body.ReadOffset = 0
+	req.ContentLength = int64(len(stripped))
+	req.Header.Set("Content-Length", strconv.Itoa(len(stripped)))
 	return nil
 }
 
