@@ -29,7 +29,8 @@ var (
 
 // Provider implements ai.Provider for the Anthropic Messages API.
 type Provider struct {
-	client anthropic.Client
+	client  anthropic.Client
+	baseURL string
 }
 
 // New creates a new Anthropic provider.
@@ -69,7 +70,8 @@ func New(opts ...Option) *Provider {
 	}
 
 	return &Provider{
-		client: anthropic.NewClient(clientOpts...),
+		client:  anthropic.NewClient(clientOpts...),
+		baseURL: o.baseURL,
 	}
 }
 
@@ -86,7 +88,7 @@ func (p *Provider) StreamText(
 	opts ai.StreamOptions,
 ) *ai.EventStream {
 	return ai.NewEventStream(func(push func(ai.Event)) {
-		params, reqOpts := buildParams(model, prompt, opts)
+		params, reqOpts := buildParams(model, prompt, opts, p.baseURL)
 
 		log.Debug(
 			"[ANTHROPIC] starting stream",
@@ -214,6 +216,7 @@ func buildParams(
 	model ai.Model,
 	prompt ai.Prompt,
 	opts ai.StreamOptions,
+	baseURL string,
 ) (anthropic.MessageNewParams, []option.RequestOption) {
 	maxTokens := int64(4096)
 	if opts.MaxTokens != nil {
@@ -228,13 +231,20 @@ func buildParams(
 		MaxTokens: maxTokens,
 	}
 
+	cc, cacheEnabled := cacheMarker(opts, baseURL)
+
 	if prompt.System != "" {
-		params.System = []anthropic.TextBlockParam{
-			{Text: prompt.System},
+		sysBlock := anthropic.TextBlockParam{Text: prompt.System}
+		if cacheEnabled {
+			sysBlock.CacheControl = cc
 		}
+		params.System = []anthropic.TextBlockParam{sysBlock}
 	}
 
 	params.Messages = convertMessages(prompt.Messages)
+	if cacheEnabled {
+		applyCacheControlToLastBlock(params.Messages, cc)
+	}
 
 	if opts.Temperature != nil && opts.ThinkingLevel == "" {
 		params.Temperature = param.NewOpt(*opts.Temperature)
@@ -444,13 +454,20 @@ func (p *Provider) GenerateObject(
 		},
 	}
 
+	cc, cacheEnabled := cacheMarker(opts, p.baseURL)
+
 	if prompt.System != "" {
-		params.System = []anthropic.TextBlockParam{
-			{Text: prompt.System},
+		sysBlock := anthropic.TextBlockParam{Text: prompt.System}
+		if cacheEnabled {
+			sysBlock.CacheControl = cc
 		}
+		params.System = []anthropic.TextBlockParam{sysBlock}
 	}
 
 	params.Messages = convertMessages(prompt.Messages)
+	if cacheEnabled {
+		applyCacheControlToLastBlock(params.Messages, cc)
+	}
 
 	if opts.Temperature != nil {
 		params.Temperature = param.NewOpt(*opts.Temperature)

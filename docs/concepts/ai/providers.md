@@ -41,6 +41,10 @@ A model's `API` field is looked up in the registry. If no provider is registered
 
 Each provider handles request/response conversion between the SDK's types and the provider's native API format.
 
+## Prompt caching
+
+Built-in providers participate in prompt caching at different levels. Anthropic receives explicit `cache_control` markers on the system prompt and the last message's final block. OpenAI Chat and OpenAI Responses receive a `prompt_cache_key` derived from `StreamOptions.SessionID` and rely on automatic server-side prefix matching. Google caches implicitly and reports hits via `CacheRead`. The Claude CLI and Gemini CLI providers inherit whatever caching the underlying subprocess does. See [Prompt Caching](/concepts/ai/caching) for the placement rule and per-provider details.
+
 ## Authentication
 
 All SDK-based providers authenticate via API keys passed at construction time (`WithAPIKey` or equivalent). Three providers additionally support OAuth with automatic token refresh:
@@ -61,3 +65,4 @@ The Claude CLI provider delegates authentication entirely to the subprocess — 
 - [Options](/concepts/ai/options) — `StreamOptions` passed to providers
 - [OAuth](/concepts/auth/oauth) — optional OAuth transport middleware
 - [Streaming](/concepts/agent/streaming) — agent event subscription and lifecycle
+- [Prompt Caching](/concepts/ai/caching) — cross-provider cache markers and session affinity

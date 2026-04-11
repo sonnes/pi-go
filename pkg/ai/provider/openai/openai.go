@@ -317,6 +317,14 @@ func buildParams(
 		}
 	}
 
+	// Forward the session ID as OpenAI's prompt_cache_key for cache affinity.
+	// OpenAI caching is automatic; the key only strengthens prefix matching
+	// across requests. Suppressed when caching is explicitly disabled.
+	cacheRetention := ai.ResolveCacheRetention(opts.CacheRetention)
+	if cacheRetention != ai.CacheRetentionNone && opts.SessionID != "" {
+		params.PromptCacheKey = param.NewOpt(opts.SessionID)
+	}
+
 	return params
 }
 
