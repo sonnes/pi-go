@@ -1,4 +1,4 @@
-.PHONY: test check tidy run
+.PHONY: test check tidy run build install
 
 test:
 	go test ./...
@@ -20,6 +20,12 @@ check:
 	go vet ./pkg/ai/provider/openai/...
 	go vet ./pkg/ai/provider/openairesponses/...
 	gofmt -l .
+
+build:
+	cd cmd/pi && go build -o ../../.bin/pi .
+
+install:
+	cd cmd/pi && go install .
 
 run:
 	go run github.com/sonnes/pi-go/cmd/pi $(ARGS)
