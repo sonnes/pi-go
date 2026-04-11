@@ -2,7 +2,6 @@ package anthropic
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,14 +15,14 @@ import (
 func TestRefresher_RefreshToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
+		var payload map[string]string
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 
-		assert.Contains(t, string(body), "grant_type=refresh_token")
-		assert.Contains(t, string(body), "refresh_token=my-refresh")
-		assert.Contains(t, string(body), "client_id=test-client-id")
+		assert.Equal(t, "refresh_token", payload["grant_type"])
+		assert.Equal(t, "my-refresh", payload["refresh_token"])
+		assert.Equal(t, "test-client-id", payload["client_id"])
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{

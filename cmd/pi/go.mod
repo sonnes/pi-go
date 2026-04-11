@@ -8,8 +8,10 @@ require (
 	github.com/sonnes/pi-go/pkg/ai/oauth v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/claudecli v0.0.0
+	github.com/sonnes/pi-go/pkg/ai/provider/geminicli v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/google v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/openai v0.0.0
+	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.3.3
 )
 
@@ -25,6 +27,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -37,6 +40,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -53,6 +57,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/grpc v1.66.2 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 replace (
@@ -60,6 +65,7 @@ replace (
 	github.com/sonnes/pi-go/pkg/ai/oauth => ../../pkg/ai/oauth
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic => ../../pkg/ai/provider/anthropic
 	github.com/sonnes/pi-go/pkg/ai/provider/claudecli => ../../pkg/ai/provider/claudecli
+	github.com/sonnes/pi-go/pkg/ai/provider/geminicli => ../../pkg/ai/provider/geminicli
 	github.com/sonnes/pi-go/pkg/ai/provider/google => ../../pkg/ai/provider/google
 	github.com/sonnes/pi-go/pkg/ai/provider/openai => ../../pkg/ai/provider/openai
 )

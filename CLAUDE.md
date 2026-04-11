@@ -47,14 +47,41 @@ Write vertical, readable Go code. Favor more lines over longer lines:
 
 ## Makefile Targets
 
-| Target       | Purpose                    |
-| ------------ | -------------------------- |
-| `make test`  | Run all tests              |
-| `make check` | Run linting and formatting |
+| Target         | Purpose                            |
+| -------------- | ---------------------------------- |
+| `make test`    | Run all tests                      |
+| `make check`   | Run linting and formatting         |
+| `make build`   | Build CLI binary to `.bin/pi`      |
+| `make install` | Install CLI binary to `$GOPATH/bin`|
+| `make run`     | Run CLI via `go run` (`ARGS=...`)  |
+| `make tidy`    | Run `go mod tidy` in all modules   |
 
 ## Project Structure
+
+```
+pkg/ai/              Core AI types (Message, Provider, Tool, Model)
+pkg/ai/oauth/        OAuth transport middleware (Credentials, Transport, PKCE, Login)
+pkg/ai/provider/     Provider implementations
+  anthropic/         Anthropic Messages API + OAuth
+  openai/            OpenAI Chat Completions + OAuth
+  google/            Google Gemini (API key only)
+  openairesponses/   OpenAI Responses API
+  claudecli/         Claude CLI subprocess
+  geminicli/         Gemini CLI (direct HTTP) + OAuth
+pkg/agent/           Agent interface and default implementation
+pkg/agent/claude/    Claude Code subprocess agent
+cmd/pi/              CLI binary (login, logout, interactive chat)
+docs/                Concept documentation
+```
+
+## Multi-Module Repo
+
+This is a Go workspace with separate `go.mod` per package. Each provider is its own module. Use `replace` directives for local development. Run `make tidy` to update all modules.
 
 ## Development Rules
 
 - Keep packages small and focused — no circular dependencies.
 - Always run `make check` before committing.
+- OAuth client IDs and secrets are never hardcoded — they are required parameters from the caller.
+- Provider-specific OAuth code (refreshers, login configs) lives in the provider package, not in `pkg/ai/oauth/`.
+- CLI credentials are stored at `~/.pigo/auth.json`.

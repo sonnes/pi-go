@@ -23,6 +23,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claudecli"
+	"github.com/sonnes/pi-go/pkg/ai/provider/geminicli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 
@@ -53,8 +54,16 @@ func main() {
 				Name:  "tools",
 				Usage: "Allowed tools for claude mode (comma-separated)",
 			},
+			&cli.StringFlag{
+				Name:  "provider",
+				Usage: "Provider name (anthropic, openai, google) — overrides auto-detection",
+			},
 		},
 		Action: run,
+		Commands: []*cli.Command{
+			loginCommand(),
+			logoutCommand(),
+		},
 	}
 
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
@@ -68,8 +77,9 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	model := cmd.String("model")
 	turns := int(cmd.Int("turns"))
 	tools := cmd.String("tools")
+	provider := cmd.String("provider")
 
-	a, err := createAgent(mode, model, turns, tools)
+	a, err := createAgent(mode, model, turns, tools, provider)
 	if err != nil {
 		return err
 	}
@@ -98,12 +108,12 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	return scanner.Err()
 }
 
-func createAgent(mode, model string, turns int, tools string) (agent.Agent, error) {
+func createAgent(mode, model string, turns int, tools, provider string) (agent.Agent, error) {
 	switch mode {
 	case "claude":
 		return createClaudeAgent(model, turns, tools), nil
 	case "api":
-		return createAPIAgent(model, turns)
+		return createAPIAgent(model, turns, provider)
 	default:
 		return nil, fmt.Errorf("unknown agent mode: %s (use claude or api)", mode)
 	}
@@ -180,12 +190,14 @@ var providers = []providerEntry{
 	},
 	{
 		envKey: "GOOGLE_OAUTH_TOKEN",
-		name:   "Google",
+		name:   "Gemini CLI",
 		create: func(token string) (ai.Provider, error) {
 			clientID := os.Getenv("GOOGLE_OAUTH_CLIENT_ID")
 			clientSecret := os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 			creds := oauth.Credentials{AccessToken: token}
-			return google.New(google.WithOAuth(clientID, clientSecret, creds))
+			return geminicli.New(
+				geminicli.WithOAuth(clientID, clientSecret, creds),
+			), nil
 		},
 	},
 	{
@@ -197,7 +209,7 @@ var providers = []providerEntry{
 	},
 }
 
-func createAPIAgent(model string, turns int) (agent.Agent, error) {
+func createAPIAgent(model string, turns int, providerHint string) (agent.Agent, error) {
 	var (
 		p    ai.Provider
 		name string
@@ -209,7 +221,7 @@ func createAPIAgent(model string, turns int) (agent.Agent, error) {
 		name = "claude-cli"
 		fmt.Fprintln(os.Stderr, "[provider: claude-cli via subprocess]")
 	} else {
-		detected, detectedName, err := detectProvider()
+		detected, detectedName, err := detectProvider(providerHint)
 		if err != nil {
 			return nil, err
 		}
@@ -240,7 +252,13 @@ func isAnthropicOAuthToken(token string) bool {
 	return strings.Contains(token, "sk-ant-oat")
 }
 
-func detectProvider() (ai.Provider, string, error) {
+func detectProvider(hint string) (ai.Provider, string, error) {
+	// Try stored OAuth credentials from ~/.pigo/auth.json first.
+	if p, name, err := detectFromAuthFile(hint); err == nil {
+		return p, name, nil
+	}
+
+	// Fall back to environment variables.
 	for _, pe := range providers {
 		apiKey := os.Getenv(pe.envKey)
 		if apiKey == "" {
@@ -259,6 +277,102 @@ func detectProvider() (ai.Provider, string, error) {
 	return nil, "", fmt.Errorf(
 		"no API key found; set one of: ANTHROPIC_API_KEY, ANTHROPIC_OAUTH_TOKEN, OPENROUTER_API_KEY, OPENAI_API_KEY, OPENAI_OAUTH_TOKEN, GOOGLE_API_KEY, GOOGLE_OAUTH_TOKEN",
 	)
+}
+
+// authProviderOrder defines the priority when loading from auth.json.
+var authProviderOrder = []struct {
+	name   string
+	create func(sc StoredCredential) (ai.Provider, error)
+}{
+	{
+		name: "anthropic",
+		create: func(sc StoredCredential) (ai.Provider, error) {
+			creds := sc.ToOAuthCredentials()
+			return anthropic.New(
+				anthropic.WithOAuth(sc.ClientID, creds, persistRefresh(sc)),
+			), nil
+		},
+	},
+	{
+		name: "openai",
+		create: func(sc StoredCredential) (ai.Provider, error) {
+			creds := sc.ToOAuthCredentials()
+			return openai.NewWithOAuth(
+				sc.ClientID, creds, persistRefresh(sc),
+			), nil
+		},
+	},
+	{
+		name: "google",
+		create: func(sc StoredCredential) (ai.Provider, error) {
+			creds := sc.ToOAuthCredentials()
+			return geminicli.New(
+				geminicli.WithOAuth(
+					sc.ClientID, sc.ClientSecret, creds, persistRefresh(sc),
+				),
+			), nil
+		},
+	},
+}
+
+// detectFromAuthFile tries to create a provider from stored OAuth credentials.
+// If hint is non-empty, only that provider is tried.
+func detectFromAuthFile(hint string) (ai.Provider, string, error) {
+	stored, err := LoadAuth()
+	if err != nil || len(stored) == 0 {
+		return nil, "", fmt.Errorf("no stored credentials")
+	}
+
+	for _, entry := range authProviderOrder {
+		if hint != "" && entry.name != hint {
+			continue
+		}
+		sc, ok := stored[entry.name]
+		if !ok {
+			continue
+		}
+
+		p, err := entry.create(sc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[auth.json: %s failed: %v]\n", entry.name, err)
+			continue
+		}
+
+		fmt.Fprintf(os.Stderr, "[provider: %s via ~/.pigo/auth.json]\n", entry.name)
+		return p, entry.name, nil
+	}
+
+	return nil, "", fmt.Errorf("no usable stored credentials")
+}
+
+// persistRefresh returns an [oauth.TransportOption] that writes refreshed
+// tokens back to auth.json.
+func persistRefresh(sc StoredCredential) oauth.TransportOption {
+	return oauth.WithOnRefresh(func(creds oauth.Credentials) error {
+		stored, err := LoadAuth()
+		if err != nil {
+			return err
+		}
+		stored[findProviderName(sc.ClientID)] = FromOAuthCredentials(
+			creds, sc.ClientID, sc.ClientSecret,
+		)
+		return SaveAuth(stored)
+	})
+}
+
+// findProviderName returns the provider name for a given client ID
+// by scanning the auth file.
+func findProviderName(clientID string) string {
+	stored, err := LoadAuth()
+	if err != nil {
+		return ""
+	}
+	for name, sc := range stored {
+		if sc.ClientID == clientID {
+			return name
+		}
+	}
+	return ""
 }
 
 func sendAndPrint(ctx context.Context, a agent.Agent, prompt string) error {
