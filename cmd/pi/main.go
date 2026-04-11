@@ -431,6 +431,14 @@ func handleEvent(evt agent.Event) {
 				evt.Usage.Output,
 				evt.Usage.Total,
 			)
+			if evt.Usage.CacheRead > 0 || evt.Usage.CacheWrite > 0 {
+				fmt.Fprintf(
+					os.Stderr,
+					", %d cache_read, %d cache_write",
+					evt.Usage.CacheRead,
+					evt.Usage.CacheWrite,
+				)
+			}
 			if evt.Usage.Cost.Total > 0 {
 				fmt.Fprintf(os.Stderr, ", $%.4f", evt.Usage.Cost.Total)
 			}

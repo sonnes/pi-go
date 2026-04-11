@@ -26,12 +26,21 @@ For models that support extended reasoning, `WithThinking` sets the thinking dep
 
 `ToolChoice` controls how the model selects tools: `auto` (model decides, default), `none` (disable), `required` (force at least one), or `SpecificToolChoice(name)` (force a specific tool).
 
+## Cache retention
+
+`WithCacheRetention` controls prompt-cache breakpoint placement and TTL across providers. It is **on by default**: the zero value resolves to `CacheRetentionShort`, so callers get cache hits automatically without opting in. The four values are `CacheRetentionDefault` (unset → Short), `CacheRetentionNone` (disable), `CacheRetentionShort` (provider's default ephemeral TTL), and `CacheRetentionLong` (longer ephemeral TTL where supported).
+
+`WithSessionID` provides cache affinity for providers that support it — currently OpenAI Chat Completions and Responses forward it as `prompt_cache_key`. Other providers ignore it. It is not auto-generated; callers pass a UUID when they want affinity across requests.
+
+See [Prompt Caching](/concepts/ai/caching) for the placement strategy and per-provider behavior.
+
 ## Available options
 
-`WithTemperature`, `WithMaxTokens`, `WithThinking`, `WithToolChoice`, `WithHeaders`, `WithMetadata`. See GoDoc for signatures.
+`WithTemperature`, `WithMaxTokens`, `WithThinking`, `WithToolChoice`, `WithCacheRetention`, `WithSessionID`, `WithHeaders`, `WithMetadata`. See GoDoc for signatures.
 
 ## Related
 
 - [Models](/concepts/ai/models) — models carry default capabilities; options override per-call
 - [Providers](/concepts/ai/providers) — providers receive the resolved `StreamOptions`
 - [Content](/concepts/ai/content) — `WithThinking` enables `Thinking` content blocks
+- [Prompt Caching](/concepts/ai/caching) — `WithCacheRetention` and `WithSessionID`
