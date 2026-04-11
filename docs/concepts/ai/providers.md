@@ -45,11 +45,11 @@ Each provider handles request/response conversion between the SDK's types and th
 
 All SDK-based providers authenticate via API keys passed at construction time (`WithAPIKey` or equivalent). Three providers additionally support OAuth with automatic token refresh:
 
-| Provider    | OAuth constructor                                | Client credentials required     |
-| ----------- | ------------------------------------------------ | ------------------------------- |
-| Anthropic   | `WithOAuth(clientID, creds, ...opts)`            | Client ID                       |
-| OpenAI      | `NewWithOAuth(clientID, creds, ...opts)`         | Client ID                       |
-| Google      | `WithOAuth(clientID, clientSecret, creds, ...opts)` | Client ID + Client Secret    |
+| Provider    | Package      | OAuth constructor                                   | Client credentials required  |
+| ----------- | ------------ | --------------------------------------------------- | ---------------------------- |
+| Anthropic   | `anthropic`  | `WithOAuth(clientID, creds, ...opts)`               | Client ID                    |
+| OpenAI      | `openai`     | `NewWithOAuth(clientID, creds, ...opts)`            | Client ID                    |
+| Gemini CLI  | `geminicli`  | `WithOAuth(clientID, clientSecret, creds, ...opts)` | Client ID + Client Secret    |
 
 See [OAuth](/concepts/auth/oauth) for details on the transport layer and token refresh design.
 

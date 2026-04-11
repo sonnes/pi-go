@@ -1,4 +1,4 @@
-package google
+package geminicli
 
 import (
 	"context"
@@ -117,4 +117,14 @@ func NewOAuthTransport(clientID, clientSecret string, creds oauth.Credentials, o
 		}),
 	}
 	return oauth.NewTransport(creds, append(defaults, opts...)...)
+}
+
+// WithOAuth configures the provider for OAuth Bearer token authentication.
+// It sets up automatic token refresh via the [oauth.Transport] middleware.
+func WithOAuth(clientID, clientSecret string, creds oauth.Credentials, opts ...oauth.TransportOption) Option {
+	return func(p *Provider) {
+		transport := NewOAuthTransport(clientID, clientSecret, creds, opts...)
+		p.httpClient = &http.Client{Transport: transport}
+		p.creds = Credentials{Token: creds.AccessToken}
+	}
 }

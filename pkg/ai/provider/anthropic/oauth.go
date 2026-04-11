@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 )
 
 // TokenEndpoint is the default Anthropic OAuth token endpoint.
-const TokenEndpoint = "https://auth.anthropic.com/oauth/token"
+const TokenEndpoint = "https://platform.claude.com/v1/oauth/token"
 
 // Refresher implements [oauth.TokenRefresher] for Anthropic OAuth.
 type Refresher struct {
@@ -42,22 +41,26 @@ func (r *Refresher) RefreshToken(ctx context.Context, creds oauth.Credentials) (
 		client = http.DefaultClient
 	}
 
-	form := url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {creds.RefreshToken},
-		"client_id":     {r.ClientID},
+	payload := map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": creds.RefreshToken,
+		"client_id":     r.ClientID,
+	}
+	jsonBody, err := json.Marshal(payload)
+	if err != nil {
+		return oauth.Credentials{}, fmt.Errorf("oauth: marshal refresh request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		tokenURL,
-		strings.NewReader(form.Encode()),
+		strings.NewReader(string(jsonBody)),
 	)
 	if err != nil {
 		return oauth.Credentials{}, fmt.Errorf("oauth: build refresh request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {

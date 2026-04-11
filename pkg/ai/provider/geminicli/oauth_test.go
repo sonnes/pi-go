@@ -1,4 +1,4 @@
-package google
+package geminicli
 
 import (
 	"encoding/json"
