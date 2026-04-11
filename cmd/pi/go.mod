@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/openai/openai-go v1.12.0
 	github.com/sonnes/pi-go v0.0.0
-	github.com/sonnes/pi-go/pkg/ai/oauth v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/claudecli v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/geminicli v0.0.0
@@ -62,7 +61,6 @@ require (
 
 replace (
 	github.com/sonnes/pi-go => ../..
-	github.com/sonnes/pi-go/pkg/ai/oauth => ../../pkg/ai/oauth
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic => ../../pkg/ai/provider/anthropic
 	github.com/sonnes/pi-go/pkg/ai/provider/claudecli => ../../pkg/ai/provider/claudecli
 	github.com/sonnes/pi-go/pkg/ai/provider/geminicli => ../../pkg/ai/provider/geminicli

@@ -7,7 +7,6 @@ require (
 	github.com/google/jsonschema-go v0.4.2
 	github.com/openai/openai-go v1.12.0
 	github.com/sonnes/pi-go v0.0.0
-	github.com/sonnes/pi-go/pkg/ai/oauth v0.0.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -36,7 +35,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/sonnes/pi-go => ../../../..
-	github.com/sonnes/pi-go/pkg/ai/oauth => ../../oauth
-)
+replace github.com/sonnes/pi-go => ../../../..

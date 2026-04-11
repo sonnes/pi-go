@@ -60,7 +60,7 @@ Write vertical, readable Go code. Favor more lines over longer lines:
 
 ```
 pkg/ai/              Core AI types (Message, Provider, Tool, Model)
-pkg/ai/oauth/        OAuth transport middleware (Credentials, Transport, PKCE, Login)
+pkg/ai/oauth/        OAuth transport middleware, sub-package of pkg/ai
 pkg/ai/provider/     Provider implementations
   anthropic/         Anthropic Messages API + OAuth
   openai/            OpenAI Chat Completions + OAuth
