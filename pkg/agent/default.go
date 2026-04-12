@@ -378,7 +378,16 @@ func renderSystemPrompt(p prompt.Prompt) string {
 }
 
 // streamTurn consumes an [ai.EventStream] from the provider, emitting
-// agent-level message events. Returns the final assistant message or an error.
+// agent-level message events with incremental partial message snapshots.
+//
+// The partial message is accumulated from provider deltas so that every
+// [EventMessageUpdate] carries a non-nil Message snapshot. This matches
+// the pi-mono (TypeScript) behavior and lets consumers choose between
+// reading the delta ([Event.AssistantEvent]) or the snapshot ([Event.Message]).
+//
+// [EventMessageStart] fires on the first non-done event (before any
+// content arrives). [EventMessageEnd] carries the provider's final
+// authoritative message.
 func streamTurn(
 	push func(Event),
 	aiStream *ai.EventStream,
@@ -386,6 +395,7 @@ func streamTurn(
 	var (
 		started  bool
 		finalMsg *ai.Message
+		partial  = &ai.Message{Role: ai.RoleAssistant}
 	)
 
 	for evt, err := range aiStream.Events() {
@@ -393,25 +403,24 @@ func streamTurn(
 			return nil, err
 		}
 
-		if !started && evt.Message != nil {
-			push(Event{
-				Type:    EventMessageStart,
-				Message: evt.Message,
-			})
-			started = true
-		}
+		accumulateEvent(partial, &evt)
 
 		switch evt.Type {
 		case ai.EventDone:
 			finalMsg = evt.Message
 		default:
-			if started {
+			if !started {
 				push(Event{
-					Type:           EventMessageUpdate,
-					Message:        evt.Message,
-					AssistantEvent: &evt,
+					Type:    EventMessageStart,
+					Message: snapshotMessage(partial),
 				})
+				started = true
 			}
+			push(Event{
+				Type:           EventMessageUpdate,
+				Message:        snapshotMessage(partial),
+				AssistantEvent: &evt,
+			})
 		}
 	}
 
@@ -427,6 +436,65 @@ func streamTurn(
 	}
 
 	return finalMsg, nil
+}
+
+// accumulateEvent updates partial with the delta from evt, building up
+// the message's Content slice incrementally as provider events arrive.
+func accumulateEvent(partial *ai.Message, evt *ai.Event) {
+	switch evt.Type {
+	case ai.EventTextStart:
+		ensureContentIndex(partial, evt.ContentIndex, ai.Text{})
+	case ai.EventTextDelta:
+		ensureContentIndex(partial, evt.ContentIndex, ai.Text{})
+		if t, ok := partial.Content[evt.ContentIndex].(ai.Text); ok {
+			t.Text += evt.Delta
+			partial.Content[evt.ContentIndex] = t
+		}
+	case ai.EventTextEnd:
+		ensureContentIndex(partial, evt.ContentIndex, ai.Text{})
+		if t, ok := partial.Content[evt.ContentIndex].(ai.Text); ok {
+			t.Text = evt.Content
+			partial.Content[evt.ContentIndex] = t
+		}
+	case ai.EventThinkStart:
+		ensureContentIndex(partial, evt.ContentIndex, ai.Thinking{})
+	case ai.EventThinkDelta:
+		ensureContentIndex(partial, evt.ContentIndex, ai.Thinking{})
+		if t, ok := partial.Content[evt.ContentIndex].(ai.Thinking); ok {
+			t.Thinking += evt.Delta
+			partial.Content[evt.ContentIndex] = t
+		}
+	case ai.EventThinkEnd:
+		ensureContentIndex(partial, evt.ContentIndex, ai.Thinking{})
+		if t, ok := partial.Content[evt.ContentIndex].(ai.Thinking); ok {
+			t.Thinking = evt.Content
+			partial.Content[evt.ContentIndex] = t
+		}
+	case ai.EventToolStart:
+		ensureContentIndex(partial, evt.ContentIndex, ai.ToolCall{})
+	case ai.EventToolEnd:
+		if evt.ToolCall != nil {
+			ensureContentIndex(partial, evt.ContentIndex, ai.ToolCall{})
+			partial.Content[evt.ContentIndex] = *evt.ToolCall
+		}
+	}
+}
+
+// ensureContentIndex grows partial.Content so that index i exists,
+// using zero as fill for any gaps.
+func ensureContentIndex(m *ai.Message, i int, zero ai.Content) {
+	for len(m.Content) <= i {
+		m.Content = append(m.Content, zero)
+	}
+}
+
+// snapshotMessage returns a shallow copy of m with a copied Content slice,
+// so that later accumulation does not mutate previously published snapshots.
+func snapshotMessage(m *ai.Message) *ai.Message {
+	cp := *m
+	cp.Content = make([]ai.Content, len(m.Content))
+	copy(cp.Content, m.Content)
+	return &cp
 }
 
 // executeTools runs tool calls, emitting execution events for each.
