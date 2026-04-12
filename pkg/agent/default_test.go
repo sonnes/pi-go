@@ -65,7 +65,8 @@ func registerMock(t *testing.T, responses ...*ai.EventStream) *mockProvider {
 	return m
 }
 
-// textStream creates an [ai.EventStream] that streams a text response.
+// textStream creates an [ai.EventStream] that streams a text response
+// using realistic provider semantics: Message is only set on EventDone.
 func textStream(text string, usage ai.Usage) *ai.EventStream {
 	return ai.NewEventStream(func(push func(ai.Event)) {
 		msg := &ai.Message{
@@ -74,13 +75,15 @@ func textStream(text string, usage ai.Usage) *ai.EventStream {
 			StopReason: ai.StopReasonStop,
 			Usage:      usage,
 		}
-		push(ai.Event{Type: ai.EventStart, Message: msg})
-		push(ai.Event{Type: ai.EventTextDelta, Delta: text, Message: msg})
+		push(ai.Event{Type: ai.EventTextStart, ContentIndex: 0})
+		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: text})
+		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 0, Content: text})
 		push(ai.Event{Type: ai.EventDone, Message: msg, StopReason: ai.StopReasonStop})
 	})
 }
 
-// toolCallStream creates an [ai.EventStream] that returns tool call(s).
+// toolCallStream creates an [ai.EventStream] that returns tool call(s)
+// using realistic provider semantics: Message is only set on EventDone.
 func toolCallStream(calls []ai.ToolCall, usage ai.Usage) *ai.EventStream {
 	return ai.NewEventStream(func(push func(ai.Event)) {
 		content := make([]ai.Content, len(calls))
@@ -93,7 +96,10 @@ func toolCallStream(calls []ai.ToolCall, usage ai.Usage) *ai.EventStream {
 			StopReason: ai.StopReasonToolUse,
 			Usage:      usage,
 		}
-		push(ai.Event{Type: ai.EventStart, Message: msg})
+		for i, tc := range calls {
+			push(ai.Event{Type: ai.EventToolStart, ContentIndex: i})
+			push(ai.Event{Type: ai.EventToolEnd, ContentIndex: i, ToolCall: &tc})
+		}
 		push(ai.Event{Type: ai.EventDone, Message: msg, StopReason: ai.StopReasonToolUse})
 	})
 }
@@ -1116,4 +1122,169 @@ func TestWait_FreshAgent(t *testing.T) {
 	msgs, err := a.Wait(t.Context())
 	assert.NoError(t, err)
 	assert.Nil(t, msgs)
+}
+
+// Test: Incremental streaming — message_start fires on first delta,
+// every message_update carries a non-nil partial Message snapshot,
+// and message_end carries the final provider message.
+func TestSend_IncrementalStreamingEvents(t *testing.T) {
+	// Create a realistic multi-delta stream (Message only on EventDone).
+	stream := ai.NewEventStream(func(push func(ai.Event)) {
+		finalMsg := &ai.Message{
+			Role:       ai.RoleAssistant,
+			Content:    []ai.Content{ai.Text{Text: "Hello world"}},
+			StopReason: ai.StopReasonStop,
+			Usage:      ai.Usage{Input: 10, Output: 5, Total: 15},
+		}
+		push(ai.Event{Type: ai.EventTextStart, ContentIndex: 0})
+		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: "Hello"})
+		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: " world"})
+		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 0, Content: "Hello world"})
+		push(ai.Event{Type: ai.EventDone, Message: finalMsg, StopReason: ai.StopReasonStop})
+	})
+	registerMock(t, stream)
+
+	a := New(testModel())
+
+	events := collectEvents(t, a, func() {
+		require.NoError(t, a.Send(t.Context(), "hi"))
+	})
+
+	// Filter to assistant message events only.
+	var msgEvents []Event
+	for _, e := range events {
+		switch e.Type {
+		case EventMessageStart, EventMessageUpdate, EventMessageEnd:
+			if e.Message != nil && e.Message.Role == ai.RoleAssistant {
+				msgEvents = append(msgEvents, e)
+			}
+		}
+	}
+
+	require.NotEmpty(t, msgEvents, "should have assistant message events")
+
+	// First assistant event should be message_start with an empty-ish partial.
+	assert.Equal(t, EventMessageStart, msgEvents[0].Type)
+	require.NotNil(t, msgEvents[0].Message)
+	assert.Equal(t, ai.RoleAssistant, msgEvents[0].Message.Role)
+
+	// Every message_update should have a non-nil Message (partial snapshot).
+	for _, e := range msgEvents {
+		if e.Type == EventMessageUpdate {
+			require.NotNil(t, e.Message, "message_update must carry a non-nil Message snapshot")
+			assert.Equal(t, ai.RoleAssistant, e.Message.Role)
+		}
+	}
+
+	// Last assistant event should be message_end with the final text.
+	last := msgEvents[len(msgEvents)-1]
+	assert.Equal(t, EventMessageEnd, last.Type)
+	require.NotNil(t, last.Message)
+	assert.Equal(t, "Hello world", last.Message.Text())
+
+	// Verify partial accumulation: the last message_update before message_end
+	// should have accumulated "Hello world".
+	var lastUpdate *Event
+	for i := range msgEvents {
+		if msgEvents[i].Type == EventMessageUpdate {
+			lastUpdate = &msgEvents[i]
+		}
+	}
+	require.NotNil(t, lastUpdate)
+	assert.Equal(t, "Hello world", lastUpdate.Message.Text())
+}
+
+// Test: Multi-block streaming — thinking + text blocks accumulate correctly.
+func TestSend_MultiBlockStreaming(t *testing.T) {
+	stream := ai.NewEventStream(func(push func(ai.Event)) {
+		finalMsg := &ai.Message{
+			Role: ai.RoleAssistant,
+			Content: []ai.Content{
+				ai.Thinking{Thinking: "Let me think..."},
+				ai.Text{Text: "The answer is 42"},
+			},
+			StopReason: ai.StopReasonStop,
+		}
+		// Block 0: thinking
+		push(ai.Event{Type: ai.EventThinkStart, ContentIndex: 0})
+		push(ai.Event{Type: ai.EventThinkDelta, ContentIndex: 0, Delta: "Let me "})
+		push(ai.Event{Type: ai.EventThinkDelta, ContentIndex: 0, Delta: "think..."})
+		push(ai.Event{Type: ai.EventThinkEnd, ContentIndex: 0, Content: "Let me think..."})
+		// Block 1: text
+		push(ai.Event{Type: ai.EventTextStart, ContentIndex: 1})
+		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 1, Delta: "The answer"})
+		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 1, Delta: " is 42"})
+		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 1, Content: "The answer is 42"})
+		push(ai.Event{Type: ai.EventDone, Message: finalMsg, StopReason: ai.StopReasonStop})
+	})
+	registerMock(t, stream)
+
+	a := New(testModel())
+
+	events := collectEvents(t, a, func() {
+		require.NoError(t, a.Send(t.Context(), "think"))
+	})
+
+	// Find the last message_update before message_end for the assistant.
+	var lastUpdate *Event
+	for i := range events {
+		if events[i].Type == EventMessageUpdate &&
+			events[i].Message != nil &&
+			events[i].Message.Role == ai.RoleAssistant {
+			lastUpdate = &events[i]
+		}
+	}
+	require.NotNil(t, lastUpdate)
+
+	// Partial should have both blocks accumulated.
+	require.Len(t, lastUpdate.Message.Content, 2)
+
+	think, ok := ai.AsContent[ai.Thinking](lastUpdate.Message.Content[0])
+	require.True(t, ok)
+	assert.Equal(t, "Let me think...", think.Thinking)
+
+	text, ok := ai.AsContent[ai.Text](lastUpdate.Message.Content[1])
+	require.True(t, ok)
+	assert.Equal(t, "The answer is 42", text.Text)
+}
+
+// Test: Message snapshots are independent copies (mutation safety).
+func TestSend_SnapshotIndependence(t *testing.T) {
+	stream := ai.NewEventStream(func(push func(ai.Event)) {
+		finalMsg := &ai.Message{
+			Role:       ai.RoleAssistant,
+			Content:    []ai.Content{ai.Text{Text: "ab"}},
+			StopReason: ai.StopReasonStop,
+		}
+		push(ai.Event{Type: ai.EventTextStart, ContentIndex: 0})
+		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: "a"})
+		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: "b"})
+		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 0, Content: "ab"})
+		push(ai.Event{Type: ai.EventDone, Message: finalMsg, StopReason: ai.StopReasonStop})
+	})
+	registerMock(t, stream)
+
+	a := New(testModel())
+
+	events := collectEvents(t, a, func() {
+		require.NoError(t, a.Send(t.Context(), "hi"))
+	})
+
+	// Collect all message_update snapshots for the assistant.
+	var snapshots []*ai.Message
+	for _, e := range events {
+		if e.Type == EventMessageUpdate &&
+			e.Message != nil &&
+			e.Message.Role == ai.RoleAssistant {
+			snapshots = append(snapshots, e.Message)
+		}
+	}
+
+	require.GreaterOrEqual(t, len(snapshots), 2, "need at least 2 snapshots")
+
+	// Earlier snapshots should not be mutated by later accumulation.
+	// The first delta "a" snapshot should still show "a", not "ab".
+	firstText := snapshots[0].Text()
+	lastText := snapshots[len(snapshots)-1].Text()
+	assert.NotEqual(t, firstText, lastText, "snapshots should differ (not aliased)")
 }
