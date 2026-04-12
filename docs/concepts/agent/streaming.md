@@ -50,6 +50,17 @@ agent_start               ← backend ready; carries SessionID if available
 agent_end
 ```
 
+## Incremental message accumulation
+
+During streaming, the agent maintains a partial `ai.Message` that grows as provider deltas arrive. Every `message_update` carries two views:
+
+- **`AssistantEvent`** — the raw provider delta with `ContentIndex` and `Delta` for append-style rendering.
+- **`Message`** — an independent snapshot of the accumulated message at that point.
+
+`message_start` fires on the first non-done provider event, before any content arrives. `message_end` carries the provider's final authoritative message.
+
+Design: providers emit bare deltas (no `Message` on delta events — only `EventDone` carries the final message). The agent's `streamTurn` bridges this by accumulating content blocks incrementally.
+
 ## Event design: flat struct, not union types
 
 Go doesn't have discriminated unions. Events are a single `Event` struct with a `Type` discriminator and fields populated per type. Unused fields are zero-valued. Custom `MarshalJSON` includes only relevant fields per event type for a clean wire format.
