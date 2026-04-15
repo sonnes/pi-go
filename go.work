@@ -3,6 +3,7 @@ go 1.25.0
 use (
 	.
 	./cmd/pi
+	./pkg/agent/claude
 	./pkg/ai/provider/anthropic
 	./pkg/ai/provider/claudecli
 	./pkg/ai/provider/geminicli

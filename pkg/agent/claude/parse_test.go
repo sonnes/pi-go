@@ -2,7 +2,10 @@ package claude
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
+
+	"github.com/anthropics/anthropic-sdk-go"
 
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
@@ -35,7 +38,7 @@ func TestParseLine(t *testing.T) {
 				Result:    "Hello!",
 				SessionID: "sess-123",
 				CostUSD:   0.005,
-				Usage: &rawUsage{
+				Usage: &anthropic.Usage{
 					InputTokens:  100,
 					OutputTokens: 50,
 				},
@@ -48,7 +51,7 @@ func TestParseLine(t *testing.T) {
 				Type:    "result",
 				Subtype: "success",
 				Result:  "Hi",
-				Usage: &rawUsage{
+				Usage: &anthropic.Usage{
 					InputTokens:              100,
 					OutputTokens:             50,
 					CacheReadInputTokens:     200,
@@ -99,19 +102,17 @@ func TestParseLine(t *testing.T) {
 
 func TestToAIMessage(t *testing.T) {
 	tests := []struct {
-		name  string
-		input anthropicMessage
-		want  ai.Message
+		name    string
+		rawJSON string
+		want    ai.Message
 	}{
 		{
 			name: "text only",
-			input: anthropicMessage{
-				Role: "assistant",
-				Content: []anthropicContent{
-					{Type: "text", Text: "Hello world"},
-				},
-				StopReason: "end_turn",
-			},
+			rawJSON: `{
+				"role":"assistant",
+				"content":[{"type":"text","text":"Hello world"}],
+				"stop_reason":"end_turn"
+			}`,
 			want: ai.Message{
 				Role:       ai.RoleAssistant,
 				Content:    []ai.Content{ai.Text{Text: "Hello world"}},
@@ -120,19 +121,14 @@ func TestToAIMessage(t *testing.T) {
 		},
 		{
 			name: "tool use",
-			input: anthropicMessage{
-				Role: "assistant",
-				Content: []anthropicContent{
-					{Type: "text", Text: "Let me read that file."},
-					{
-						Type:  "tool_use",
-						ID:    "tool_1",
-						Name:  "Read",
-						Input: map[string]any{"file_path": "/tmp/foo.go"},
-					},
-				},
-				StopReason: "tool_use",
-			},
+			rawJSON: `{
+				"role":"assistant",
+				"content":[
+					{"type":"text","text":"Let me read that file."},
+					{"type":"tool_use","id":"tool_1","name":"Read","input":{"file_path":"/tmp/foo.go"}}
+				],
+				"stop_reason":"tool_use"
+			}`,
 			want: ai.Message{
 				Role: ai.RoleAssistant,
 				Content: []ai.Content{
@@ -148,19 +144,17 @@ func TestToAIMessage(t *testing.T) {
 		},
 		{
 			name: "with usage",
-			input: anthropicMessage{
-				Role: "assistant",
-				Content: []anthropicContent{
-					{Type: "text", Text: "Hi"},
-				},
-				StopReason: "end_turn",
-				Usage: &anthropicUsage{
-					InputTokens:              100,
-					OutputTokens:             50,
-					CacheReadInputTokens:     200,
-					CacheCreationInputTokens: 300,
-				},
-			},
+			rawJSON: `{
+				"role":"assistant",
+				"content":[{"type":"text","text":"Hi"}],
+				"stop_reason":"end_turn",
+				"usage":{
+					"input_tokens":100,
+					"output_tokens":50,
+					"cache_read_input_tokens":200,
+					"cache_creation_input_tokens":300
+				}
+			}`,
 			want: ai.Message{
 				Role:       ai.RoleAssistant,
 				Content:    []ai.Content{ai.Text{Text: "Hi"}},
@@ -176,14 +170,14 @@ func TestToAIMessage(t *testing.T) {
 		},
 		{
 			name: "thinking content",
-			input: anthropicMessage{
-				Role: "assistant",
-				Content: []anthropicContent{
-					{Type: "thinking", Thinking: "Let me think..."},
-					{Type: "text", Text: "The answer is 42."},
-				},
-				StopReason: "end_turn",
-			},
+			rawJSON: `{
+				"role":"assistant",
+				"content":[
+					{"type":"thinking","thinking":"Let me think..."},
+					{"type":"text","text":"The answer is 42."}
+				],
+				"stop_reason":"end_turn"
+			}`,
 			want: ai.Message{
 				Role: ai.RoleAssistant,
 				Content: []ai.Content{
@@ -195,14 +189,14 @@ func TestToAIMessage(t *testing.T) {
 		},
 		{
 			name: "unknown content type skipped",
-			input: anthropicMessage{
-				Role: "assistant",
-				Content: []anthropicContent{
-					{Type: "text", Text: "Hello"},
-					{Type: "server_tool_use"},
-				},
-				StopReason: "end_turn",
-			},
+			rawJSON: `{
+				"role":"assistant",
+				"content":[
+					{"type":"text","text":"Hello"},
+					{"type":"server_tool_use"}
+				],
+				"stop_reason":"end_turn"
+			}`,
 			want: ai.Message{
 				Role:       ai.RoleAssistant,
 				Content:    []ai.Content{ai.Text{Text: "Hello"}},
@@ -210,8 +204,8 @@ func TestToAIMessage(t *testing.T) {
 			},
 		},
 		{
-			name:  "empty message",
-			input: anthropicMessage{Role: "assistant", StopReason: "end_turn"},
+			name:    "empty message",
+			rawJSON: `{"role":"assistant","content":[],"stop_reason":"end_turn"}`,
 			want: ai.Message{
 				Role:       ai.RoleAssistant,
 				StopReason: ai.StopReasonStop,
@@ -221,7 +215,10 @@ func TestToAIMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := toAIMessage(tt.input)
+			var msg anthropic.Message
+			require.NoError(t, json.Unmarshal([]byte(tt.rawJSON), &msg))
+
+			got := toAIMessage(msg)
 			assert.Equal(t, tt.want.Role, got.Role)
 			assert.Equal(t, tt.want.StopReason, got.StopReason)
 			assert.Equal(t, tt.want.Usage, got.Usage)
@@ -358,7 +355,7 @@ func TestMapper_Usage(t *testing.T) {
 		Type:    "result",
 		Subtype: "success",
 		Result:  "Hello!",
-		Usage: &rawUsage{
+		Usage: &anthropic.Usage{
 			InputTokens:  100,
 			OutputTokens: 50,
 		},
@@ -526,7 +523,7 @@ func TestMapper_ResultCostUSD(t *testing.T) {
 		Type:    "result",
 		Subtype: "success",
 		CostUSD: 0.0042,
-		Usage: &rawUsage{
+		Usage: &anthropic.Usage{
 			InputTokens:  100,
 			OutputTokens: 50,
 		},
@@ -550,7 +547,7 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 		Type:    "result",
 		Subtype: "success",
 		Result:  "It's a Go file.",
-		Usage:   &rawUsage{InputTokens: 500, OutputTokens: 50},
+		Usage:   &anthropic.Usage{InputTokens: 500, OutputTokens: 50},
 		CostUSD: 0.001,
 	})
 
@@ -590,8 +587,6 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 	assert.InDelta(t, 0.001, m.usage.Cost.Total, 0.0001)
 }
 
-// --- helpers ---
-
 func TestMapper_UserToolResultArrayContent(t *testing.T) {
 	// Real Claude Code emits tool_result.content as an array of
 	// {type:"text", text:"..."} objects, not a plain string.
@@ -612,7 +607,6 @@ func TestMapper_UserToolResultArrayContent(t *testing.T) {
 
 	events := m.handleLine(line)
 
-	// Should parse array content correctly.
 	require.NotEmpty(t, events)
 	assert.Equal(t, agent.EventToolExecutionEnd, events[0].Type)
 	assert.Equal(t, "first chunk second chunk", events[0].Result)
@@ -622,7 +616,6 @@ func TestMapper_UserToolResultArrayContent(t *testing.T) {
 }
 
 func TestMapper_UserToolResultStringContent(t *testing.T) {
-	// Some tool results use plain string content.
 	m := &parser{}
 
 	line, err := parseLine([]byte(`{
@@ -640,63 +633,38 @@ func TestMapper_UserToolResultStringContent(t *testing.T) {
 	assert.Equal(t, "plain string result", events[0].Result)
 }
 
-func makeUserToolResultLine(t *testing.T, toolUseID, content string) rawLine {
-	t.Helper()
-	msg := struct {
-		Content []struct {
-			Type      string `json:"type"`
-			ToolUseID string `json:"tool_use_id"`
-			Content   string `json:"content"`
-		} `json:"content"`
-	}{
-		Content: []struct {
-			Type      string `json:"type"`
-			ToolUseID string `json:"tool_use_id"`
-			Content   string `json:"content"`
-		}{
-			{Type: "tool_result", ToolUseID: toolUseID, Content: content},
-		},
-	}
-	return rawLine{
-		Type:    "user",
-		Message: mustMarshal(t, msg),
-	}
-}
+// --- helpers ---
 
+// makeAssistantLine builds a type:"assistant" rawLine whose embedded
+// message is the given text wrapped as an Anthropic content block.
 func makeAssistantLine(t *testing.T, text, stopReason string) rawLine {
 	t.Helper()
-	msg := anthropicMessage{
-		Role: "assistant",
-		Content: []anthropicContent{
-			{Type: "text", Text: text},
-		},
-		StopReason: stopReason,
-	}
-	return rawLine{
-		Type:    "assistant",
-		Message: mustMarshal(t, msg),
-	}
+	body := fmt.Sprintf(
+		`{"role":"assistant","content":[{"type":"text","text":%q}],"stop_reason":%q}`,
+		text, stopReason,
+	)
+	return rawLine{Type: "assistant", Message: json.RawMessage(body)}
 }
 
+// makeAssistantWithToolLine builds an assistant rawLine containing both
+// a text block and a tool_use block.
 func makeAssistantWithToolLine(t *testing.T, text, toolName, stopReason string) rawLine {
 	t.Helper()
-	msg := anthropicMessage{
-		Role: "assistant",
-		Content: []anthropicContent{
-			{Type: "text", Text: text},
-			{Type: "tool_use", ID: "t1", Name: toolName, Input: map[string]any{}},
-		},
-		StopReason: stopReason,
-	}
-	return rawLine{
-		Type:    "assistant",
-		Message: mustMarshal(t, msg),
-	}
+	body := fmt.Sprintf(
+		`{"role":"assistant","content":[`+
+			`{"type":"text","text":%q},`+
+			`{"type":"tool_use","id":"t1","name":%q,"input":{}}`+
+			`],"stop_reason":%q}`,
+		text, toolName, stopReason,
+	)
+	return rawLine{Type: "assistant", Message: json.RawMessage(body)}
 }
 
-func mustMarshal(t *testing.T, v any) []byte {
+func makeUserToolResultLine(t *testing.T, toolUseID, content string) rawLine {
 	t.Helper()
-	data, err := json.Marshal(v)
-	require.NoError(t, err)
-	return data
+	body := fmt.Sprintf(
+		`{"content":[{"type":"tool_result","tool_use_id":%q,"content":%q}]}`,
+		toolUseID, content,
+	)
+	return rawLine{Type: "user", Message: json.RawMessage(body)}
 }

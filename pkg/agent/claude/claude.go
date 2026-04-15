@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"io"
 	"sync"
 
 	"github.com/sonnes/pi-go/pkg/agent"
@@ -13,14 +12,15 @@ import (
 )
 
 // Agent implements [agent.Agent] by delegating the entire agent loop
-// to a Claude Code CLI subprocess. Each [Agent.Send] or [Agent.Continue]
-// spawns a new `claude --print` process.
+// to a long-lived Claude Code CLI subprocess. The subprocess is started
+// lazily on first [Agent.Send] with `--input-format stream-json` and
+// serves many turns: each Send writes one SDKUserMessage to stdin and
+// blocks until the CLI emits the corresponding result line.
 type Agent struct {
 	cfg config
 
-	// sendFn is the function that spawns a subprocess and returns stdout.
-	// Defaults to Agent.send; overridden in tests.
-	sendFn func(ctx context.Context, args sendArgs) (io.ReadCloser, func() error, error)
+	// newTransport is the factory for the CLI subprocess. Overridden in tests.
+	newTransport func(ctx context.Context, cfg config) (transportIface, error)
 
 	broker *pubsub.Broker[agent.Event]
 
@@ -30,6 +30,24 @@ type Agent struct {
 	lastMsgs  []ai.Message
 	sessionID string
 	messages  []agent.Message
+	err       error
+
+	// transport is the active subprocess, created on first Send.
+	transport transportIface
+	// readerDone closes when the stdout reader goroutine exits.
+	readerDone chan struct{}
+	// turnDone receives the end-of-turn signal from the reader for each Send.
+	// Set by run() before writing and consumed before returning from the
+	// background goroutine.
+	turnDone chan turnResult
+}
+
+// turnResult carries per-turn accumulated state from the reader to the
+// Send goroutine.
+type turnResult struct {
+	messages  []ai.Message
+	usage     ai.Usage
+	sessionID string
 	err       error
 }
 
@@ -48,22 +66,24 @@ func New(opts ...Option) *Agent {
 	copy(msgs, cfg.history)
 
 	a := &Agent{
-		cfg:       cfg,
-		broker:    pubsub.NewBroker[agent.Event](pubsub.WithBlockingPublish()),
-		sessionID: cfg.sessionID,
-		messages:  msgs,
+		cfg:          cfg,
+		newTransport: newTransport,
+		broker:       pubsub.NewBroker[agent.Event](pubsub.WithBlockingPublish()),
+		sessionID:    cfg.sessionID,
+		messages:     msgs,
 	}
-	a.sendFn = a.send
 	return a
 }
 
-// Send adds a user message and runs the subprocess.
+// Send adds a user message and runs one turn on the persistent subprocess.
 func (a *Agent) Send(ctx context.Context, input string) error {
-	return a.run(ctx, input, false)
+	return a.sendUser(ctx, ai.UserMessage(input))
 }
 
-// SendMessages adds messages and runs the subprocess.
-// Only the text from the last user message is sent as the prompt.
+// SendMessages appends messages to history and sends the most recent user
+// message (with its full content blocks) through the subprocess. Non-user
+// messages are retained in history but not forwarded — the CLI owns its
+// own context via --resume.
 func (a *Agent) SendMessages(
 	ctx context.Context,
 	msgs ...agent.Message,
@@ -72,30 +92,24 @@ func (a *Agent) SendMessages(
 	a.messages = append(a.messages, msgs...)
 	a.mu.Unlock()
 
-	var prompt string
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if lm, ok := agent.AsLLMMessage(msgs[i]); ok {
 			if lm.Message.Role == ai.RoleUser {
-				prompt = lm.Message.Text()
-				break
+				return a.runTurn(ctx, lm.Message)
 			}
 		}
 	}
 
-	return a.run(ctx, prompt, false)
+	return errors.New("claude: SendMessages requires at least one user message")
 }
 
-// Continue resumes from the current session without adding new messages.
+// Continue is not supported in stream-json mode. Use [WithSessionID]
+// combined with [Agent.Send] to resume a prior conversation.
 func (a *Agent) Continue(ctx context.Context) error {
-	a.mu.Lock()
-	sid := a.sessionID
-	a.mu.Unlock()
-
-	if sid == "" {
-		return errors.New("claude: no session to resume")
-	}
-
-	return a.run(ctx, "", true)
+	return errors.New(
+		"claude: Continue is not supported in stream-json mode; " +
+			"use WithSessionID + Send to resume",
+	)
 }
 
 // Subscribe returns a channel of agent events. Each call creates an
@@ -107,9 +121,8 @@ func (a *Agent) Subscribe(
 	return a.broker.Subscribe(ctx, opts...)
 }
 
-// Wait blocks until the current subprocess completes and returns
-// all new messages produced during the run. If the agent is not
-// running, Wait returns the result of the last completed run.
+// Wait blocks until the current turn completes and returns all new
+// messages produced during that turn.
 func (a *Agent) Wait(ctx context.Context) ([]ai.Message, error) {
 	a.mu.Lock()
 	if !a.running {
@@ -131,10 +144,22 @@ func (a *Agent) Wait(ctx context.Context) ([]ai.Message, error) {
 	}
 }
 
-// Messages returns a copy of the current conversation history.
-// Close shuts down the agent's event broker, closing all subscriber
-// channels. Subsequent calls to [Agent.Subscribe] return closed channels.
+// Close shuts down the subprocess and the event broker. Subsequent calls
+// to [Agent.Subscribe] return closed channels.
 func (a *Agent) Close() {
+	a.mu.Lock()
+	t := a.transport
+	a.transport = nil
+	readerDone := a.readerDone
+	a.mu.Unlock()
+
+	if t != nil {
+		_ = t.close()
+	}
+	if readerDone != nil {
+		<-readerDone
+	}
+
 	a.broker.Shutdown()
 }
 
@@ -150,7 +175,7 @@ func (a *Agent) Messages() []agent.Message {
 	return out
 }
 
-// IsRunning reports whether the subprocess is currently executing.
+// IsRunning reports whether a turn is currently executing.
 func (a *Agent) IsRunning() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -165,18 +190,31 @@ func (a *Agent) Err() error {
 }
 
 // SessionID returns the session ID captured from the subprocess.
-// Can be used with [WithSessionID] to resume across Agent instances.
 func (a *Agent) SessionID() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.sessionID
 }
 
-// run is the core method. It acquires the mutex, spawns the subprocess,
-// and publishes events to the agent's broker as NDJSON lines arrive.
-func (a *Agent) run(ctx context.Context, prompt string, resume bool) error {
+// sendUser wraps a text input into a user message and runs one turn.
+func (a *Agent) sendUser(ctx context.Context, msg ai.Message) error {
 	a.mu.Lock()
+	a.messages = append(a.messages, agent.NewLLMMessage(msg))
+	a.mu.Unlock()
 
+	return a.runTurn(ctx, msg)
+}
+
+// runTurn starts the subprocess if needed, writes one user line, and spawns
+// a goroutine that waits for the turn-end signal from the reader. Callers
+// must have already appended the user message to [Agent.messages].
+func (a *Agent) runTurn(ctx context.Context, userMsg ai.Message) error {
+	line, err := buildUserLine(userMsg)
+	if err != nil {
+		return err
+	}
+
+	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
 		return errors.New("claude: already running")
@@ -186,117 +224,126 @@ func (a *Agent) run(ctx context.Context, prompt string, resume bool) error {
 	a.err = nil
 	a.lastMsgs = nil
 	a.done = make(chan struct{})
-
-	var inputMsgs []agent.Message
-	if prompt != "" && !resume {
-		userMsg := agent.NewLLMMessage(ai.UserMessage(prompt))
-		a.messages = append(a.messages, userMsg)
-		inputMsgs = append(inputMsgs, userMsg)
-	}
-
-	sid := a.sessionID
+	turnCh := make(chan turnResult, 1)
+	a.turnDone = turnCh
 	a.mu.Unlock()
 
-	var sessionID string
-	publish := a.broker.Publish
-	push := func(evt agent.Event) {
-		if evt.Type == agent.EventAgentStart && evt.SessionID != "" {
-			sessionID = evt.SessionID
-		}
-		publish(evt)
+	if err := a.ensureTransport(ctx); err != nil {
+		a.finishTurn(turnResult{err: err})
+		return nil
 	}
 
-	go func() {
-		defer a.stop()
+	publish := a.broker.Publish
 
-		for _, m := range inputMsgs {
-			if lm, ok := agent.AsLLMMessage(m); ok {
-				push(agent.Event{
-					Type:    agent.EventMessageStart,
-					Message: &lm.Message,
-				})
-				push(agent.Event{
-					Type:    agent.EventMessageEnd,
-					Message: &lm.Message,
-				})
-			}
-		}
+	// Emit the user message start/end so consumers see the input turn.
+	publish(agent.Event{Type: agent.EventMessageStart, Message: &userMsg})
+	publish(agent.Event{Type: agent.EventMessageEnd, Message: &userMsg})
+	// AgentStart fires once per Send so event consumers can bracket each turn.
+	a.mu.Lock()
+	sid := a.sessionID
+	a.mu.Unlock()
+	publish(agent.Event{Type: agent.EventAgentStart, SessionID: sid})
 
-		args := sendArgs{
-			prompt:    prompt,
-			sessionID: sid,
-			resume:    resume,
-		}
+	if err := a.transport.writeUserMessage(line); err != nil {
+		a.finishTurn(turnResult{err: err})
+		return nil
+	}
 
-		stdout, cleanup, err := a.sendFn(ctx, args)
-		if err != nil {
-			a.setErr(err)
-			push(agent.Event{Type: agent.EventAgentEnd, Err: err})
-			return
-		}
-
-		m, loopErr := a.processOutput(push, stdout)
-		cleanupErr := cleanup()
-
-		if loopErr == nil {
-			loopErr = m.err
-		}
-		if loopErr == nil {
-			loopErr = cleanupErr
-		}
-
-		a.mu.Lock()
-		if sessionID != "" {
-			a.sessionID = sessionID
-		}
-		for _, msg := range m.messages {
-			a.messages = append(a.messages, agent.NewLLMMessage(msg))
-		}
-		a.lastMsgs = m.messages
-		a.err = loopErr
-		a.mu.Unlock()
-
-		push(agent.Event{
-			Type:     agent.EventAgentEnd,
-			Messages: m.messages,
-			Usage:    m.usage,
-			Err:      loopErr,
-		})
-	}()
+	go a.awaitTurn(ctx, turnCh)
 
 	return nil
 }
 
-// stop marks the agent as no longer running and signals [Wait].
-func (a *Agent) stop() {
+// awaitTurn blocks until the reader signals turn-end (or the subprocess dies
+// or ctx is cancelled), then finalizes the turn.
+func (a *Agent) awaitTurn(ctx context.Context, turnCh <-chan turnResult) {
 	a.mu.Lock()
+	t := a.transport
+	a.mu.Unlock()
+
+	var result turnResult
+
+	select {
+	case result = <-turnCh:
+	case <-t.exited():
+		if e := t.exitErr(); e != nil {
+			result.err = e
+		} else {
+			result.err = errors.New("claude: subprocess exited before turn completed")
+		}
+	case <-ctx.Done():
+		result.err = ctx.Err()
+	}
+
+	a.finishTurn(result)
+}
+
+// finishTurn updates agent state, appends new messages to history, and
+// publishes EventAgentEnd.
+func (a *Agent) finishTurn(result turnResult) {
+	a.mu.Lock()
+	if result.sessionID != "" {
+		a.sessionID = result.sessionID
+	}
+	for _, msg := range result.messages {
+		a.messages = append(a.messages, agent.NewLLMMessage(msg))
+	}
+	a.lastMsgs = result.messages
+	a.err = result.err
+	a.turnDone = nil
 	a.running = false
 	done := a.done
 	a.mu.Unlock()
+
+	a.broker.Publish(agent.Event{
+		Type:     agent.EventAgentEnd,
+		Messages: result.messages,
+		Usage:    result.usage,
+		Err:      result.err,
+	})
+
 	if done != nil {
 		close(done)
 	}
 }
 
-// setErr stores an error under the mutex.
-func (a *Agent) setErr(err error) {
+// ensureTransport lazily starts the subprocess and reader goroutine.
+func (a *Agent) ensureTransport(ctx context.Context) error {
 	a.mu.Lock()
-	a.err = err
+	if a.transport != nil {
+		a.mu.Unlock()
+		return nil
+	}
 	a.mu.Unlock()
+
+	t, err := a.newTransport(ctx, a.cfg)
+	if err != nil {
+		return err
+	}
+
+	a.mu.Lock()
+	a.transport = t
+	a.readerDone = make(chan struct{})
+	a.mu.Unlock()
+
+	go a.readLoop(t, a.readerDone)
+
+	return nil
 }
 
-const maxLineSize = 10 * 1024 * 1024 // 10MB
+const maxLineSize = 10 * 1024 * 1024 // 10 MB
 
-// processOutput reads NDJSON lines from the subprocess stdout and
-// pushes agent events. Returns accumulated state (session ID, messages, usage).
-func (a *Agent) processOutput(
-	push func(agent.Event),
-	stdout interface{ Read([]byte) (int, error) },
-) (*parser, error) {
-	scanner := bufio.NewScanner(stdout)
+// readLoop scans NDJSON lines from the subprocess, feeds them through a
+// per-turn [parser], and publishes events. On each `result` line, the
+// accumulated per-turn state is sent to the current turnDone channel.
+func (a *Agent) readLoop(t transportIface, done chan struct{}) {
+	defer close(done)
+
+	scanner := bufio.NewScanner(t.stdout())
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
-	m := &parser{}
+	p := &parser{}
+	var turnSessionID string
 
 	for scanner.Scan() {
 		line, err := parseLine(scanner.Bytes())
@@ -304,14 +351,55 @@ func (a *Agent) processOutput(
 			continue
 		}
 
-		for _, evt := range m.handleLine(line) {
-			push(evt)
+		if line.Type == "system" && line.Subtype == "init" {
+			if line.SessionID != "" {
+				turnSessionID = line.SessionID
+				a.mu.Lock()
+				if a.sessionID == "" {
+					a.sessionID = line.SessionID
+				}
+				a.mu.Unlock()
+			}
+			// Skip parser dispatch: runTurn emits AgentStart per turn so the
+			// event is consistent on every send, not just the first.
+			continue
+		}
+
+		for _, evt := range p.handleLine(line) {
+			a.broker.Publish(evt)
+		}
+
+		if line.Type == "result" {
+			a.deliverTurn(turnResult{
+				messages:  p.messages,
+				usage:     p.usage,
+				sessionID: turnSessionID,
+				err:       p.err,
+			})
+			p = &parser{}
+			turnSessionID = ""
 		}
 	}
 
+	// Scanner exited — subprocess closed stdout.
 	if err := scanner.Err(); err != nil {
-		return m, err
+		a.deliverTurn(turnResult{err: err})
 	}
+}
 
-	return m, nil
+// deliverTurn forwards a turn result to the currently-waiting Send, if any.
+// The turnDone channel is buffered size 1 so the send never blocks; if no
+// Send is waiting the result is simply dropped (e.g. a spurious result line
+// outside of a turn, or a result arriving after ctx cancellation).
+func (a *Agent) deliverTurn(result turnResult) {
+	a.mu.Lock()
+	ch := a.turnDone
+	a.mu.Unlock()
+	if ch == nil {
+		return
+	}
+	select {
+	case ch <- result:
+	default:
+	}
 }

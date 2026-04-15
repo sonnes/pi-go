@@ -7,183 +7,87 @@ import (
 )
 
 func TestBuildArgs(t *testing.T) {
+	base := []string{
+		"--print",
+		"--input-format", "stream-json",
+		"--output-format", "stream-json",
+		"--verbose",
+	}
+
 	tests := []struct {
 		name string
 		cfg  config
-		args sendArgs
 		want []string
 	}{
 		{
-			name: "simple prompt",
+			name: "defaults only",
 			cfg:  config{cliPath: "claude"},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"hello",
-			},
+			want: base,
 		},
 		{
 			name: "with model",
 			cfg:  config{cliPath: "claude", model: "opus"},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--model", "opus",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--model", "opus"),
 		},
 		{
 			name: "with allowed tools",
 			cfg:  config{cliPath: "claude", allowedTools: []string{"Read", "Edit", "Bash"}},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--allowedTools", "Read,Edit,Bash",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--allowedTools", "Read,Edit,Bash"),
 		},
 		{
 			name: "with tools",
 			cfg:  config{cliPath: "claude", tools: []string{"Bash", "Read"}},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--tools", "Bash,Read",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--tools", "Bash,Read"),
 		},
 		{
 			name: "with tools empty disables all",
 			cfg:  config{cliPath: "claude", tools: []string{}, toolsSet: true},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--tools", "",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--tools", ""),
 		},
 		{
 			name: "with disallowed tools",
 			cfg:  config{cliPath: "claude", disallowedTools: []string{"Bash(rm:*)", "Write"}},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--disallowedTools", "Bash(rm:*),Write",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--disallowedTools", "Bash(rm:*),Write"),
 		},
 		{
 			name: "with max turns",
 			cfg:  config{cliPath: "claude", maxTurns: 5},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--max-turns", "5",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--max-turns", "5"),
 		},
 		{
 			name: "with add dirs",
 			cfg:  config{cliPath: "claude", addDirs: []string{"/a", "/b"}},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--add-dir", "/a",
-				"--add-dir", "/b",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--add-dir", "/a", "--add-dir", "/b"),
 		},
 		{
-			name: "resume with session ID",
-			cfg:  config{cliPath: "claude"},
-			args: sendArgs{resume: true, sessionID: "sess-123"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--resume", "sess-123",
-			},
-		},
-		{
-			name: "resume with prompt continues",
-			cfg:  config{cliPath: "claude"},
-			args: sendArgs{prompt: "continue this", resume: true, sessionID: "sess-123"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--resume", "sess-123",
-				"continue this",
-			},
+			name: "with session ID resumes",
+			cfg:  config{cliPath: "claude", sessionID: "sess-123"},
+			want: append(append([]string{}, base...), "--resume", "sess-123"),
 		},
 		{
 			name: "with agent",
 			cfg:  config{cliPath: "claude", agent: "reviewer"},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--agent", "reviewer",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--agent", "reviewer"),
 		},
 		{
 			name: "with system prompt",
 			cfg:  config{cliPath: "claude", systemPrompt: "be terse"},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--system-prompt", "be terse",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--system-prompt", "be terse"),
 		},
 		{
 			name: "with agents",
 			cfg: config{
 				cliPath: "claude",
-				agents: map[string]AgentDef{
-					"reviewer": {Description: "d", Prompt: "p"},
-				},
+				agents:  map[string]AgentDef{"reviewer": {Description: "d", Prompt: "p"}},
 			},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
+			want: append(append([]string{}, base...),
 				"--agents", `{"reviewer":{"description":"d","prompt":"p"}}`,
-				"hello",
-			},
+			),
 		},
 		{
 			name: "with append system prompt",
 			cfg:  config{cliPath: "claude", appendSystemPrompt: "also be kind"},
-			args: sendArgs{prompt: "hello"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--append-system-prompt", "also be kind",
-				"hello",
-			},
+			want: append(append([]string{}, base...), "--append-system-prompt", "also be kind"),
 		},
 		{
 			name: "all options",
@@ -199,12 +103,9 @@ func TestBuildArgs(t *testing.T) {
 				agents:             map[string]AgentDef{"x": {Description: "xd", Prompt: "xp"}},
 				systemPrompt:       "sys",
 				appendSystemPrompt: "more",
+				sessionID:          "sess-abc",
 			},
-			args: sendArgs{prompt: "go"},
-			want: []string{
-				"--print",
-				"--output-format", "stream-json",
-				"--verbose",
+			want: append(append([]string{}, base...),
 				"--model", "sonnet",
 				"--allowedTools", "Read",
 				"--tools", "Bash,Edit",
@@ -215,14 +116,14 @@ func TestBuildArgs(t *testing.T) {
 				"--agents", `{"x":{"description":"xd","prompt":"xp"}}`,
 				"--system-prompt", "sys",
 				"--append-system-prompt", "more",
-				"go",
-			},
+				"--resume", "sess-abc",
+			),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildArgs(tt.cfg, tt.args)
+			got := buildArgs(tt.cfg)
 			assert.Equal(t, tt.want, got)
 		})
 	}
