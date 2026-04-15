@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/openai/openai-go v1.12.0
 	github.com/sonnes/pi-go v0.0.0
+	github.com/sonnes/pi-go/pkg/agent/claude v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/claudecli v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/geminicli v0.0.0
@@ -18,7 +19,7 @@ require (
 	cloud.google.com/go v0.116.0 // indirect
 	cloud.google.com/go/auth v0.9.3 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.20.0 // indirect
+	github.com/anthropics/anthropic-sdk-go v1.36.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
 	github.com/charmbracelet/lipgloss v1.1.0 // indirect
@@ -50,6 +51,7 @@ require (
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/net v0.41.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	google.golang.org/genai v1.44.0 // indirect
@@ -61,6 +63,7 @@ require (
 
 replace (
 	github.com/sonnes/pi-go => ../..
+	github.com/sonnes/pi-go/pkg/agent/claude => ../../pkg/agent/claude
 	github.com/sonnes/pi-go/pkg/ai/provider/anthropic => ../../pkg/ai/provider/anthropic
 	github.com/sonnes/pi-go/pkg/ai/provider/claudecli => ../../pkg/ai/provider/claudecli
 	github.com/sonnes/pi-go/pkg/ai/provider/geminicli => ../../pkg/ai/provider/geminicli
