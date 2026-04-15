@@ -31,6 +31,17 @@ The agent manages an agentic conversation loop: prompt assembly → model infere
 
 All entry points return `error` for immediate failures (e.g. already running). Events flow through `Subscribe(ctx)`. See [Streaming](/concepts/agent/streaming).
 
+## Claude CLI subprocess agent
+
+`pkg/agent/claude` provides an alternative `Agent` that delegates the whole loop to a long-lived `claude --print` subprocess. It starts the CLI lazily on first `Send` with `--input-format stream-json --output-format stream-json` and stays alive across turns: each `Send` writes one `SDKUserMessage` NDJSON line to stdin and blocks until the corresponding `result` line arrives.
+
+Design:
+
+- **Persistent subprocess.** Holding the process open amortizes startup cost across many turns and keeps session state hot inside the CLI.
+- **Rich content input.** `SendMessages` forwards the last user message's full content blocks (text + images) as an Anthropic content block array — no prompt-length ceiling and no loss of fidelity.
+- **`Continue` is not supported.** Stream-json mode has no "empty turn" concept. To resume a prior conversation, construct a new agent with `WithSessionID` and call `Send` with the next user input; `--resume` is passed at subprocess launch.
+- **`Close` tears down the subprocess.** Closing stdin gives the CLI a chance to drain before `SIGINT`/`SIGKILL` fallback.
+
 ## Agent interface
 
 `Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. The interface embeds `pubsub.Subscriber[Event]` so consumers can subscribe to events. It includes `Wait()` for blocking completion, plus `Messages()`, `IsRunning()`, and `Err()` for state observation. `Default` is the standard implementation. `Factory` is a function type for constructing agents.
