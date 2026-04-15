@@ -151,12 +151,31 @@ func (b *Broker[T]) Publish(payload T) {
 	b.mu.Unlock()
 
 	for _, sub := range subs {
-		select {
-		case sub <- event:
-		case <-b.done:
+		if brokerDone := b.sendBlocking(sub, event); brokerDone {
 			return
 		}
 	}
+}
+
+// sendBlocking sends event to sub, blocking until the send succeeds or the
+// broker shuts down. Returns true only if the broker shut down.
+//
+// It recovers from a closed-channel panic, which occurs when a subscriber's
+// context is canceled between the subscriber-list snapshot and this send.
+// That case is treated as "subscriber gone, skip" — the broker is still live.
+func (b *Broker[T]) sendBlocking(sub chan Event[T], event Event[T]) (brokerDone bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			// sub was closed (subscriber context was canceled); skip it.
+			brokerDone = false
+		}
+	}()
+	select {
+	case sub <- event:
+	case <-b.done:
+		brokerDone = true
+	}
+	return
 }
 
 // Shutdown gracefully shuts down the broker.

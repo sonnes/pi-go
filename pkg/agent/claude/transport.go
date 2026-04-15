@@ -3,6 +3,7 @@ package claude
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -101,11 +102,31 @@ func buildArgs(cfg config, args sendArgs) []string {
 	if len(cfg.allowedTools) > 0 {
 		a = append(a, "--allowedTools", strings.Join(cfg.allowedTools, ","))
 	}
+	if cfg.toolsSet || len(cfg.tools) > 0 {
+		a = append(a, "--tools", strings.Join(cfg.tools, ","))
+	}
+	if len(cfg.disallowedTools) > 0 {
+		a = append(a, "--disallowedTools", strings.Join(cfg.disallowedTools, ","))
+	}
 	if cfg.maxTurns > 0 {
 		a = append(a, "--max-turns", strconv.Itoa(cfg.maxTurns))
 	}
 	for _, dir := range cfg.addDirs {
 		a = append(a, "--add-dir", dir)
+	}
+	if cfg.agent != "" {
+		a = append(a, "--agent", cfg.agent)
+	}
+	if len(cfg.agents) > 0 {
+		if b, err := json.Marshal(cfg.agents); err == nil {
+			a = append(a, "--agents", string(b))
+		}
+	}
+	if cfg.systemPrompt != "" {
+		a = append(a, "--system-prompt", cfg.systemPrompt)
+	}
+	if cfg.appendSystemPrompt != "" {
+		a = append(a, "--append-system-prompt", cfg.appendSystemPrompt)
 	}
 	if args.resume && args.sessionID != "" {
 		a = append(a, "--resume", args.sessionID)
