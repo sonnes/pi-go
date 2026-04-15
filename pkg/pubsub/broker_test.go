@@ -522,6 +522,77 @@ func TestBroker_Publish_Blocking_ShutdownUnblocks(t *testing.T) {
 	}
 }
 
+func TestBroker_Publish_Blocking_ContextCancelDoesNotPanic(t *testing.T) {
+	// Regression test: canceling a subscriber's context while Publish is
+	// blocked on that subscriber's channel must not panic with
+	// "send on closed channel". The canceled subscriber should be skipped
+	// and the publish should complete normally.
+	broker := NewBroker[string](
+		WithBufferSize(1),
+		WithBlockingPublish(),
+	)
+	defer broker.Shutdown()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	broker.Subscribe(ctx)
+
+	// Fill the subscriber's buffer so the next Publish will block.
+	broker.Publish("fill")
+
+	// Start a publish that will block waiting for the subscriber to drain.
+	publishDone := make(chan struct{})
+	go func() {
+		broker.Publish("blocked")
+		close(publishDone)
+	}()
+
+	// Give the goroutine a moment to enter the blocked select in Publish.
+	time.Sleep(20 * time.Millisecond)
+
+	// Cancel the subscriber's context. This closes the subscriber channel
+	// while Publish is blocked trying to send to it — the race that caused
+	// "send on closed channel" panics.
+	cancel()
+
+	select {
+	case <-publishDone:
+		// Success — Publish returned without panicking.
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Publish did not return after subscriber context cancel")
+	}
+}
+
+func TestBroker_Publish_Blocking_ContextCancelSkipsSubscriber(t *testing.T) {
+	// When one subscriber's context is canceled mid-publish, the remaining
+	// subscribers must still receive the event.
+	broker := NewBroker[string](
+		WithBufferSize(2),
+		WithBlockingPublish(),
+	)
+	defer broker.Shutdown()
+
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	stableCtx := t.Context()
+
+	broker.Subscribe(cancelCtx)
+	stable := broker.Subscribe(stableCtx)
+
+	// Cancel the first subscriber before publishing.
+	cancel()
+	time.Sleep(20 * time.Millisecond) // let the unsubscribe goroutine run
+
+	// Publish should reach the stable subscriber without panicking.
+	broker.Publish("hello")
+
+	select {
+	case event := <-stable:
+		assert.Equal(t, "hello", event.Payload())
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("stable subscriber did not receive event")
+	}
+}
+
 func TestEvent_Timestamp(t *testing.T) {
 	before := time.Now()
 	broker := NewBroker[string](WithMaxEvents(10))
