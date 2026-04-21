@@ -120,11 +120,11 @@ func createAgent(mode, model string, turns int, tools, provider string) (agent.A
 }
 
 func createClaudeAgent(model string, turns int, tools string) agent.Agent {
-	opts := []claude.Option{
-		claude.WithModel(model),
+	opts := []agent.Option{
+		agent.WithModelName(model),
 	}
 	if turns > 0 {
-		opts = append(opts, claude.WithMaxTurns(turns))
+		opts = append(opts, agent.WithMaxTurns(turns))
 	}
 	if tools != "" {
 		opts = append(opts, claude.WithAllowedTools(strings.Split(tools, ",")...))
@@ -238,12 +238,12 @@ func createAPIAgent(model string, turns int, providerHint string) (agent.Agent, 
 		Provider: name,
 	}
 
-	var opts []agent.Option
+	opts := []agent.Option{agent.WithModel(m)}
 	if turns > 0 {
 		opts = append(opts, agent.WithMaxTurns(turns))
 	}
 
-	return agent.New(m, opts...), nil
+	return agent.New(opts...), nil
 }
 
 // isAnthropicOAuthToken reports whether token is an Anthropic OAuth
