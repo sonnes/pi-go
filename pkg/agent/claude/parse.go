@@ -163,6 +163,14 @@ type parser struct {
 	err         error
 	inTurn      bool        // true when a turn is open (TurnStart emitted, TurnEnd not yet)
 	turnMsg     *ai.Message // the assistant message for the current open turn
+
+	// Per-line usage reported on assistant lines is a streaming snapshot
+	// (typically input_tokens only, output_tokens=0). The authoritative
+	// usage arrives on the final result line, so MessageEnd and TurnEnd
+	// for a stop-reason assistant are buffered here until [handleResult]
+	// attaches the final usage via [lastAssistantMsg].
+	pending          []agent.Event
+	lastAssistantMsg *ai.Message
 }
 
 // handleLine processes a single NDJSON line and returns zero or more
@@ -214,6 +222,10 @@ func (m *parser) closeTurn() agent.Event {
 //
 // If the assistant calls tools, the turn is left open so that
 // subsequent tool results (type:"user") land inside the same turn.
+//
+// For stop-reason messages (no tool calls), MessageEnd and TurnEnd are
+// buffered onto the parser and flushed by [handleResult] so the final
+// usage reported on the result line can be attached to the message.
 func (m *parser) handleAssistant(line rawLine) []agent.Event {
 	var msg anthropic.Message
 	if err := json.Unmarshal(line.Message, &msg); err != nil {
@@ -221,46 +233,73 @@ func (m *parser) handleAssistant(line rawLine) []agent.Event {
 	}
 
 	aiMsg := toAIMessage(msg)
-	m.messages = append(m.messages, aiMsg)
+	// Per-line usage from the CLI is a streaming snapshot — output_tokens
+	// is typically 0 here. Drop it; the result line carries the final
+	// authoritative usage for the entire turn.
+	aiMsg.Usage = ai.Usage{}
 
 	var events []agent.Event
+
+	// A new assistant line means the previous pending buffer (if any)
+	// won't receive result-line usage — flush it now without attaching.
+	events = append(events, m.flushPending()...)
 
 	// Close any prior open turn before starting a new one.
 	if m.inTurn {
 		events = append(events, m.closeTurn())
 	}
 
+	m.messages = append(m.messages, aiMsg)
+
 	events = append(events,
 		agent.Event{Type: agent.EventTurnStart},
 		agent.Event{Type: agent.EventMessageStart, Message: &aiMsg},
-		agent.Event{Type: agent.EventMessageEnd, Message: &aiMsg},
 	)
 
 	toolCalls := aiMsg.ToolCalls()
 
-	// Emit tool execution start for each tool call.
-	for _, tc := range toolCalls {
-		events = append(events, agent.Event{
-			Type:       agent.EventToolExecutionStart,
-			ToolCallID: tc.ID,
-			ToolName:   tc.Name,
-			Args:       tc.Arguments,
-		})
-	}
-
 	if len(toolCalls) > 0 {
-		// Keep the turn open — tool results will arrive in a user line.
+		// Tool-use assistants finish immediately; the turn stays open
+		// waiting for tool results. Turn-level usage is attributed to
+		// the final stop-reason message, not this one, so no buffering.
+		events = append(events, agent.Event{
+			Type:    agent.EventMessageEnd,
+			Message: &aiMsg,
+		})
+		for _, tc := range toolCalls {
+			events = append(events, agent.Event{
+				Type:       agent.EventToolExecutionStart,
+				ToolCallID: tc.ID,
+				ToolName:   tc.Name,
+				Args:       tc.Arguments,
+			})
+		}
 		m.inTurn = true
 		m.turnMsg = &aiMsg
 	} else {
-		// No tools — close the turn immediately.
-		events = append(events, agent.Event{
-			Type:    agent.EventTurnEnd,
-			Message: &aiMsg,
-		})
+		// Stop-reason assistant — buffer MessageEnd and TurnEnd until
+		// [handleResult] attaches final usage to aiMsg.
+		m.pending = []agent.Event{
+			{Type: agent.EventMessageEnd, Message: &aiMsg},
+			{Type: agent.EventTurnEnd, Message: &aiMsg},
+		}
+		m.lastAssistantMsg = &aiMsg
 	}
 
 	return events
+}
+
+// flushPending returns any buffered end-of-turn events and clears the
+// buffer. Callers must attach final usage to [lastAssistantMsg] before
+// flushing if the flush is driven by the result line.
+func (m *parser) flushPending() []agent.Event {
+	if len(m.pending) == 0 {
+		return nil
+	}
+	out := m.pending
+	m.pending = nil
+	m.lastAssistantMsg = nil
+	return out
 }
 
 // handleUser processes a user message line containing tool_result blocks.
@@ -272,7 +311,9 @@ func (m *parser) handleUser(line rawLine) []agent.Event {
 		return nil
 	}
 
-	var events []agent.Event
+	// Defensive: tool results should not follow a stop-reason assistant
+	// line, but if they do, flush the pending buffer before proceeding.
+	events := m.flushPending()
 	for _, block := range msg.Content {
 		if block.Type != "tool_result" {
 			continue
@@ -314,6 +355,11 @@ func (m *parser) handleUser(line rawLine) []agent.Event {
 // handleResult processes a result line. It captures usage, handles
 // errors, deduplicates result text, and populates the final turn_end
 // with accumulated tool results.
+//
+// Final usage from the result line is attached to the message that will
+// be the last one emitted for this turn: either the buffered stop-reason
+// assistant message (the common case) or a new message synthesized from
+// line.Result when the assistant emitted only thinking.
 func (m *parser) handleResult(line rawLine) []agent.Event {
 	// Capture usage.
 	if line.Usage != nil {
@@ -333,22 +379,43 @@ func (m *parser) handleResult(line rawLine) []agent.Event {
 
 	var events []agent.Event
 
-	// Close any dangling open turn.
+	// Close any dangling open turn (tool-use path without a subsequent
+	// stop-reason assistant).
 	if m.inTurn {
 		events = append(events, m.closeTurn())
 	}
 
-	// Emit result text as a message if it wasn't already emitted
-	// by an assistant line (deduplication).
-	if line.Result != "" && !m.lastMessageHasText(line.Result) {
+	// Decide where final usage lands: on a newly-synthesized message
+	// when the assistant emitted no matching text, otherwise on the
+	// buffered stop-reason assistant message.
+	synthesizing := line.Result != "" && !m.lastMessageHasText(line.Result)
+
+	if synthesizing {
+		// The buffered message (if any) is not the final one; flush it
+		// without attaching usage.
+		events = append(events, m.flushPending()...)
+
 		msg := ai.AssistantMessage(ai.Text{Text: line.Result})
 		msg.StopReason = ai.StopReasonStop
+		msg.Usage = m.usage
 		m.messages = append(m.messages, msg)
 		events = append(events,
 			agent.Event{Type: agent.EventMessageStart, Message: &msg},
 			agent.Event{Type: agent.EventMessageEnd, Message: &msg},
 		)
+		return events
 	}
+
+	// No new message — attach final usage to the last emitted assistant
+	// message (reaches buffered MessageEnd via the shared pointer) and to
+	// the stored copy in m.messages (propagated via EventAgentEnd).
+	if m.lastAssistantMsg != nil {
+		m.lastAssistantMsg.Usage = m.usage
+	}
+	if n := len(m.messages); n > 0 && m.messages[n-1].Role == ai.RoleAssistant {
+		m.messages[n-1].Usage = m.usage
+	}
+	events = append(events, m.flushPending()...)
 
 	return events
 }

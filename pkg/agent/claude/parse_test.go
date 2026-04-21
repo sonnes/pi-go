@@ -633,6 +633,166 @@ func TestMapper_UserToolResultStringContent(t *testing.T) {
 	assert.Equal(t, "plain string result", events[0].Result)
 }
 
+// --- usage-propagation regression tests ---
+
+// TestMapper_StaleAssistantUsageDropped verifies that per-line usage
+// on assistant lines (a streaming snapshot where output_tokens=0 until
+// finalized) does not leak into emitted MessageEnd events. The final
+// usage arrives on the result line and must be attached to the last
+// emitted assistant MessageEnd.
+func TestMapper_StaleAssistantUsageDropped(t *testing.T) {
+	m := &parser{}
+
+	// Assistant line carries stale streaming usage (output=0).
+	stale := `{
+		"role":"assistant",
+		"content":[{"type":"text","text":"Hi!"}],
+		"stop_reason":"end_turn",
+		"usage":{"input_tokens":3,"output_tokens":0,"cache_creation_input_tokens":5000}
+	}`
+
+	eventsA := m.handleLine(rawLine{
+		Type:    "assistant",
+		Message: json.RawMessage(stale),
+	})
+	// MessageEnd for this assistant must be buffered until the result
+	// line attaches the authoritative usage.
+	for _, e := range eventsA {
+		assert.NotEqual(t, agent.EventMessageEnd, e.Type,
+			"stop-reason assistant MessageEnd should be deferred to result line")
+		assert.NotEqual(t, agent.EventTurnEnd, e.Type,
+			"TurnEnd should be deferred to result line")
+	}
+
+	// Result line carries the final usage.
+	eventsR := m.handleLine(rawLine{
+		Type:    "result",
+		Subtype: "success",
+		Result:  "Hi!",
+		Usage: &anthropic.Usage{
+			InputTokens:              3,
+			OutputTokens:             25,
+			CacheCreationInputTokens: 5000,
+		},
+	})
+
+	var msgEnd *agent.Event
+	for i := range eventsR {
+		if eventsR[i].Type == agent.EventMessageEnd {
+			msgEnd = &eventsR[i]
+			break
+		}
+	}
+	require.NotNil(t, msgEnd, "flushed MessageEnd expected on result line")
+	require.NotNil(t, msgEnd.Message)
+	assert.Equal(t, 3, msgEnd.Message.Usage.Input)
+	assert.Equal(t, 25, msgEnd.Message.Usage.Output)
+	assert.Equal(t, 28, msgEnd.Message.Usage.Total)
+	assert.Equal(t, 5000, msgEnd.Message.Usage.CacheWrite)
+}
+
+// TestMapper_UsageOnlyOnLastAssistantLine covers the extended-thinking
+// case where the CLI emits separate assistant lines for thinking and
+// text. Only the last emitted assistant MessageEnd should carry the
+// turn-level usage.
+func TestMapper_UsageOnlyOnLastAssistantLine(t *testing.T) {
+	m := &parser{}
+	var all []agent.Event
+
+	thinking := `{
+		"role":"assistant",
+		"content":[{"type":"thinking","thinking":"pondering","signature":"sig1"}],
+		"stop_reason":"end_turn",
+		"usage":{"input_tokens":3,"output_tokens":0,"cache_creation_input_tokens":5000}
+	}`
+	all = append(all, m.handleLine(rawLine{
+		Type:    "assistant",
+		Message: json.RawMessage(thinking),
+	})...)
+
+	text := `{
+		"role":"assistant",
+		"content":[{"type":"text","text":"The answer is 42."}],
+		"stop_reason":"end_turn",
+		"usage":{"input_tokens":3,"output_tokens":0,"cache_creation_input_tokens":5000}
+	}`
+	all = append(all, m.handleLine(rawLine{
+		Type:    "assistant",
+		Message: json.RawMessage(text),
+	})...)
+
+	all = append(all, m.handleLine(rawLine{
+		Type:    "result",
+		Subtype: "success",
+		Result:  "The answer is 42.",
+		Usage: &anthropic.Usage{
+			InputTokens:              3,
+			OutputTokens:             25,
+			CacheCreationInputTokens: 5000,
+		},
+	})...)
+
+	var ends []*agent.Event
+	for i := range all {
+		e := &all[i]
+		if e.Type == agent.EventMessageEnd && e.Message != nil && e.Message.Role == ai.RoleAssistant {
+			ends = append(ends, e)
+		}
+	}
+	require.Len(t, ends, 2)
+
+	// First (thinking) message — no usage.
+	assert.Equal(t, ai.Usage{}, ends[0].Message.Usage,
+		"intermediate assistant message should not carry usage")
+
+	// Last (text) message — turn-level usage.
+	assert.Equal(t, 3, ends[1].Message.Usage.Input)
+	assert.Equal(t, 25, ends[1].Message.Usage.Output)
+	assert.Equal(t, 28, ends[1].Message.Usage.Total)
+	assert.Equal(t, 5000, ends[1].Message.Usage.CacheWrite)
+}
+
+// TestMapper_UsageOnResultCreatedMessage covers the case where the
+// assistant emitted no text block and the result line synthesizes one.
+// The synthesized message must receive the final usage.
+func TestMapper_UsageOnResultCreatedMessage(t *testing.T) {
+	m := &parser{}
+	var all []agent.Event
+
+	thinking := `{
+		"role":"assistant",
+		"content":[{"type":"thinking","thinking":"hmm"}],
+		"stop_reason":"end_turn"
+	}`
+	all = append(all, m.handleLine(rawLine{
+		Type:    "assistant",
+		Message: json.RawMessage(thinking),
+	})...)
+
+	all = append(all, m.handleLine(rawLine{
+		Type:    "result",
+		Subtype: "success",
+		Result:  "Answer text.",
+		Usage: &anthropic.Usage{
+			InputTokens:  10,
+			OutputTokens: 5,
+		},
+	})...)
+
+	var last *agent.Event
+	for i := range all {
+		e := &all[i]
+		if e.Type == agent.EventMessageEnd && e.Message != nil && e.Message.Role == ai.RoleAssistant {
+			last = e
+		}
+	}
+	require.NotNil(t, last)
+	assert.Equal(t, "Answer text.", last.Message.Text())
+	assert.Equal(t, 10, last.Message.Usage.Input)
+	assert.Equal(t, 5, last.Message.Usage.Output)
+	assert.Equal(t, 15, last.Message.Usage.Total)
+}
+
 // --- helpers ---
 
 // makeAssistantLine builds a type:"assistant" rawLine whose embedded
