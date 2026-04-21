@@ -52,12 +52,36 @@ Manages turn-based conversation, tool execution, event streaming, and lifecycle 
 ```go
 import "github.com/sonnes/pi-go/pkg/agent"
 
-a := agent.New(model,
+a := agent.New(
+    agent.WithModel(model),
     agent.WithTools(weatherTool, searchTool),
     agent.WithSystemPrompt(myPrompt),
     agent.WithMaxTurns(10),
 )
 ```
+
+The agent is configured entirely via `agent.Option` values — `WithModel` (full `ai.Model`), `WithProvider` (bind an `ai.Provider` directly, bypassing the global registry), `WithModelName` (string only, for CLI-style agents that own their own model catalog), plus the standard `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, and `WithHook`.
+
+### Agent factory registry
+
+Agents can be constructed by string name through a small factory registry, mirroring the `ai.Provider` registry. Register once at startup, resolve anywhere:
+
+```go
+import (
+    "github.com/sonnes/pi-go/pkg/agent"
+    "github.com/sonnes/pi-go/pkg/agent/claude"
+)
+
+agent.RegisterFactory("claude", claude.Factory)
+
+f, _ := agent.GetFactory("claude")
+a := f(
+    agent.WithModelName("sonnet"),
+    claude.WithAllowedTools("Read", "Edit"),
+)
+```
+
+Sub-package options (`claude.WithAllowedTools`, `claude.WithCLIPath`, ...) return `agent.Option` values, so agent-level and sub-package options compose in a single slice. Sub-package config lives under `agent.Config.Extensions` keyed by the sub-package name.
 
 ## Quick start
 
@@ -105,7 +129,8 @@ func main() {
     }
 
     // Create an agent with tools.
-    a := agent.New(model,
+    a := agent.New(
+        agent.WithModel(model),
         agent.WithTools(weatherTool),
         agent.WithMaxTurns(5),
     )

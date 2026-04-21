@@ -53,26 +53,60 @@ type turnResult struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// New creates a new Claude CLI subprocess [Agent].
-func New(opts ...Option) *Agent {
-	cfg := config{
-		cliPath: "claude",
+// Factory is the [agent.Factory] for the Claude CLI agent. Register it
+// once at startup with [agent.RegisterFactory]:
+//
+//	agent.RegisterFactory("claude", claude.Factory)
+//
+// Callers then construct a Claude agent via [agent.GetFactory]. The
+// factory consumes [agent.WithModelName] (string only — the CLI owns
+// its model catalog) and any claude-specific options such as
+// [WithCLIPath], [WithAllowedTools], or [WithSessionID].
+var Factory agent.Factory = func(opts ...agent.Option) agent.Agent {
+	return newFromConfig(agent.ApplyOptions(opts...))
+}
+
+// New creates a new Claude CLI subprocess [Agent] from [agent.Option]
+// values. Prefer constructing via [Factory] when using the registry.
+func New(opts ...agent.Option) *Agent {
+	return newFromConfig(agent.ApplyOptions(opts...))
+}
+
+// newFromConfig builds an *Agent from a resolved [agent.Config]. Agent-level
+// fields ([agent.Config.Model.Name], [agent.Config.MaxTurns],
+// [agent.Config.History]) are mapped onto the claude-local [config], which
+// is otherwise populated from [agent.Config.Extensions] under [extensionKey].
+func newFromConfig(ac agent.Config) *Agent {
+	cfg := config{cliPath: "claude"}
+	if ext, ok := ac.Extensions[extensionKey].(*config); ok && ext != nil {
+		cfg = *ext
+		if cfg.cliPath == "" {
+			cfg.cliPath = "claude"
+		}
 	}
-	for _, opt := range opts {
-		opt(&cfg)
+	if ac.Model.Name != "" {
+		cfg.model = ac.Model.Name
+	}
+	if ac.MaxTurns > 0 {
+		cfg.maxTurns = ac.MaxTurns
+	}
+	if len(ac.History) > 0 {
+		cfg.history = ac.History
 	}
 
-	msgs := make([]agent.Message, len(cfg.history))
-	copy(msgs, cfg.history)
+	var msgs []agent.Message
+	if len(cfg.history) > 0 {
+		msgs = make([]agent.Message, len(cfg.history))
+		copy(msgs, cfg.history)
+	}
 
-	a := &Agent{
+	return &Agent{
 		cfg:          cfg,
 		newTransport: newTransport,
 		broker:       pubsub.NewBroker[agent.Event](pubsub.WithBlockingPublish()),
 		sessionID:    cfg.sessionID,
 		messages:     msgs,
 	}
-	return a
 }
 
 // Send adds a user message and runs one turn on the persistent subprocess.

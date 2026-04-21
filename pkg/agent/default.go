@@ -21,7 +21,7 @@ import (
 //	agent_start
 //	  message_start/end (user messages)
 //	  turn_start
-//	    buildPrompt → ai.StreamText → streamTurn
+//	    buildPrompt → streamText → streamTurn
 //	    message_start/update/end (assistant)
 //	    [if tool_use: executeTools → message_start/end (tool results)]
 //	  turn_end
@@ -43,9 +43,10 @@ type Default struct {
 
 var _ Agent = (*Default)(nil)
 
-// New creates a new [Default] agent with the given model and options.
-func New(model ai.Model, opts ...Option) *Default {
-	c := config{model: model}
+// New creates a new [Default] agent. Configure it via options — at
+// minimum [WithModel] must be supplied before the first [Default.Send].
+func New(opts ...Option) *Default {
+	c := config{}
 	for _, opt := range opts {
 		opt(&c)
 	}
@@ -154,6 +155,10 @@ func (a *Default) Err() error {
 // runs and set up initial state, then launches the loop in a goroutine
 // that publishes events to the agent's broker.
 func (a *Default) run(ctx context.Context, newMsgs []Message) error {
+	if a.config.provider == nil && a.config.model.API == "" {
+		return errors.New("agent: no model configured; use WithModel or WithProvider")
+	}
+
 	a.mu.Lock()
 
 	if a.running {
@@ -318,7 +323,7 @@ func (a *Default) executeTurn(
 	if err != nil {
 		return tr, err
 	}
-	aiStream := ai.StreamText(ctx, a.config.model, prompt, a.config.streamOpts...)
+	aiStream := a.streamText(ctx, prompt)
 
 	assistantMsg, err := streamTurn(push, aiStream)
 	if err != nil {
@@ -340,6 +345,21 @@ func (a *Default) executeTurn(
 	emitMessages(push, wrapMessages(tr.toolResults))
 
 	return tr, nil
+}
+
+// streamText dispatches to the provider bound with [WithProvider] when
+// set, otherwise falls back to [ai.StreamText] which looks up the
+// provider in the global registry by [ai.Model.API].
+func (a *Default) streamText(ctx context.Context, p ai.Prompt) *ai.EventStream {
+	if a.config.provider != nil {
+		return a.config.provider.StreamText(
+			ctx,
+			a.config.model,
+			p,
+			ai.ApplyOptions(a.config.streamOpts),
+		)
+	}
+	return ai.StreamText(ctx, a.config.model, p, a.config.streamOpts...)
 }
 
 // buildPrompt assembles an [ai.Prompt] from the system prompt sections

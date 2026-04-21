@@ -36,7 +36,7 @@ func TestBeforeTool_PassesThrough(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookBeforeTool, hook),
 	)
@@ -80,7 +80,7 @@ func TestBeforeTool_BlocksExecution(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(guardedTool),
 		WithHook(HookBeforeTool, hook),
 	)
@@ -115,7 +115,7 @@ func TestBeforeTool_ReturnsError(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookBeforeTool, hook),
 	)
@@ -150,7 +150,7 @@ func TestBeforeTool_FirstDenyWins(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookBeforeTool, h1),
 		WithHook(HookBeforeTool, h2),
@@ -180,7 +180,7 @@ func TestBeforeTool_ParallelTools(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(parallelEchoTool("par_a"), parallelEchoTool("par_b")),
 		WithHook(HookBeforeTool, hook),
 	)
@@ -203,7 +203,7 @@ func TestHook_NilHooks(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	a := New(testModel(), WithTools(echoTool()))
+	a := New(WithModel(testModel()), WithTools(echoTool()))
 	require.NoError(t, a.Send(t.Context(), "go"))
 	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
@@ -241,7 +241,7 @@ func TestAfterTool_ModifiesResult(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookAfterTool, hook),
 	)
@@ -280,7 +280,7 @@ func TestAfterTool_Chains(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookAfterTool, h1),
 		WithHook(HookAfterTool, h2),
@@ -307,7 +307,7 @@ func TestBeforeCall_ReplacesLLMMessages(t *testing.T) {
 		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
 	}
 
-	a := New(testModel(), WithHook(HookBeforeCall, hook))
+	a := New(WithModel(testModel()), WithHook(HookBeforeCall, hook))
 	require.NoError(t, a.Send(t.Context(), "hello"))
 	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
@@ -334,7 +334,7 @@ func TestBeforeCall_FiltersMessages(t *testing.T) {
 		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "old reply"})),
 	}
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithHistory(history...),
 		WithHook(HookBeforeCall, hook),
 	)
@@ -372,7 +372,7 @@ func TestBeforeCall_ReceivesCustomMessages(t *testing.T) {
 		},
 	}
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithHistory(history...),
 		WithHook(HookBeforeCall, hook),
 	)
@@ -405,7 +405,7 @@ func TestBeforeCall_CalledEachTurn(t *testing.T) {
 	}
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookBeforeCall, hook),
 	)
@@ -420,7 +420,7 @@ func TestBeforeCall_CalledEachTurn(t *testing.T) {
 func TestBeforeCall_NilFallback(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	a := New(testModel())
+	a := New(WithModel(testModel()))
 	require.NoError(t, a.Send(t.Context(), "hi"))
 	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
@@ -450,7 +450,7 @@ func TestBeforeCall_ChainsMessages(t *testing.T) {
 		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "old reply"})),
 	}
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithHistory(history...),
 		WithHook(HookBeforeCall, h1),
 		WithHook(HookBeforeCall, h2),
@@ -488,7 +488,7 @@ func TestAfterTurn_CalledWithState(t *testing.T) {
 	}
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookAfterTurn, hook),
 	)
@@ -531,7 +531,7 @@ func TestAfterTurn_ReplacesMessages(t *testing.T) {
 	}
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookAfterTurn, hook),
 	)
@@ -547,7 +547,7 @@ func TestAfterTurn_ReplacesMessages(t *testing.T) {
 func TestAfterTurn_NilNoChange(t *testing.T) {
 	registerMock(t, textStream("ok", ai.Usage{}))
 
-	a := New(testModel())
+	a := New(WithModel(testModel()))
 	require.NoError(t, a.Send(t.Context(), "hi"))
 	_, err := a.Wait(t.Context())
 	require.NoError(t, err)
@@ -577,7 +577,7 @@ func TestBeforeStop_ContinuesLoop(t *testing.T) {
 		return nil, nil
 	}
 
-	a := New(testModel(), WithHook(HookBeforeStop, hook))
+	a := New(WithModel(testModel()), WithHook(HookBeforeStop, hook))
 	require.NoError(t, a.Send(t.Context(), "do something"))
 	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
@@ -596,7 +596,7 @@ func TestBeforeStop_NilStops(t *testing.T) {
 		return nil, nil
 	}
 
-	a := New(testModel(), WithHook(HookBeforeStop, hook))
+	a := New(WithModel(testModel()), WithHook(HookBeforeStop, hook))
 	require.NoError(t, a.Send(t.Context(), "hi"))
 	msgs, err := a.Wait(t.Context())
 	require.NoError(t, err)
@@ -619,7 +619,7 @@ func TestBeforeStop_RespectsMaxTurns(t *testing.T) {
 	}
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithMaxTurns(2),
 		WithHook(HookBeforeStop, hook),
 	)
@@ -649,7 +649,7 @@ func TestBeforeStop_NotCalledOnToolContinue(t *testing.T) {
 	}
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookBeforeStop, hook),
 	)
@@ -672,7 +672,7 @@ func TestHooks_AllTogether(t *testing.T) {
 	var beforeCallCalls int
 	var afterTurnCalls int
 
-	a := New(testModel(),
+	a := New(WithModel(testModel()),
 		WithHook(HookBeforeCall, func(_ context.Context, input *HookInput) (*HookOutput, error) {
 			beforeCallCalls++
 			return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
@@ -717,7 +717,7 @@ func TestHooks_FullScenario(t *testing.T) {
 	)
 
 	a := New(
-		testModel(),
+		WithModel(testModel()),
 		WithTools(echoTool()),
 		WithHook(HookBeforeTool, beforeHook),
 	)
@@ -762,7 +762,7 @@ func TestBeforeTool_ContextFlows(t *testing.T) {
 	)
 
 	ctx := context.WithValue(t.Context(), ctxKey{}, "from-test")
-	a := New(testModel(), WithTools(ctxTool), WithHook(HookBeforeTool, hook))
+	a := New(WithModel(testModel()), WithTools(ctxTool), WithHook(HookBeforeTool, hook))
 	require.NoError(t, a.Send(ctx, "go"))
 	_, err := a.Wait(ctx)
 	require.NoError(t, err)
