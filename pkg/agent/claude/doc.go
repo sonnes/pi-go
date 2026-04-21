@@ -11,7 +11,7 @@
 // Basic usage:
 //
 //	a := claude.New(
-//	    claude.WithModel("opus"),
+//	    agent.WithModelName("opus"),
 //	    claude.WithAllowedTools("Read", "Edit", "Bash"),
 //	)
 //	defer a.Close()
@@ -21,6 +21,19 @@
 //	for pe := range ch {
 //	    // handle pe.Payload() events...
 //	}
+//
+// All options — both [agent.Option] (e.g. [agent.WithModelName],
+// [agent.WithMaxTurns], [agent.WithHistory]) and claude-specific options
+// (e.g. [WithCLIPath], [WithAllowedTools], [WithSessionID]) — satisfy the
+// [agent.Option] type and pass through the same slice.
+//
+// Factory registration:
+//
+//	// Register once at startup, then construct by name.
+//	agent.RegisterFactory("claude", claude.Factory)
+//
+//	f, _ := agent.GetFactory("claude")
+//	a := f(agent.WithModelName("sonnet"))
 //
 // Rich content (images, multi-block messages) is supported by
 // [Agent.SendMessages] — the last user message in the batch is

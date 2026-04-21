@@ -26,22 +26,71 @@ type Agent interface {
 	Err() error
 }
 
-// Factory creates an [Agent] from a model and options.
-type Factory func(model ai.Model, opts ...Option) Agent
+// Factory creates an [Agent] from options. Model and any sub-package
+// configuration flow through the [Option] stream; see [WithModel],
+// [WithModelName], and [WithExtensionMutator].
+type Factory func(opts ...Option) Agent
 
 // config holds all configuration for the agent loop.
 type config struct {
 	model        ai.Model
+	provider     ai.Provider
 	tools        []ai.Tool
 	history      []Message
 	systemPrompt prompt.Prompt
 	streamOpts   []ai.Option
 	maxTurns     int
 	hooks        hooks
+	extensions   map[string]any
 }
 
 // Option configures an [Agent].
 type Option func(*config)
+
+// WithModel sets the full [ai.Model]. Used by [Default], which needs
+// [ai.Model.API] to route to a provider.
+func WithModel(m ai.Model) Option {
+	return func(c *config) { c.model = m }
+}
+
+// WithProvider sets the [ai.Provider] instance the agent uses for
+// inference. When set, [Default] calls the provider directly and skips
+// the global [ai.GetProvider] lookup keyed by [ai.Model.API]. This lets
+// callers wire a provider per-agent without registering it in the
+// process-wide registry.
+func WithProvider(p ai.Provider) Option {
+	return func(c *config) { c.provider = p }
+}
+
+// WithModelName sets the model identifier as a string. Used by agents
+// that manage their own model catalog (e.g. the Claude CLI), which only
+// need a name to pass through. Sets both [ai.Model.ID] and [ai.Model.Name];
+// other fields on any previously-set [ai.Model] are preserved.
+func WithModelName(name string) Option {
+	return func(c *config) {
+		c.model.ID = name
+		c.model.Name = name
+	}
+}
+
+// WithExtension stores a sub-package configuration value under key.
+// Factories read [Config.Extensions] to pull out their own slot.
+func WithExtension(key string, value any) Option {
+	return WithExtensionMutator(key, func(any) any { return value })
+}
+
+// WithExtensionMutator reads the current extension value under key (or
+// nil if absent), passes it to mutate, and stores the result. This lets
+// sub-packages compose multiple options that layer onto a single struct
+// without exposing their internals.
+func WithExtensionMutator(key string, mutate func(any) any) Option {
+	return func(c *config) {
+		if c.extensions == nil {
+			c.extensions = make(map[string]any)
+		}
+		c.extensions[key] = mutate(c.extensions[key])
+	}
+}
 
 // WithTools sets the tools available for the agent to call.
 func WithTools(tools ...ai.Tool) Option {
