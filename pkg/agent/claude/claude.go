@@ -93,6 +93,9 @@ func newFromConfig(ac agent.Config) *Agent {
 	if len(ac.History) > 0 {
 		cfg.history = ac.History
 	}
+	if ac.SystemPrompt != "" {
+		cfg.systemPrompt = ac.SystemPrompt
+	}
 
 	var msgs []agent.Message
 	if len(cfg.history) > 0 {

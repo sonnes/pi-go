@@ -23,9 +23,12 @@
 //	}
 //
 // All options — both [agent.Option] (e.g. [agent.WithModelName],
-// [agent.WithMaxTurns], [agent.WithHistory]) and claude-specific options
-// (e.g. [WithCLIPath], [WithAllowedTools], [WithSessionID]) — satisfy the
-// [agent.Option] type and pass through the same slice.
+// [agent.WithMaxTurns], [agent.WithHistory], [agent.WithSystemPrompt])
+// and claude-specific options (e.g. [WithCLIPath], [WithAllowedTools],
+// [WithSessionID]) — satisfy the [agent.Option] type and pass through the
+// same slice. [agent.WithSystemPrompt] is rendered to a string and passed
+// to the subprocess as `--system-prompt`; use [WithAppendSystemPrompt] to
+// append to the default system prompt instead.
 //
 // Factory registration:
 //

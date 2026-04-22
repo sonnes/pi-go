@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/prompt"
 	"github.com/sonnes/pi-go/pkg/pubsub"
 )
 
@@ -362,39 +360,18 @@ func (a *Default) streamText(ctx context.Context, p ai.Prompt) *ai.EventStream {
 	return ai.StreamText(ctx, a.config.model, p, a.config.streamOpts...)
 }
 
-// buildPrompt assembles an [ai.Prompt] from the system prompt sections
-// and the current message history. Panics in [prompt.Section.Content]
-// are recovered and returned as errors.
-func (a *Default) buildPrompt(ctx context.Context) (p ai.Prompt, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("agent: panic in system prompt section: %v", r)
-		}
-	}()
+// buildPrompt assembles an [ai.Prompt] from the system prompt and the
+// current message history.
+func (a *Default) buildPrompt(ctx context.Context) (ai.Prompt, error) {
 	llmMsgs, err := a.config.hooks.runBeforeCall(ctx, a.messages)
 	if err != nil {
-		return p, err
+		return ai.Prompt{}, err
 	}
 	return ai.Prompt{
-		System:   renderSystemPrompt(a.config.systemPrompt),
+		System:   a.config.systemPrompt,
 		Messages: llmMsgs,
 		Tools:    a.toolInfo,
 	}, nil
-}
-
-// renderSystemPrompt concatenates all prompt sections with double newlines.
-func renderSystemPrompt(p prompt.Prompt) string {
-	if len(p) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for i, section := range p {
-		if i > 0 {
-			sb.WriteString("\n\n")
-		}
-		sb.WriteString(section.Content())
-	}
-	return sb.String()
 }
 
 // streamTurn consumes an [ai.EventStream] from the provider, emitting

@@ -39,7 +39,7 @@ This document tracks the API surface differences between the Go SDK (`pi-go`) an
 | Tool execution modes     | `"sequential"` / `"parallel"` (config-level)                                                                                                                                                                    | Per-tool `Parallel` flag on `tool.Info()`                                             |
 | Tool error recovery      | Error tool results sent back to model (non-fatal)                                                                                                                                                               | Same — `ErrorToolResultMessage` sent back to model                                    |
 | Panic/exception recovery | N/A (JS doesn't have panics)                                                                                                                                                                                    | Per-tool `recover()` converts panics to error results                                 |
-| System prompt            | `agent.setSystemPrompt(string)` — mutable, plain string                                                                                                                                                         | `WithSystemPrompt(Prompt)` — immutable, composable `PromptSection` interface          |
+| System prompt            | `agent.setSystemPrompt(string)` — mutable, plain string                                                                                                                                                         | `WithSystemPrompt(string)` — immutable, set once at construction                      |
 | Concurrent run guard     | `isStreaming` flag, throws on double-prompt                                                                                                                                                                     | `running` flag under mutex, returns `ErrStream`                                       |
 | Cancellation             | `AbortController` / `AbortSignal`                                                                                                                                                                               | `context.Context` cancellation                                                        |
 
@@ -151,7 +151,6 @@ This document tracks the API surface differences between the Go SDK (`pi-go`) an
 | Tool streaming updates   | `OnUpdate func(Result)` callback for progress during tool execution.                                                  |
 | Panic recovery           | Per-tool `recover()` converts panics to error tool results.                                                           |
 | Multi-subscriber streams | `EventStream` backed by pubsub broker with ring buffer — multiple goroutines can subscribe independently with replay. |
-| Composable system prompt | `PromptSection` interface with `Key()` + `Content(ctx)` for lazily-rendered, dynamic prompt sections.                 |
 | Immutable construction   | Config frozen at `New()` — safe concurrent reads without locks on config fields.                                      |
 
 

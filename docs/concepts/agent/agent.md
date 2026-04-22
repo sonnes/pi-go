@@ -62,7 +62,7 @@ Design:
 
 ## System prompt
 
-System prompts are built from composable `prompt.Section`s (defined in the `prompt` package). Each section has a `Key()` for identification and `Content()` for rendering. Sections are concatenated with double newlines before each LLM call.
+`WithSystemPrompt(string)` sets the system prompt passed to the provider on every LLM call. Callers assemble the string themselves — join sections with `\n\n`, template in dynamic context, or load from disk before constructing the agent.
 
 ## Hooks
 
@@ -91,4 +91,3 @@ The agent respects `context.Context`. Cancelling aborts the current LLM stream a
 - [Agent Messages](/concepts/agent/messages) — extensible message type with custom message support
 - [Agent State](/concepts/agent/agent-state) — runtime state observability
 - [Streaming](/concepts/agent/streaming) — event stream and consumption patterns
-- [prompt package](/concepts/prompt) — composable system prompt sections

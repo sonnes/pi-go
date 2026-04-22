@@ -165,21 +165,6 @@ Go abstracts the agent behind an `Agent` interface, with `Default` as the standa
 
 Go's `EventStream` is backed by `pubsub.Broker[Event]` with blocking publish, supporting multiple concurrent subscribers with replay for late joiners. TS uses `subscribe()` callbacks — similar in spirit but push-based rather than pull-based.
 
-### 3. `prompt.Prompt` with `Section` Interface
-
-Go defines a composable system prompt via the `prompt` package:
-
-```go
-type Section interface {
-    Key() string
-    Content() string
-}
-
-type Prompt []Section
-```
-
-TS uses a plain `string` for `systemPrompt` with a simple setter.
-
 ### 4. Unified Hook System
 
 Go uses a single `Hook` callback type registered per event via `WithHook(event, hook)`. Five events cover the full lifecycle: `HookBeforeCall`, `HookBeforeTool`, `HookAfterTool`, `HookAfterTurn`, `HookBeforeStop`. Multiple hooks per event run in registration order with event-specific merging semantics (chaining, first-deny-wins, last-writer-wins).
