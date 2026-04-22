@@ -63,3 +63,13 @@ func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
 	assert.Equal(t, []string{"Read", "Edit"}, ca.cfg.allowedTools)
 	assert.Equal(t, "sess-xyz", ca.cfg.sessionID)
 }
+
+func TestClaudeFactory_ConsumesTopLevelSystemPrompt(t *testing.T) {
+	registerForTest(t)
+
+	f, _ := agent.GetFactory("claude")
+	a := f(agent.WithSystemPrompt("You are a helper.\n\nBe concise."))
+	ca := a.(*Agent)
+
+	assert.Equal(t, "You are a helper.\n\nBe concise.", ca.cfg.systemPrompt)
+}

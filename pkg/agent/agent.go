@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/prompt"
 	"github.com/sonnes/pi-go/pkg/pubsub"
 )
 
@@ -37,7 +36,7 @@ type config struct {
 	provider     ai.Provider
 	tools        []ai.Tool
 	history      []Message
-	systemPrompt prompt.Prompt
+	systemPrompt string
 	streamOpts   []ai.Option
 	maxTurns     int
 	hooks        hooks
@@ -103,8 +102,8 @@ func WithHistory(msgs ...Message) Option {
 }
 
 // WithSystemPrompt sets the system prompt.
-func WithSystemPrompt(p prompt.Prompt) Option {
-	return func(c *config) { c.systemPrompt = p }
+func WithSystemPrompt(s string) Option {
+	return func(c *config) { c.systemPrompt = s }
 }
 
 // WithStreamOpts sets options passed to each LLM stream call.

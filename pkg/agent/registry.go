@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/prompt"
 )
 
 var (
@@ -73,7 +72,7 @@ type Config struct {
 	Provider     ai.Provider
 	Tools        []ai.Tool
 	History      []Message
-	SystemPrompt prompt.Prompt
+	SystemPrompt string
 	StreamOpts   []ai.Option
 	MaxTurns     int
 	Extensions   map[string]any

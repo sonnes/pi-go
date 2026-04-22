@@ -111,12 +111,10 @@ func WithAgents(agents map[string]AgentDef) agent.Option {
 	return mutate(func(c *config) { c.agents = agents })
 }
 
-// WithSystemPrompt replaces the default system prompt via --system-prompt.
-func WithSystemPrompt(prompt string) agent.Option {
-	return mutate(func(c *config) { c.systemPrompt = prompt })
-}
-
 // WithAppendSystemPrompt appends to the default system prompt via --append-system-prompt.
+// To replace the default system prompt instead, use the top-level
+// [agent.WithSystemPrompt] — the claude factory renders it to a string and
+// passes it via --system-prompt.
 func WithAppendSystemPrompt(prompt string) agent.Option {
 	return mutate(func(c *config) { c.appendSystemPrompt = prompt })
 }

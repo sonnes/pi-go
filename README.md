@@ -18,8 +18,6 @@ Pi-go is a ground-up rewrite, not a transliteration. The core abstractions (mess
 
 **Unified hook system.** A single `Hook` callback signature covers five lifecycle events (`BeforeCall`, `BeforeTool`, `AfterTool`, `AfterTurn`, `BeforeStop`). Multiple hooks per event chain in registration order with event-specific merging semantics. Pi-mono uses separate callback fields on the agent config, each with a different function signature.
 
-**Composable system prompts.** The `prompt.Section` interface (`Key()` + `Content()`) supports dynamic, lazily-rendered prompt sections. Sections can read from databases, fetch context, or change between turns. Pi-mono uses a plain string with a setter.
-
 **Per-tool parallel control.** Each tool declares whether it's safe for parallel execution via a `Parallel` flag. When all tools in a batch are marked parallel, they run concurrently; otherwise they run sequentially. Pi-mono uses a single global mode (`"sequential"` or `"parallel"`) for all tools.
 
 **Pull-based event streaming with replay.** Agent events flow through a `pubsub.Broker` with a ring buffer. Multiple goroutines subscribe independently, and late subscribers replay buffered events via `After(seq)`. Pi-mono uses push-based `subscribe(fn)` callbacks.
@@ -200,7 +198,6 @@ pkg/
 ├── ai/              # Core SDK: messages, streaming, tools, providers
 │   └── provider/    # Provider implementations (anthropic, openai, google, ...)
 ├── agent/           # Agentic loop, hooks, event streaming
-├── prompt/          # Composable system prompt sections
 ├── pubsub/          # Generic pub/sub broker with event replay
 └── buffer/          # Generic ring buffer
 ```
