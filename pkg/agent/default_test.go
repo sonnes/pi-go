@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/prompt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -234,21 +233,6 @@ func blockingTool(name string) ai.Tool {
 	)
 }
 
-// staticSection implements [prompt.Section] with a fixed key and content.
-type staticSection struct {
-	key     string
-	content string
-}
-
-func (s staticSection) Key() string     { return s.key }
-func (s staticSection) Content() string { return s.content }
-
-// panicSection implements [prompt.Section] that panics.
-type panicSection struct{}
-
-func (panicSection) Key() string     { return "panic" }
-func (panicSection) Content() string { panic("section panic") }
-
 // --- Existing constructor tests ---
 
 func TestWithProvider_BypassesGlobalRegistry(t *testing.T) {
@@ -339,11 +323,10 @@ func TestNewDefault_WithMaxTurns(t *testing.T) {
 
 func TestNewDefault_WithSystemPrompt(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	p := prompt.Prompt{}
 
-	a := New(WithModel(model), WithSystemPrompt(p))
+	a := New(WithModel(model), WithSystemPrompt("be helpful"))
 
-	assert.Equal(t, p, a.config.systemPrompt)
+	assert.Equal(t, "be helpful", a.config.systemPrompt)
 }
 
 func TestNewDefault_WithStreamOpts(t *testing.T) {
@@ -704,25 +687,22 @@ func TestSend_ToolPanics(t *testing.T) {
 	assert.True(t, toolResult.IsError)
 }
 
-// Test 17: System prompt rendering (multiple sections)
+// Test 17: System prompt is forwarded to the provider
 func TestSend_SystemPromptRendering(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	p := prompt.Prompt{
-		staticSection{key: "role", content: "You are a helper."},
-		staticSection{key: "rules", content: "Be concise."},
-	}
-
-	a := New(WithModel(testModel()), WithSystemPrompt(p))
+	a := New(
+		WithModel(testModel()),
+		WithSystemPrompt("You are a helper.\n\nBe concise."),
+	)
 	_, err := sendAndWait(t, a, "hi")
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 1)
-	assert.Contains(t, mock.prompts[0].System, "You are a helper.")
-	assert.Contains(t, mock.prompts[0].System, "Be concise.")
+	assert.Equal(t, "You are a helper.\n\nBe concise.", mock.prompts[0].System)
 }
 
-// Test 18: Empty system prompt (no sections)
+// Test 18: Empty system prompt
 func TestSend_EmptySystemPrompt(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
@@ -958,22 +938,6 @@ func TestSend_AfterPreviousError(t *testing.T) {
 	msgs, err := sendAndWait(t, a, "second")
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
-}
-
-// Test 26: Section.Content() panics → recovered, error state
-func TestSend_SectionPanics(t *testing.T) {
-	registerMock(t, textStream("unreachable", ai.Usage{}))
-
-	a := New(
-		WithModel(testModel()),
-		WithSystemPrompt(prompt.Prompt{panicSection{}}),
-	)
-	err := a.Send(t.Context(), "hi")
-	require.NoError(t, err)
-
-	_, err = a.Wait(t.Context())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "panic")
 }
 
 // Test 27: Context cancellation mid-tool-execution (parallel)
