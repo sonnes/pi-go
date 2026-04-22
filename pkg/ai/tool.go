@@ -10,8 +10,14 @@ import (
 
 // ToolInfo contains tool metadata for model consumption.
 type ToolInfo struct {
-	Name         string             `json:"name"`
-	Description  string             `json:"description"`
+	Name string `json:"name"`
+	// Description is the full tool documentation handed to the model
+	// via the tool schema. It can run long.
+	Description string `json:"description"`
+	// UseWhen is a one-sentence hint describing when a caller should
+	// reach for this tool. Used by system-prompt builders to list
+	// tools concisely without dumping the full Description.
+	UseWhen      string             `json:"use_when,omitempty"`
 	InputSchema  *jsonschema.Schema `json:"input_schema"`
 	OutputSchema *jsonschema.Schema `json:"output_schema,omitempty"`
 	Parallel     bool               `json:"parallel,omitempty"`
@@ -77,6 +83,7 @@ type ToolFunc[In, Out any] func(ctx context.Context, input In) (Out, error)
 type ToolDef[In, Out any] struct {
 	name         string
 	description  string
+	useWhen      string
 	fn           ToolFunc[In, Out]
 	inputSchema  *jsonschema.Schema
 	outputSchema *jsonschema.Schema
@@ -116,11 +123,21 @@ func DefineParallelTool[In, Out any](
 	return t
 }
 
+// WithUseWhen attaches a one-sentence hint describing when this tool
+// should be used. It is surfaced in [ToolInfo.UseWhen] for prompt
+// builders that want a concise tool listing; the full [ToolDef]
+// description is still passed to the model via the tool schema.
+func (t *ToolDef[In, Out]) WithUseWhen(s string) *ToolDef[In, Out] {
+	t.useWhen = s
+	return t
+}
+
 // Info returns tool metadata.
 func (t *ToolDef[In, Out]) Info() ToolInfo {
 	return ToolInfo{
 		Name:         t.name,
 		Description:  t.description,
+		UseWhen:      t.useWhen,
 		InputSchema:  t.inputSchema,
 		OutputSchema: t.outputSchema,
 		Parallel:     t.parallel,
