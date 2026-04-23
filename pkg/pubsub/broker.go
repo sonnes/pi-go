@@ -8,12 +8,26 @@ import (
 	"github.com/sonnes/pi-go/pkg/buffer"
 )
 
+// subscriber bundles a subscription's delivery channel with the coordination
+// primitives that let the broker close it without racing in-flight publishes.
+//
+//   - done is closed first to signal "no more sends". In-flight publishes
+//     observe this via select and bail out without touching ch.
+//   - wg counts publishes that have committed to sending to this subscriber
+//     (Add happens under the broker lock). The closer waits on wg before
+//     closing ch, guaranteeing no goroutine ever sends on a closed channel.
+type subscriber[T any] struct {
+	ch   chan Event[T]
+	done chan struct{}
+	wg   sync.WaitGroup
+}
+
 // Broker is a generic pub/sub broker that manages subscriptions and
 // distributes events to all subscribers. It maintains a ring buffer of
 // recent events, allowing new subscribers to replay from a given
 // sequence number.
 type Broker[T any] struct {
-	subs       map[chan Event[T]]struct{}
+	subs       map[*subscriber[T]]struct{}
 	mu         sync.Mutex
 	done       chan struct{}
 	bufferSize int
@@ -35,7 +49,7 @@ type Broker[T any] struct {
 func NewBroker[T any](opts ...Option) *Broker[T] {
 	o := applyOptions(opts)
 	return &Broker[T]{
-		subs:       make(map[chan Event[T]]struct{}),
+		subs:       make(map[*subscriber[T]]struct{}),
 		done:       make(chan struct{}),
 		bufferSize: o.bufferSize,
 		blocking:   o.blocking,
@@ -78,35 +92,41 @@ func (b *Broker[T]) Subscribe(
 
 	chanSize := max(b.bufferSize, len(replay))
 
-	sub := make(chan Event[T], chanSize)
+	sub := &subscriber[T]{
+		ch:   make(chan Event[T], chanSize),
+		done: make(chan struct{}),
+	}
 
 	for _, entry := range replay {
 		event := entry.Value
 		event.seq = entry.Seq
-		sub <- event
+		sub.ch <- event
 	}
 
 	b.subs[sub] = struct{}{}
 
-	// Start goroutine to handle unsubscription when context is done
+	// Unsubscribe on context cancel. Coordinate with in-flight publishes:
+	// remove the sub from the map and close sub.done under b.mu (so no new
+	// publish can register an Add for this sub), then wait for any publish
+	// that already registered before closing sub.ch.
 	go func() {
 		<-ctx.Done()
 
 		b.mu.Lock()
-		defer b.mu.Unlock()
-
-		// Check if broker was shut down (which already cleaned up)
-		select {
-		case <-b.done:
+		if _, stillActive := b.subs[sub]; !stillActive {
+			// Shutdown already took over; it will close sub.ch.
+			b.mu.Unlock()
 			return
-		default:
 		}
-
 		delete(b.subs, sub)
-		close(sub)
+		close(sub.done)
+		b.mu.Unlock()
+
+		sub.wg.Wait()
+		close(sub.ch)
 	}()
 
-	return sub
+	return sub.ch
 }
 
 // Publish sends an event to all current subscribers.
@@ -134,7 +154,7 @@ func (b *Broker[T]) Publish(payload T) {
 	if !b.blocking {
 		for sub := range b.subs {
 			select {
-			case sub <- event:
+			case sub.ch <- event:
 			default:
 			}
 		}
@@ -142,36 +162,40 @@ func (b *Broker[T]) Publish(payload T) {
 		return
 	}
 
-	// Blocking mode: collect subscribers, release lock, then send.
-	// This avoids deadlock when a subscriber drains under a separate lock.
-	subs := make([]chan Event[T], 0, len(b.subs))
+	// Blocking mode: snapshot subscribers and bump each one's in-flight
+	// counter while we still hold b.mu. Closers (Subscribe's cancel
+	// goroutine and Shutdown) also acquire b.mu before closing sub.done,
+	// so either we register our Add before the close and the closer waits
+	// on wg, or the closer has already removed the sub and we skip it —
+	// in both cases no goroutine ever sends on a closed channel.
+	subs := make([]*subscriber[T], 0, len(b.subs))
 	for sub := range b.subs {
+		sub.wg.Add(1)
 		subs = append(subs, sub)
 	}
 	b.mu.Unlock()
 
-	for _, sub := range subs {
+	for i, sub := range subs {
 		if brokerDone := b.sendBlocking(sub, event); brokerDone {
+			// Release wg counters we bumped for subs we didn't send to.
+			for _, rest := range subs[i+1:] {
+				rest.wg.Done()
+			}
 			return
 		}
 	}
 }
 
-// sendBlocking sends event to sub, blocking until the send succeeds or the
-// broker shuts down. Returns true only if the broker shut down.
-//
-// It recovers from a closed-channel panic, which occurs when a subscriber's
-// context is canceled between the subscriber-list snapshot and this send.
-// That case is treated as "subscriber gone, skip" — the broker is still live.
-func (b *Broker[T]) sendBlocking(sub chan Event[T], event Event[T]) (brokerDone bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			// sub was closed (subscriber context was canceled); skip it.
-			brokerDone = false
-		}
-	}()
+// sendBlocking sends event to sub, blocking until the send succeeds, the
+// subscriber is torn down, or the broker shuts down. Returns true only if
+// the broker shut down. The caller must have bumped sub.wg.Add(1) before
+// calling; this function always calls sub.wg.Done when it returns.
+func (b *Broker[T]) sendBlocking(sub *subscriber[T], event Event[T]) (brokerDone bool) {
+	defer sub.wg.Done()
 	select {
-	case sub <- event:
+	case sub.ch <- event:
+	case <-sub.done:
+		// Subscriber is torn down; the closer is waiting on wg to close ch.
 	case <-b.done:
 		brokerDone = true
 	}
@@ -185,18 +209,29 @@ func (b *Broker[T]) sendBlocking(sub chan Event[T], event Event[T]) (brokerDone 
 // multiple times.
 func (b *Broker[T]) Shutdown() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	select {
 	case <-b.done:
+		b.mu.Unlock()
 		return
 	default:
 		close(b.done)
 	}
 
-	for ch := range b.subs {
-		delete(b.subs, ch)
-		close(ch)
+	// Drain the map and signal each sub to bail under the lock, then
+	// release the lock before waiting on wg so new publishes blocked on
+	// b.mu can unblock, observe b.done, and return without deadlocking.
+	subs := make([]*subscriber[T], 0, len(b.subs))
+	for sub := range b.subs {
+		subs = append(subs, sub)
+		delete(b.subs, sub)
+		close(sub.done)
+	}
+	b.mu.Unlock()
+
+	for _, sub := range subs {
+		sub.wg.Wait()
+		close(sub.ch)
 	}
 }
 
