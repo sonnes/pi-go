@@ -69,10 +69,36 @@ func convertUserContent(content []ai.Content) []anthropic.ContentBlockParamUnion
 				blocks,
 				anthropic.NewImageBlockBase64(v.MimeType, v.Data),
 			)
+		case ai.File:
+			if block, ok := convertFile(v); ok {
+				blocks = append(blocks, block)
+			}
 		}
 	}
 
 	return blocks
+}
+
+// convertFile converts an ai.File into an Anthropic document block. Anthropic
+// supports PDF (base64 or URL) and plain-text documents. Unsupported MIME
+// types or files referencing a provider FileID are skipped.
+func convertFile(f ai.File) (anthropic.ContentBlockParamUnion, bool) {
+	switch {
+	case f.URL != "":
+		return anthropic.NewDocumentBlock(anthropic.URLPDFSourceParam{
+			URL: f.URL,
+		}), true
+	case f.Data != "" && f.MimeType == "text/plain":
+		return anthropic.NewDocumentBlock(anthropic.PlainTextSourceParam{
+			Data: f.Data,
+		}), true
+	case f.Data != "" && f.MimeType == "application/pdf":
+		return anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{
+			Data: f.Data,
+		}), true
+	default:
+		return anthropic.ContentBlockParamUnion{}, false
+	}
 }
 
 // convertAssistantContent converts assistant message content to Anthropic blocks.

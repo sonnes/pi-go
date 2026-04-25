@@ -83,6 +83,10 @@ func convertUserMessage(msg ai.Message) []openai.ChatCompletionMessageParamUnion
 					},
 				},
 			})
+		case ai.File:
+			if part, ok := convertFile(v); ok {
+				parts = append(parts, part)
+			}
 		}
 	}
 
@@ -95,6 +99,37 @@ func convertUserMessage(msg ai.Message) []openai.ChatCompletionMessageParamUnion
 			},
 		},
 	}
+}
+
+// convertFile converts an ai.File to an OpenAI Chat Completions file part.
+// OpenAI supports inline base64 (FileData), uploaded file IDs (FileID), but
+// not arbitrary URLs. Files referenced only by URL are skipped.
+func convertFile(f ai.File) (openai.ChatCompletionContentPartUnionParam, bool) {
+	if f.FileID == "" && f.Data == "" {
+		return openai.ChatCompletionContentPartUnionParam{}, false
+	}
+
+	fileParam := openai.ChatCompletionContentPartFileFileParam{}
+	if f.FileID != "" {
+		fileParam.FileID = param.NewOpt(f.FileID)
+	}
+	if f.Data != "" {
+		dataURL := fmt.Sprintf(
+			"data:%s;base64,%s",
+			f.MimeType,
+			f.Data,
+		)
+		fileParam.FileData = param.NewOpt(dataURL)
+	}
+	if f.Filename != "" {
+		fileParam.Filename = param.NewOpt(f.Filename)
+	}
+
+	return openai.ChatCompletionContentPartUnionParam{
+		OfFile: &openai.ChatCompletionContentPartFileParam{
+			File: fileParam,
+		},
+	}, true
 }
 
 // convertAssistantMessage converts an assistant message to OpenAI format.
