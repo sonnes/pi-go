@@ -69,10 +69,51 @@ func convertUserParts(content []ai.Content) []*genai.Part {
 					MIMEType: v.MimeType,
 				},
 			})
+
+		case ai.File:
+			if part := convertFile(v); part != nil {
+				parts = append(parts, part)
+			}
 		}
 	}
 
 	return parts
+}
+
+// convertFile converts an ai.File to a Google genai Part. URL/FileID-based
+// files use FileData; base64 Data uses InlineData. Unrecognized files (no
+// data, URL, or FileID) are skipped.
+func convertFile(f ai.File) *genai.Part {
+	switch {
+	case f.URL != "":
+		return &genai.Part{
+			FileData: &genai.FileData{
+				FileURI:     f.URL,
+				MIMEType:    f.MimeType,
+				DisplayName: f.Filename,
+			},
+		}
+	case f.FileID != "":
+		return &genai.Part{
+			FileData: &genai.FileData{
+				FileURI:     f.FileID,
+				MIMEType:    f.MimeType,
+				DisplayName: f.Filename,
+			},
+		}
+	case f.Data != "":
+		data, err := base64.StdEncoding.DecodeString(f.Data)
+		if err != nil {
+			return nil
+		}
+		return &genai.Part{
+			InlineData: &genai.Blob{
+				Data:     data,
+				MIMEType: f.MimeType,
+			},
+		}
+	}
+	return nil
 }
 
 // convertAssistantParts converts assistant message content to Google parts.

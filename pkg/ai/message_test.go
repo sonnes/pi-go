@@ -42,6 +42,27 @@ func TestMessageConstructors(t *testing.T) {
 		require.Len(t, msg.Content, 1)
 	})
 
+	t.Run("UserFileMessage", func(t *testing.T) {
+		f := ai.File{
+			Data:     "base64-pdf-data",
+			MimeType: "application/pdf",
+			Filename: "spec.pdf",
+		}
+		msg := ai.UserFileMessage("please summarize", f)
+		assert.Equal(t, ai.RoleUser, msg.Role)
+		require.Len(t, msg.Content, 2)
+
+		text, ok := ai.AsContent[ai.Text](msg.Content[0])
+		require.True(t, ok)
+		assert.Equal(t, "please summarize", text.Text)
+
+		gotFile, ok := ai.AsContent[ai.File](msg.Content[1])
+		require.True(t, ok)
+		assert.Equal(t, "base64-pdf-data", gotFile.Data)
+		assert.Equal(t, "application/pdf", gotFile.MimeType)
+		assert.Equal(t, "spec.pdf", gotFile.Filename)
+	})
+
 	t.Run("ToolResultMessage", func(t *testing.T) {
 		msg := ai.ToolResultMessage("call-1", "my_tool", ai.Text{Text: "result"})
 		assert.Equal(t, ai.RoleToolResult, msg.Role)
@@ -116,6 +137,49 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, "tc-1", tc.ID)
 	assert.Equal(t, "get_weather", tc.Name)
 	assert.Equal(t, "Paris", tc.Arguments["location"])
+}
+
+func TestMessageJSONRoundTrip_File(t *testing.T) {
+	original := ai.UserFileMessage(
+		"analyze this report",
+		ai.File{
+			Data:     "base64data",
+			MimeType: "application/pdf",
+			Filename: "q1-report.pdf",
+		},
+		ai.File{
+			URL:      "https://example.com/spec.pdf",
+			MimeType: "application/pdf",
+		},
+		ai.File{
+			FileID:   "file_abc123",
+			MimeType: "text/plain",
+		},
+	)
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var decoded ai.Message
+	err = json.Unmarshal(data, &decoded)
+	require.NoError(t, err)
+
+	require.Len(t, decoded.Content, 4)
+
+	f1, ok := ai.AsContent[ai.File](decoded.Content[1])
+	require.True(t, ok)
+	assert.Equal(t, "base64data", f1.Data)
+	assert.Equal(t, "application/pdf", f1.MimeType)
+	assert.Equal(t, "q1-report.pdf", f1.Filename)
+
+	f2, ok := ai.AsContent[ai.File](decoded.Content[2])
+	require.True(t, ok)
+	assert.Equal(t, "https://example.com/spec.pdf", f2.URL)
+
+	f3, ok := ai.AsContent[ai.File](decoded.Content[3])
+	require.True(t, ok)
+	assert.Equal(t, "file_abc123", f3.FileID)
+	assert.Equal(t, "text/plain", f3.MimeType)
 }
 
 func TestMessage_Text(t *testing.T) {

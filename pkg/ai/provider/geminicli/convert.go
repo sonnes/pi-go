@@ -67,10 +67,48 @@ func convertUserParts(content []ai.Content) []*Part {
 					MIMEType: v.MimeType,
 				},
 			})
+
+		case ai.File:
+			if part := convertFile(v); part != nil {
+				parts = append(parts, part)
+			}
 		}
 	}
 
 	return parts
+}
+
+// convertFile converts an ai.File to a Gemini Part. URL/FileID-based files
+// use FileData; base64 Data uses InlineData. Unrecognized files are skipped.
+func convertFile(f ai.File) *Part {
+	switch {
+	case f.URL != "":
+		return &Part{
+			FileData: &FileData{
+				FileURI:  f.URL,
+				MIMEType: f.MimeType,
+			},
+		}
+	case f.FileID != "":
+		return &Part{
+			FileData: &FileData{
+				FileURI:  f.FileID,
+				MIMEType: f.MimeType,
+			},
+		}
+	case f.Data != "":
+		data, err := base64.StdEncoding.DecodeString(f.Data)
+		if err != nil {
+			return nil
+		}
+		return &Part{
+			InlineData: &Blob{
+				Data:     data,
+				MIMEType: f.MimeType,
+			},
+		}
+	}
+	return nil
 }
 
 // convertAssistantParts converts assistant message content to Gemini parts.

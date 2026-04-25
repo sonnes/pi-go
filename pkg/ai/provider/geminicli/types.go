@@ -24,6 +24,13 @@ type Part struct {
 	FunctionCall     *FunctionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *FunctionResponse `json:"functionResponse,omitempty"`
 	InlineData       *Blob             `json:"inlineData,omitempty"`
+	FileData         *FileData         `json:"fileData,omitempty"`
+}
+
+// FileData references a file by URI, used for documents and large media.
+type FileData struct {
+	FileURI  string `json:"fileUri"`
+	MIMEType string `json:"mimeType,omitempty"`
 }
 
 // FunctionCall represents a model-initiated function invocation.

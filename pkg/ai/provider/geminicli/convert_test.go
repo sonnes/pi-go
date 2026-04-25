@@ -40,6 +40,41 @@ func TestConvertMessages_UserImage(t *testing.T) {
 	assert.Equal(t, "image/png", contents[0].Parts[1].InlineData.MIMEType)
 }
 
+func TestConvertMessages_UserFile(t *testing.T) {
+	t.Run("inline base64", func(t *testing.T) {
+		messages := []ai.Message{
+			ai.UserFileMessage("read this", ai.File{
+				Data:     "dGVzdA==",
+				MimeType: "application/pdf",
+			}),
+		}
+		contents := convertMessages(messages)
+		require.Len(t, contents, 1)
+		require.Len(t, contents[0].Parts, 2)
+
+		fp := contents[0].Parts[1]
+		require.NotNil(t, fp.InlineData)
+		assert.Equal(t, "application/pdf", fp.InlineData.MIMEType)
+	})
+
+	t.Run("URL reference", func(t *testing.T) {
+		messages := []ai.Message{
+			ai.UserFileMessage("read this", ai.File{
+				URL:      "gs://bucket/spec.pdf",
+				MimeType: "application/pdf",
+			}),
+		}
+		contents := convertMessages(messages)
+		require.Len(t, contents, 1)
+		require.Len(t, contents[0].Parts, 2)
+
+		fp := contents[0].Parts[1]
+		require.NotNil(t, fp.FileData)
+		assert.Equal(t, "gs://bucket/spec.pdf", fp.FileData.FileURI)
+		assert.Equal(t, "application/pdf", fp.FileData.MIMEType)
+	})
+}
+
 func TestConvertMessages_AssistantText(t *testing.T) {
 	messages := []ai.Message{
 		ai.AssistantMessage(ai.Text{Text: "hello back"}),
