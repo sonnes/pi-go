@@ -78,6 +78,10 @@ func convertUserMessage(
 					},
 				},
 			)
+		case ai.File:
+			if part, ok := convertFile(v); ok {
+				parts = append(parts, part)
+			}
 		}
 	}
 
@@ -91,6 +95,37 @@ func convertUserMessage(
 			},
 		},
 	}
+}
+
+// convertFile converts an ai.File to a Responses API input file part.
+// The Responses API supports FileID (uploaded), FileData (base64), and FileURL.
+func convertFile(f ai.File) (responses.ResponseInputContentUnionParam, bool) {
+	if f.FileID == "" && f.Data == "" && f.URL == "" {
+		return responses.ResponseInputContentUnionParam{}, false
+	}
+
+	fileParam := &responses.ResponseInputFileParam{}
+	if f.FileID != "" {
+		fileParam.FileID = param.NewOpt(f.FileID)
+	}
+	if f.URL != "" {
+		fileParam.FileURL = param.NewOpt(f.URL)
+	}
+	if f.Data != "" {
+		dataURL := fmt.Sprintf(
+			"data:%s;base64,%s",
+			f.MimeType,
+			f.Data,
+		)
+		fileParam.FileData = param.NewOpt(dataURL)
+	}
+	if f.Filename != "" {
+		fileParam.Filename = param.NewOpt(f.Filename)
+	}
+
+	return responses.ResponseInputContentUnionParam{
+		OfInputFile: fileParam,
+	}, true
 }
 
 // convertAssistantMessage converts an assistant message to Responses API

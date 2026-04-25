@@ -61,6 +61,20 @@ func UserImageMessage(text string, images ...Image) Message {
 	}
 }
 
+// UserFileMessage creates a user message with text and file/document content.
+func UserFileMessage(text string, files ...File) Message {
+	content := make([]Content, 0, 1+len(files))
+	content = append(content, Text{Text: text})
+	for _, f := range files {
+		content = append(content, f)
+	}
+	return Message{
+		Role:      RoleUser,
+		Content:   content,
+		Timestamp: time.Now(),
+	}
+}
+
 // AssistantMessage creates an assistant message with the given content blocks.
 func AssistantMessage(content ...Content) Message {
 	return Message{
@@ -180,9 +194,14 @@ type contentJSON struct {
 	// thinking
 	Thinking string `json:"thinking,omitempty"`
 
-	// image
+	// image / file
 	Data     string `json:"data,omitempty"`
 	MimeType string `json:"mime_type,omitempty"`
+
+	// file
+	URL      string `json:"url,omitempty"`
+	FileID   string `json:"file_id,omitempty"`
+	Filename string `json:"filename,omitempty"`
 
 	// tool_call
 	ID        string         `json:"id,omitempty"`
@@ -326,6 +345,15 @@ func marshalContent(c Content) contentJSON {
 			Data:     v.Data,
 			MimeType: v.MimeType,
 		}
+	case File:
+		return contentJSON{
+			Type:     "file",
+			Data:     v.Data,
+			URL:      v.URL,
+			FileID:   v.FileID,
+			MimeType: v.MimeType,
+			Filename: v.Filename,
+		}
 	case ToolCall:
 		return contentJSON{
 			Type:      "tool_call",
@@ -355,6 +383,14 @@ func unmarshalContent(c contentJSON) (Content, error) {
 		return Image{
 			Data:     c.Data,
 			MimeType: c.MimeType,
+		}, nil
+	case "file":
+		return File{
+			Data:     c.Data,
+			URL:      c.URL,
+			FileID:   c.FileID,
+			MimeType: c.MimeType,
+			Filename: c.Filename,
 		}, nil
 	case "tool_call":
 		return ToolCall{

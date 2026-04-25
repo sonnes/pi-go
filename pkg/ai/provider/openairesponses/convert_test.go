@@ -62,6 +62,65 @@ func TestConvertInput_UserImageMessage(t *testing.T) {
 	assert.Equal(t, "data:image/png;base64,base64data", imagePart["image_url"])
 }
 
+func TestConvertInput_UserFileMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		file     ai.File
+		wantKey  string
+		wantData string
+	}{
+		{
+			name: "inline base64",
+			file: ai.File{
+				Data:     "base64pdfdata",
+				MimeType: "application/pdf",
+				Filename: "spec.pdf",
+			},
+			wantKey:  "file_data",
+			wantData: "data:application/pdf;base64,base64pdfdata",
+		},
+		{
+			name: "uploaded file id",
+			file: ai.File{
+				FileID: "file_abc123",
+			},
+			wantKey:  "file_id",
+			wantData: "file_abc123",
+		},
+		{
+			name: "url reference",
+			file: ai.File{
+				URL: "https://example.com/spec.pdf",
+			},
+			wantKey:  "file_url",
+			wantData: "https://example.com/spec.pdf",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items := convertInput([]ai.Message{
+				ai.UserFileMessage("read this", tt.file),
+			})
+			require.Len(t, items, 1)
+
+			data, err := json.Marshal(items[0])
+			require.NoError(t, err)
+
+			var raw map[string]any
+			require.NoError(t, json.Unmarshal(data, &raw))
+
+			content, ok := raw["content"].([]any)
+			require.True(t, ok, "content should be array")
+			require.Len(t, content, 2)
+
+			filePart := content[1].(map[string]any)
+			assert.Equal(t, "input_file", filePart["type"])
+			assert.Equal(t, tt.wantData, filePart[tt.wantKey])
+		})
+	}
+}
+
 func TestConvertInput_AssistantTextMessage(t *testing.T) {
 	messages := []ai.Message{
 		ai.AssistantMessage(ai.Text{Text: "I can help"}),

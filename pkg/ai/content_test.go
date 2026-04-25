@@ -38,3 +38,17 @@ func TestAsContent(t *testing.T) {
 		})
 	}
 }
+
+func TestAsContent_File(t *testing.T) {
+	c := ai.Content(ai.File{
+		Data:     "base64data",
+		MimeType: "application/pdf",
+		Filename: "report.pdf",
+	})
+
+	f, ok := ai.AsContent[ai.File](c)
+	assert.True(t, ok)
+	assert.Equal(t, "base64data", f.Data)
+	assert.Equal(t, "application/pdf", f.MimeType)
+	assert.Equal(t, "report.pdf", f.Filename)
+}
