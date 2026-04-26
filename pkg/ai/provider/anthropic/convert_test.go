@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 
@@ -16,6 +17,7 @@ func TestConvertUserContent_File(t *testing.T) {
 		file        ai.File
 		wantBlock   bool
 		wantSrcType string
+		wantData    string // expected source.data after marshal; "" to skip
 	}{
 		{
 			name: "base64 PDF",
@@ -25,15 +27,25 @@ func TestConvertUserContent_File(t *testing.T) {
 			},
 			wantBlock:   true,
 			wantSrcType: "base64",
+			wantData:    "base64pdf",
 		},
 		{
-			name: "plain text",
+			name: "plain text decodes base64 to raw",
 			file: ai.File{
-				Data:     "hello",
+				Data:     base64.StdEncoding.EncodeToString([]byte("hello")),
 				MimeType: "text/plain",
 			},
 			wantBlock:   true,
 			wantSrcType: "text",
+			wantData:    "hello",
+		},
+		{
+			name: "plain text with invalid base64 is skipped",
+			file: ai.File{
+				Data:     "not!valid!base64!",
+				MimeType: "text/plain",
+			},
+			wantBlock: false,
 		},
 		{
 			name: "URL PDF",
@@ -80,6 +92,9 @@ func TestConvertUserContent_File(t *testing.T) {
 			assert.Equal(t, "document", raw["type"])
 			source := raw["source"].(map[string]any)
 			assert.Equal(t, tt.wantSrcType, source["type"])
+			if tt.wantData != "" {
+				assert.Equal(t, tt.wantData, source["data"])
+			}
 		})
 	}
 }
