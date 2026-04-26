@@ -1,6 +1,7 @@
 package anthropic
 
 import (
+	"encoding/base64"
 	"encoding/json"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
@@ -89,8 +90,14 @@ func convertFile(f ai.File) (anthropic.ContentBlockParamUnion, bool) {
 			URL: f.URL,
 		}), true
 	case f.Data != "" && f.MimeType == "text/plain":
+		// Per ai.File contract, Data is base64-encoded. Anthropic's
+		// plain-text document source expects raw text, so decode here.
+		raw, err := base64.StdEncoding.DecodeString(f.Data)
+		if err != nil {
+			return anthropic.ContentBlockParamUnion{}, false
+		}
 		return anthropic.NewDocumentBlock(anthropic.PlainTextSourceParam{
-			Data: f.Data,
+			Data: string(raw),
 		}), true
 	case f.Data != "" && f.MimeType == "application/pdf":
 		return anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{
