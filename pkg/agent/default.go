@@ -212,7 +212,7 @@ func (a *Default) loop(
 		loopErr     error
 	)
 
-	emitMessages(push, inputMsgs)
+	emitMessages(push, inputMsgs, true)
 
 	push(Event{Type: EventAgentStart})
 
@@ -294,7 +294,7 @@ func (a *Default) loop(
 				newMessages = append(newMessages, lm.Message)
 			}
 		}
-		emitMessages(push, followMsgs)
+		emitMessages(push, followMsgs, true)
 	}
 }
 
@@ -340,7 +340,7 @@ func (a *Default) executeTurn(
 	tr.toolResults = a.executeTools(ctx, push, toolCalls)
 	tr.cont = true
 
-	emitMessages(push, wrapMessages(tr.toolResults))
+	emitMessages(push, wrapMessages(tr.toolResults), false)
 
 	return tr, nil
 }
@@ -654,8 +654,11 @@ func finishToolError(push func(Event), tc ai.ToolCall, errMsg string) ai.Message
 	return msg
 }
 
-// emitMessages pushes message_start/message_end events for each [LLMMessage].
-func emitMessages(push func(Event), msgs []Message) {
+// emitMessages pushes message_start/message_end events for each
+// [LLMMessage]. input marks the events as Input=true on the published
+// [Event], so consumers persisting from the event stream can skip
+// caller-supplied messages they have already stored.
+func emitMessages(push func(Event), msgs []Message, input bool) {
 	for _, m := range msgs {
 		lm, ok := AsLLMMessage(m)
 		if !ok {
@@ -664,10 +667,12 @@ func emitMessages(push func(Event), msgs []Message) {
 		push(Event{
 			Type:    EventMessageStart,
 			Message: &lm.Message,
+			Input:   input,
 		})
 		push(Event{
 			Type:    EventMessageEnd,
 			Message: &lm.Message,
+			Input:   input,
 		})
 	}
 }
