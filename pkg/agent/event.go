@@ -48,6 +48,14 @@ type Event struct {
 	// message_start, message_update, message_end, turn_end
 	Message *ai.Message
 
+	// Input is true on message_start/message_end events emitted for
+	// messages the caller passed to [Agent.Send] or [Agent.SendMessages]
+	// — they are echoed back so subscribers can render them in order,
+	// but the caller already knows about them. Consumers persisting
+	// messages from the event stream should skip events with Input set
+	// to avoid double-writing what the caller has already stored.
+	Input bool
+
 	// message_update
 	AssistantEvent *ai.Event // underlying ai event
 
