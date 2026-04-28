@@ -27,7 +27,7 @@ User-Agent: Go-http-client/1.1
 Content-Length: 783
 Content-Type: application/json
 
-{"messages":[{"content":"You are a helpful assistant. Always use the get_weather tool to answer weather questions.","role":"system"},{"content":"What is the weather in Paris?","role":"user"},{"tool_calls":[{"id":"call_gen01","function":{"arguments":"{\"location\":\"Paris\"}","name":"get_weather"},"type":"function"}],"role":"assistant"},{"content":"call_gen01","tool_call_id":"{\"temperature\": \"22°C\", \"condition\": \"sunny\"}","role":"tool"}],"model":"gpt-4o","max_tokens":4000,"stream_options":{"include_usage":true},"tools":[{"function":{"name":"get_weather","description":"Get the current weather for a city","parameters":{"properties":{"location":{"description":"The city name","type":"string"}},"required":["location"],"type":"object"}},"type":"function"}],"stream":true}HTTP/1.1 200 OK
+{"messages":[{"content":"You are a helpful assistant. Always use the get_weather tool to answer weather questions.","role":"system"},{"content":"What is the weather in Paris?","role":"user"},{"tool_calls":[{"id":"call_gen01","function":{"arguments":"{\"location\":\"Paris\"}","name":"get_weather"},"type":"function"}],"role":"assistant"},{"content":"{\"temperature\": \"22°C\", \"condition\": \"sunny\"}","tool_call_id":"call_gen01","role":"tool"}],"model":"gpt-4o","max_tokens":4000,"stream_options":{"include_usage":true},"tools":[{"function":{"name":"get_weather","description":"Get the current weather for a city","parameters":{"properties":{"location":{"description":"The city name","type":"string"}},"required":["location"],"type":"object"}},"type":"function"}],"stream":true}HTTP/1.1 200 OK
 Content-Length: 641
 Cache-Control: no-cache
 Content-Type: text/event-stream

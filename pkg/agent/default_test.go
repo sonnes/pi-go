@@ -287,6 +287,41 @@ func TestNewDefault_WithTools(t *testing.T) {
 	assert.Len(t, a.config.tools, 1)
 }
 
+func TestNewDefault_WithServerTool_NotInToolMap(t *testing.T) {
+	model := ai.Model{ID: "test-model"}
+	srv := ai.DefineServerTool(ai.ToolInfo{
+		ServerType: ai.ServerToolWebSearch,
+	})
+
+	a := New(WithModel(model), WithTools(srv))
+
+	// ToolInfo is advertised to the model so it shows up in c.tools and
+	// in the toolInfo slice.
+	assert.Len(t, a.config.tools, 1)
+	assert.Len(t, a.toolInfo, 1)
+	assert.Equal(t, ai.ToolKindServer, a.toolInfo[0].Kind)
+
+	// But it must NOT be in toolMap — the agent never executes server
+	// tools locally.
+	_, found := a.toolMap["web_search"]
+	assert.False(t, found, "server tool must not be registered for local execution")
+}
+
+func TestFilterFunctionCalls(t *testing.T) {
+	calls := []ai.ToolCall{
+		{ID: "1", Name: "echo"},
+		{ID: "2", Name: "web_search", Server: true, ServerType: ai.ServerToolWebSearch},
+		{ID: "3", Name: "lookup"},
+		{ID: "4", Name: "code_execution", Server: true, ServerType: ai.ServerToolCodeExecution},
+	}
+
+	got := filterFunctionCalls(calls)
+
+	require.Len(t, got, 2)
+	assert.Equal(t, "echo", got[0].Name)
+	assert.Equal(t, "lookup", got[1].Name)
+}
+
 func TestNewDefault_WithHistory(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 	msgs := []Message{

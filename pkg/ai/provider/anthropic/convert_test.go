@@ -98,3 +98,93 @@ func TestConvertUserContent_File(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertTools_ServerWebSearch(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "web_search",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebSearch,
+			ServerConfig: map[string]any{
+				"max_uses":        3,
+				"allowed_domains": []string{"example.com"},
+			},
+		},
+	}
+
+	result := convertTools(tools)
+	require.Len(t, result, 1)
+
+	ws := result[0].OfWebSearchTool20250305
+	require.NotNil(t, ws, "expected OfWebSearchTool20250305 to be set")
+
+	body, err := json.Marshal(ws)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	assert.Equal(t, "web_search", got["name"])
+	assert.Equal(t, "web_search_20250305", got["type"])
+	assert.EqualValues(t, 3, got["max_uses"])
+	assert.Equal(t, []any{"example.com"}, got["allowed_domains"])
+}
+
+func TestConvertTools_ServerToolUnsupportedSkipped(t *testing.T) {
+	// code_execution is not supported on the non-beta API path; convertTools
+	// should drop it silently rather than error or pass it as a function tool.
+	tools := []ai.ToolInfo{
+		{
+			Name:       "code_execution",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolCodeExecution,
+		},
+	}
+
+	result := convertTools(tools)
+	assert.Empty(t, result, "unsupported server tool should be skipped")
+}
+
+func TestConvertTools_MixedFunctionAndServer(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:        "get_weather",
+			Description: "Get the weather",
+		},
+		{
+			Name:       "web_search",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebSearch,
+		},
+	}
+
+	result := convertTools(tools)
+	require.Len(t, result, 2)
+
+	require.NotNil(t, result[0].OfTool)
+	assert.Equal(t, "get_weather", result[0].OfTool.Name)
+
+	require.NotNil(t, result[1].OfWebSearchTool20250305)
+}
+
+func TestServerTypeForName(t *testing.T) {
+	assert.Equal(t, ai.ServerToolWebSearch, serverTypeForName("web_search"))
+	assert.Equal(t, ai.ServerToolType("unknown"), serverTypeForName("unknown"))
+}
+
+func TestServerToolInputToMap(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		assert.Nil(t, serverToolInputToMap(nil))
+	})
+	t.Run("already a map", func(t *testing.T) {
+		in := map[string]any{"query": "weather sf"}
+		assert.Equal(t, in, serverToolInputToMap(in))
+	})
+	t.Run("struct via json", func(t *testing.T) {
+		in := struct {
+			Query string `json:"query"`
+		}{Query: "weather sf"}
+		got := serverToolInputToMap(in)
+		assert.Equal(t, "weather sf", got["query"])
+	})
+}

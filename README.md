@@ -185,7 +185,7 @@ Each provider is a separate Go module, so you only import (and depend on) the SD
 
 **[Hooks](docs/concepts/agent/agent.md)** — Five lifecycle hooks (`BeforeCall`, `BeforeTool`, `AfterTool`, `AfterTurn`, `BeforeStop`) let you transform messages, deny tool execution, modify results, compact history, or inject follow-up messages without modifying the core loop.
 
-**[Messages & content](docs/concepts/ai/messages.md)** — Three roles (`User`, `Assistant`, `ToolResult`) and four content types (`Text`, `Thinking`, `Image`, `ToolCall`). The agent layer adds extensible `CustomMessage` types via embedding.
+**[Messages & content](docs/concepts/ai/messages.md)** — Three roles (`User`, `Assistant`, `ToolResult`) and five content types (`Text`, `Thinking`, `Image`, `File`, `ToolCall`). `ToolCall` covers both client-executed function tools and provider-hosted [server tools](docs/capabilities/server-tools.md) (web search, code execution). The agent layer adds extensible `CustomMessage` types via embedding.
 
 **[Structured output](docs/concepts/ai/content.md)** — `GenerateObject[T]` produces typed objects with automatic JSON schema derivation. Providers that support structured output implement the `ObjectProvider` interface.
 

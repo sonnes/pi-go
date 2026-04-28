@@ -183,7 +183,7 @@ func convertToolResultMessage(msg ai.Message) openai.ChatCompletionMessageParamU
 			text += t.Text
 		}
 	}
-	return openai.ToolMessage(msg.ToolCallID, text)
+	return openai.ToolMessage(text, msg.ToolCallID)
 }
 
 // convertTools converts ai.ToolInfo definitions to OpenAI tool params.

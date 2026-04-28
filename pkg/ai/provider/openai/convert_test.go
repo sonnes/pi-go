@@ -76,3 +76,19 @@ func TestConvertUserMessage_File(t *testing.T) {
 		assert.Len(t, content, 1)
 	})
 }
+
+func TestConvertToolResultMessage(t *testing.T) {
+	msg := ai.ToolResultMessage("toolu_abc123", "ReadMe", ai.Text{Text: "the result body"})
+
+	result := convertToolResultMessage(msg)
+
+	data, err := json.Marshal(result)
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(data, &raw))
+
+	assert.Equal(t, "tool", raw["role"])
+	assert.Equal(t, "toolu_abc123", raw["tool_call_id"])
+	assert.Equal(t, "the result body", raw["content"])
+}

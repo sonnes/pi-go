@@ -1,0 +1,91 @@
+httprr trace v1
+463 8883
+POST https://openrouter.ai/api/v1/responses HTTP/1.1
+Host: openrouter.ai
+User-Agent: Go-http-client/1.1
+Content-Length: 275
+Accept: application/json
+Content-Type: application/json
+
+{"instructions":"Use the datetime tool to answer.","max_output_tokens":200,"store":false,"input":[{"content":"What's the current time in LA?","role":"user"}],"model":"openai/gpt-4o-mini","stream":true,"tools":[{"timezone":"America/Los_Angeles","type":"openrouter:datetime"}]}HTTP/2.0 200 OK
+Connection: close
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: X-Generation-Id,cf-ray
+Cache-Control: no-cache
+Cf-Ray: 9f3519b87e632b0d-DEL
+Content-Type: text/event-stream
+Date: Tue, 28 Apr 2026 09:39:43 GMT
+Permissions-Policy: payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+Referrer-Policy: no-referrer, strict-origin-when-cross-origin
+Server: cloudflare
+X-Content-Type-Options: nosniff
+X-Generation-Id: gen-1777369173-HnXLitbsBjttImRI5nsr
+
+data: {"type":"response.created","response":{"id":"gen-1777369173-HnXLitbsBjttImRI5nsr","object":"response","created_at":1777369173,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":200,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use the datetime tool to answer.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":null},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{"id":"gen-1777369173-HnXLitbsBjttImRI5nsr","object":"response","created_at":1777369173,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":200,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use the datetime tool to answer.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":null},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"st_tmp_xfx2d4qnnl","type":"openrouter:datetime","status":"in_progress"},"sequence_number":2}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"st_tmp_xfx2d4qnnl","type":"openrouter:datetime","status":"completed","datetime":"2026-04-28T09:39:34.694Z","timezone":"UTC"},"sequence_number":3}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"st_tmp_kjgwtn0wy2s","type":"openrouter:datetime","status":"in_progress"},"sequence_number":4}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"id":"st_tmp_kjgwtn0wy2s","type":"openrouter:datetime","status":"completed","datetime":"2026-04-28T09:39:35.840Z","timezone":"UTC"},"sequence_number":5}
+
+data: {"type":"response.output_item.added","output_index":2,"item":{"id":"msg_tmp_x1li0dexyim","type":"message","status":"in_progress","role":"assistant","content":[]},"sequence_number":6}
+
+data: {"type":"response.content_part.added","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"part":{"type":"output_text","text":"","annotations":[],"logprobs":[]},"sequence_number":7}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":"The","logprobs":[],"sequence_number":8}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" current","logprobs":[],"sequence_number":9}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" time","logprobs":[],"sequence_number":10}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" in","logprobs":[],"sequence_number":11}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" Los","logprobs":[],"sequence_number":12}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" Angeles","logprobs":[],"sequence_number":13}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" is","logprobs":[],"sequence_number":14}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" ","logprobs":[],"sequence_number":15}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":"2","logprobs":[],"sequence_number":16}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":":","logprobs":[],"sequence_number":17}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":"39","logprobs":[],"sequence_number":18}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" AM","logprobs":[],"sequence_number":19}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" on","logprobs":[],"sequence_number":20}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" April","logprobs":[],"sequence_number":21}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" ","logprobs":[],"sequence_number":22}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":"28","logprobs":[],"sequence_number":23}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":",","logprobs":[],"sequence_number":24}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":" ","logprobs":[],"sequence_number":25}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":"202","logprobs":[],"sequence_number":26}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":"6","logprobs":[],"sequence_number":27}
+
+data: {"type":"response.output_text.delta","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"delta":".","logprobs":[],"sequence_number":28}
+
+data: {"type":"response.output_text.done","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"text":"The current time in Los Angeles is 2:39 AM on April 28, 2026.","logprobs":[],"sequence_number":29}
+
+data: {"type":"response.content_part.done","output_index":2,"item_id":"msg_tmp_x1li0dexyim","content_index":0,"part":{"type":"output_text","text":"The current time in Los Angeles is 2:39 AM on April 28, 2026.","annotations":[],"logprobs":[]},"sequence_number":30}
+
+data: {"type":"response.output_item.done","output_index":2,"item":{"id":"msg_tmp_x1li0dexyim","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"The current time in Los Angeles is 2:39 AM on April 28, 2026.","annotations":[],"logprobs":[]}]},"sequence_number":31}
+
+data: {"type":"response.completed","response":{"id":"gen-1777369173-HnXLitbsBjttImRI5nsr","object":"response","created_at":1777369173,"model":"openai/gpt-4o-mini","status":"completed","completed_at":1777369183,"output":[{"type":"openrouter:datetime","id":"st_tmp_xfx2d4qnnl","status":"completed","datetime":"2026-04-28T09:39:34.694Z","timezone":"UTC"},{"type":"openrouter:datetime","id":"st_tmp_kjgwtn0wy2s","status":"completed","datetime":"2026-04-28T09:39:35.840Z","timezone":"UTC"},{"id":"msg_tmp_x1li0dexyim","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"The current time in Los Angeles is 2:39 AM on April 28, 2026.","annotations":[],"logprobs":[]}]}],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":200,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use the datetime tool to answer.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":{"input_tokens":323,"input_tokens_details":{"cached_tokens":0},"output_tokens":52,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":375,"cost":0.00007965000000000001}},"sequence_number":32}
+
+data: [DONE]
+

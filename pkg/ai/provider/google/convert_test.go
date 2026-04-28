@@ -59,3 +59,57 @@ func TestConvertUserParts_File(t *testing.T) {
 		assert.Empty(t, parts)
 	})
 }
+
+func TestConvertTools_ServerGoogleSearch(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "web_search",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebSearch,
+		},
+	}
+
+	googleTools, _ := convertTools(tools, ai.ToolChoiceAuto)
+	require.Len(t, googleTools, 1)
+	assert.NotNil(t, googleTools[0].GoogleSearch)
+	assert.Nil(t, googleTools[0].CodeExecution)
+	assert.Empty(t, googleTools[0].FunctionDeclarations)
+}
+
+func TestConvertTools_ServerCodeExecution(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "code_execution",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolCodeExecution,
+		},
+	}
+
+	googleTools, _ := convertTools(tools, ai.ToolChoiceAuto)
+	require.Len(t, googleTools, 1)
+	assert.NotNil(t, googleTools[0].CodeExecution)
+	assert.Nil(t, googleTools[0].GoogleSearch)
+}
+
+func TestConvertTools_FunctionAndServerInSeparateToolEntries(t *testing.T) {
+	// Gemini disallows mixing FunctionDeclarations with google_search/code_execution
+	// in the same Tool entry. They must live in separate entries.
+	tools := []ai.ToolInfo{
+		{Name: "get_weather", Description: "Get weather"},
+		{
+			Name:       "web_search",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebSearch,
+		},
+	}
+
+	googleTools, _ := convertTools(tools, ai.ToolChoiceAuto)
+	require.Len(t, googleTools, 2)
+
+	assert.Len(t, googleTools[0].FunctionDeclarations, 1)
+	assert.Equal(t, "get_weather", googleTools[0].FunctionDeclarations[0].Name)
+	assert.Nil(t, googleTools[0].GoogleSearch)
+
+	assert.NotNil(t, googleTools[1].GoogleSearch)
+	assert.Empty(t, googleTools[1].FunctionDeclarations)
+}
