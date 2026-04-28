@@ -175,12 +175,13 @@ func (a *Default) run(ctx context.Context, newMsgs []Message) error {
 	a.lastMsgs = nil
 	a.done = make(chan struct{})
 	a.messages = append(a.messages, newMsgs...)
-	inputMsgs := newMsgs
 	a.mu.Unlock()
 
+	// Caller-supplied input messages are not echoed back as
+	// message_start/message_end events — the caller already has them.
 	go func() {
 		defer a.stop()
-		a.loop(ctx, a.broker.Publish, inputMsgs)
+		a.loop(ctx, a.broker.Publish)
 	}()
 
 	return nil
@@ -210,15 +211,12 @@ type turnResult struct {
 func (a *Default) loop(
 	ctx context.Context,
 	push func(Event),
-	inputMsgs []Message,
 ) {
 	var (
 		totalUsage  ai.Usage
 		newMessages []ai.Message
 		loopErr     error
 	)
-
-	emitMessages(push, inputMsgs, true)
 
 	push(Event{Type: EventAgentStart})
 

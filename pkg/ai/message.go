@@ -207,6 +207,17 @@ type contentJSON struct {
 	ID        string         `json:"id,omitempty"`
 	Name      string         `json:"name,omitempty"`
 	Arguments map[string]any `json:"arguments,omitempty"`
+
+	// tool_call (server-side variants only)
+	Server       bool                  `json:"server,omitempty"`
+	ServerType   ServerToolType        `json:"server_type,omitempty"`
+	ServerOutput *serverToolOutputJSON `json:"output,omitempty"`
+}
+
+type serverToolOutputJSON struct {
+	Content string          `json:"content,omitempty"`
+	Raw     json.RawMessage `json:"raw,omitempty"`
+	IsError bool            `json:"is_error,omitempty"`
 }
 
 type usageJSON struct {
@@ -355,13 +366,23 @@ func marshalContent(c Content) contentJSON {
 			Filename: v.Filename,
 		}
 	case ToolCall:
-		return contentJSON{
-			Type:      "tool_call",
-			ID:        v.ID,
-			Name:      v.Name,
-			Arguments: v.Arguments,
-			Signature: v.Signature,
+		out := contentJSON{
+			Type:       "tool_call",
+			ID:         v.ID,
+			Name:       v.Name,
+			Arguments:  v.Arguments,
+			Signature:  v.Signature,
+			Server:     v.Server,
+			ServerType: v.ServerType,
 		}
+		if v.Output != nil {
+			out.ServerOutput = &serverToolOutputJSON{
+				Content: v.Output.Content,
+				Raw:     v.Output.Raw,
+				IsError: v.Output.IsError,
+			}
+		}
+		return out
 	default:
 		return contentJSON{Type: "unknown"}
 	}
@@ -393,12 +414,22 @@ func unmarshalContent(c contentJSON) (Content, error) {
 			Filename: c.Filename,
 		}, nil
 	case "tool_call":
-		return ToolCall{
-			ID:        c.ID,
-			Name:      c.Name,
-			Arguments: c.Arguments,
-			Signature: c.Signature,
-		}, nil
+		tc := ToolCall{
+			ID:         c.ID,
+			Name:       c.Name,
+			Arguments:  c.Arguments,
+			Signature:  c.Signature,
+			Server:     c.Server,
+			ServerType: c.ServerType,
+		}
+		if c.ServerOutput != nil {
+			tc.Output = &ServerToolOutput{
+				Content: c.ServerOutput.Content,
+				Raw:     c.ServerOutput.Raw,
+				IsError: c.ServerOutput.IsError,
+			}
+		}
+		return tc, nil
 	default:
 		return nil, fmt.Errorf("unknown content type: %s", c.Type)
 	}

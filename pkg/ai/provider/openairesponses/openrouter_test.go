@@ -241,12 +241,13 @@ func TestOpenRouter_ServerWebSearch(t *testing.T) {
 		if call, ok := ai.AsContent[ai.ToolCall](c); ok && call.Server {
 			sawServerCall = true
 			assert.Equal(t, ai.ServerToolWebSearch, call.ServerType)
-			assert.Equal(t, "openrouter:web_search", call.Name)
+			assert.Equal(t, "web_search", call.Name,
+				"Name should map back to the caller-registered ToolInfo.Name, not the raw provider type")
 			require.NotNil(t, call.Output)
 			assert.NotEmpty(t, call.Output.Raw, "expected raw payload")
 		}
 	}
-	assert.True(t, sawServerCall, "expected an openrouter:web_search server-tool call")
+	assert.True(t, sawServerCall, "expected a web_search server-tool call")
 }
 
 // TestOpenRouter_ServerDateTime exercises the simplest server tool —

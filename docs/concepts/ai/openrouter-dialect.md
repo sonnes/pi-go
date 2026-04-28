@@ -54,6 +54,15 @@ request body via
 Three server-tool types map cleanly today — `web_search`, `web_fetch`,
 `datetime` — and the rest are dropped silently per the existing convention.
 
+On the way back, the SSE pipeline rewrites the raw provider item type
+(`openrouter:web_search`, `web_search_call`, ...) to the canonical
+`ai.ToolInfo.Name` the caller registered, so server-tool calls persist
+with the same `Name` shape as function tools. Best-effort scrapes of the
+raw item payload populate `ToolCall.Arguments` (`query`, `url`,
+`timezone`) and a one-line `ServerToolOutput.Content` summary
+(`search: anthropic news`, `fetch: https://...`); the verbatim provider
+JSON always remains on `ServerToolOutput.Raw` for richer extraction.
+
 ## Both dialects share `API() == "openai-responses"`
 
 The dialect is a transport-level detail, not a separate API surface. Two

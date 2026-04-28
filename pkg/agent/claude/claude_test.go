@@ -155,8 +155,6 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventMessageStart, // user input
-		agent.EventMessageEnd,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant
@@ -207,8 +205,6 @@ func TestAgent_Send_MultiTurn(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventMessageStart, // user input
-		agent.EventMessageEnd,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -360,8 +356,6 @@ func TestAgent_Send_FullToolLoop(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventMessageStart, // user input
-		agent.EventMessageEnd,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant with tool_use

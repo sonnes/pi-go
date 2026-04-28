@@ -12,10 +12,10 @@ type EventType string
 const (
 	// EventAgentStart signals that the agent backend is initialized and
 	// ready to produce events. It fires once per [Agent.Send] or
-	// [Agent.Continue] call. Input messages are always emitted before
-	// this event. Subscribers may not receive this event if the backend
-	// fails before initialization — in that case only [EventAgentEnd]
-	// (with Err set) is emitted.
+	// [Agent.Continue] call as the first event of the run — caller-supplied
+	// input messages are not echoed back. Subscribers may not receive this
+	// event if the backend fails before initialization; in that case only
+	// [EventAgentEnd] (with Err set) is emitted.
 	EventAgentStart EventType = "agent_start"
 
 	EventAgentEnd            EventType = "agent_end"
@@ -49,11 +49,11 @@ type Event struct {
 	Message *ai.Message
 
 	// Input is true on message_start/message_end events emitted for
-	// messages the caller passed to [Agent.Send] or [Agent.SendMessages]
-	// — they are echoed back so subscribers can render them in order,
-	// but the caller already knows about them. Consumers persisting
-	// messages from the event stream should skip events with Input set
-	// to avoid double-writing what the caller has already stored.
+	// messages a [BeforeStop] hook injected to keep the loop going.
+	// Caller-supplied input messages (from [Agent.Send] /
+	// [Agent.SendMessages]) are not echoed at all — the caller has
+	// already stored them. Consumers persisting from the event stream
+	// can ignore this field unless they also use BeforeStop hooks.
 	Input bool
 
 	// message_update

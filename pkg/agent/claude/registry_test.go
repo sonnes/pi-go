@@ -54,6 +54,7 @@ func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
 		WithCLIPath("/usr/local/bin/claude"),
 		WithAllowedTools("Read", "Edit"),
 		WithSessionID("sess-xyz"),
+		WithMCPConfig(`{"mcpServers":{"lw":{"type":"http","url":"http://127.0.0.1:0/mcp"}}}`),
 	)
 	ca := a.(*Agent)
 
@@ -62,6 +63,7 @@ func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
 	assert.Equal(t, "/usr/local/bin/claude", ca.cfg.cliPath)
 	assert.Equal(t, []string{"Read", "Edit"}, ca.cfg.allowedTools)
 	assert.Equal(t, "sess-xyz", ca.cfg.sessionID)
+	assert.Equal(t, `{"mcpServers":{"lw":{"type":"http","url":"http://127.0.0.1:0/mcp"}}}`, ca.cfg.mcpConfig)
 }
 
 func TestClaudeFactory_ConsumesTopLevelSystemPrompt(t *testing.T) {

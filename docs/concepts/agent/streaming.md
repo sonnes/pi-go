@@ -21,14 +21,14 @@ The agent's broker uses blocking publish, so events are never dropped. Multiple 
 
 ## Event lifecycle
 
-`agent_start` signals that the backend is initialized and ready. It fires once per `Send` or `Continue` call. Input messages are always emitted before `agent_start`. If the backend fails before initialization (e.g. subprocess crash), only `agent_end` (with `Err`) is emitted — subscribers should not assume `agent_start` always precedes `agent_end`. For the Claude CLI agent, `agent_start` carries a `SessionID` for session resumption.
+`agent_start` signals that the backend is initialized and ready. It fires once per `Send` or `Continue` call as the first event of the run. If the backend fails before initialization (e.g. subprocess crash), only `agent_end` (with `Err`) is emitted — subscribers should not assume `agent_start` always precedes `agent_end`. For the Claude CLI agent, `agent_start` carries a `SessionID` for session resumption.
+
+Caller-supplied input messages (passed to `Send` / `SendMessages`) are **not** echoed as `message_start` / `message_end` events — the caller already has those messages and they are appended to history before the run begins. Only messages produced inside the loop (assistant outputs, tool results, hook-injected follow-ups) are emitted on the stream. The `Event.Input` flag is set on `message_start` / `message_end` events for messages a `HookBeforeStop` injected, so consumers persisting from the event stream can distinguish injected follow-ups from model output.
 
 A complete run emits events in this order:
 
 ```
-message_start (user)      ← input messages, before agent starts
-message_end
-agent_start               ← backend ready; carries SessionID if available
+agent_start               ← first event; carries SessionID if available
   turn_start
     message_start (assistant)
       message_update  ← repeated as tokens stream
@@ -42,8 +42,8 @@ agent_start               ← backend ready; carries SessionID if available
   turn_start  ← next turn if tools were called
     ...
   turn_end
-  message_start (follow-up)  ← if HookBeforeStop injects messages
-  message_end
+  message_start (follow-up, Input=true)  ← if HookBeforeStop injects messages
+  message_end (Input=true)
   turn_start  ← loop continues
     ...
   turn_end

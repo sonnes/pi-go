@@ -45,6 +45,7 @@ Design:
 - **Rich content input.** `SendMessages` forwards the last user message's full content blocks (text + images) as an Anthropic content block array — no prompt-length ceiling and no loss of fidelity.
 - **`Continue` is not supported.** Stream-json mode has no "empty turn" concept. To resume a prior conversation, construct a new agent with `WithSessionID` and call `Send` with the next user input; `--resume` is passed at subprocess launch.
 - **`Close` tears down the subprocess.** Closing stdin gives the CLI a chance to drain before `SIGINT`/`SIGKILL` fallback.
+- **MCP servers via `WithMCPConfig`.** Pass either an absolute path to an `.mcp.json` file or an inline JSON document (`{"mcpServers": {...}}`); the value is forwarded verbatim to `claude --mcp-config` so MCP-provided tools become invocable inside the subprocess. Empty string disables the flag.
 
 ## Agent interface
 

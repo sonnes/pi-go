@@ -16,6 +16,7 @@ Status as of April 2026. Providers covered:
 - **Anthropic** — Messages API ([pkg/ai/provider/anthropic](../../pkg/ai/provider/anthropic))
 - **OpenAI Chat** — Chat Completions API ([pkg/ai/provider/openai](../../pkg/ai/provider/openai))
 - **OpenAI Responses** — Responses API ([pkg/ai/provider/openairesponses](../../pkg/ai/provider/openairesponses))
+- **OpenRouter** — Responses-API dialect of the same package ([openrouter-dialect](../concepts/ai/openrouter-dialect.md))
 - **Google** — Gemini API ([pkg/ai/provider/google](../../pkg/ai/provider/google))
 - **Claude CLI** — `claude` subprocess ([pkg/ai/provider/claudecli](../../pkg/ai/provider/claudecli))
 - **Gemini CLI** — Cloud Code Assist HTTP ([pkg/ai/provider/geminicli](../../pkg/ai/provider/geminicli))

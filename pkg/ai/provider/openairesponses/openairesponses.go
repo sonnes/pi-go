@@ -15,6 +15,7 @@ import (
 	"github.com/openai/openai-go/packages/param"
 	"github.com/openai/openai-go/responses"
 	"github.com/openai/openai-go/shared"
+	"github.com/tidwall/gjson"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
@@ -106,6 +107,13 @@ func (p *Provider) StreamText(
 			reqOpts = append(reqOpts, option.WithJSONSet("tools", orTools))
 		}
 	}
+
+	// Map ServerToolType to the canonical Name the caller registered
+	// (e.g. ServerToolWebSearch → "WebSearch"). When the provider returns
+	// a server-tool result, we use this to set ToolCall.Name to the same
+	// name function tools use, instead of the raw provider item type
+	// ("web_search_call", "openrouter:web_search").
+	serverToolNames := serverToolNameByType(prompt.Tools)
 
 	return ai.NewEventStream(func(push func(ai.Event)) {
 		stream := p.client.Responses.NewStreaming(
@@ -270,14 +278,15 @@ func (p *Provider) StreamText(
 						})
 						contentIndex++
 					}
+					st := serverTypeForItem(event.Item.Type)
 					push(ai.Event{
 						Type:         ai.EventToolStart,
 						ContentIndex: contentIndex,
 						ToolCall: &ai.ToolCall{
 							ID:         event.Item.ID,
-							Name:       event.Item.Type,
+							Name:       canonicalServerToolName(st, serverToolNames, event.Item.Type),
 							Server:     true,
-							ServerType: serverTypeForItem(event.Item.Type),
+							ServerType: st,
 						},
 					})
 				default:
@@ -294,14 +303,15 @@ func (p *Provider) StreamText(
 							})
 							contentIndex++
 						}
+						st := serverTypeForOpenRouterItem(event.Item.Type)
 						push(ai.Event{
 							Type:         ai.EventToolStart,
 							ContentIndex: contentIndex,
 							ToolCall: &ai.ToolCall{
 								ID:         event.Item.ID,
-								Name:       event.Item.Type,
+								Name:       canonicalServerToolName(st, serverToolNames, event.Item.Type),
 								Server:     true,
-								ServerType: serverTypeForOpenRouterItem(event.Item.Type),
+								ServerType: st,
 							},
 						})
 					}
@@ -311,6 +321,7 @@ func (p *Provider) StreamText(
 				switch event.Item.Type {
 				case "web_search_call", "code_interpreter_call":
 					call := buildServerToolCall(event.Item)
+					call.Name = canonicalServerToolName(call.ServerType, serverToolNames, event.Item.Type)
 					serverToolCalls = append(serverToolCalls, call)
 					push(ai.Event{
 						Type:         ai.EventToolEnd,
@@ -321,6 +332,7 @@ func (p *Provider) StreamText(
 				default:
 					if strings.HasPrefix(event.Item.Type, "openrouter:") {
 						call := buildOpenRouterServerToolCall(event.Item)
+						call.Name = canonicalServerToolName(call.ServerType, serverToolNames, event.Item.Type)
 						serverToolCalls = append(serverToolCalls, call)
 						push(ai.Event{
 							Type:         ai.EventToolEnd,
@@ -574,6 +586,42 @@ func buildFinalMessage(
 	}
 }
 
+// serverToolNameByType extracts the caller-supplied [ai.ToolInfo.Name] for
+// each server tool in the prompt, keyed by [ai.ServerToolType]. The result
+// lets the SSE pipeline rewrite raw provider item types
+// ("web_search_call", "openrouter:web_search") back to the canonical name
+// the caller registered ("WebSearch") so server tools persist with the same
+// shape as function tools.
+func serverToolNameByType(tools []ai.ToolInfo) map[ai.ServerToolType]string {
+	if len(tools) == 0 {
+		return nil
+	}
+	out := make(map[ai.ServerToolType]string, len(tools))
+	for _, t := range tools {
+		if t.Kind != ai.ToolKindServer {
+			continue
+		}
+		if t.Name != "" && t.ServerType != "" {
+			out[t.ServerType] = t.Name
+		}
+	}
+	return out
+}
+
+// canonicalServerToolName returns the caller-registered name for a server
+// tool of type st, or fallback when none was registered (rare — only when
+// the model invents a tool the caller never declared).
+func canonicalServerToolName(
+	st ai.ServerToolType,
+	names map[ai.ServerToolType]string,
+	fallback string,
+) string {
+	if name, ok := names[st]; ok && name != "" {
+		return name
+	}
+	return fallback
+}
+
 // serverTypeForOpenRouterItem maps an OpenRouter `openrouter:*` item type
 // in a Responses stream to the canonical pi-go [ai.ServerToolType]. Unknown
 // types yield the empty string.
@@ -592,23 +640,81 @@ func serverTypeForOpenRouterItem(itemType string) ai.ServerToolType {
 }
 
 // buildOpenRouterServerToolCall converts a completed `openrouter:*` output
-// item into an [ai.ToolCall] with Server=true. Output.Raw is the verbatim
-// JSON for callers that need structured fields; Output.Content is left
-// empty until we have richer cassette-derived knowledge of the payload
-// shapes per OpenRouter tool.
+// item into an [ai.ToolCall] with Server=true. Best-effort scrapes common
+// argument fields (`query`, `url`, `timezone`) from the raw payload so the
+// call surfaces the same `Arguments` shape function tools have. Output.Raw
+// always carries the verbatim JSON for callers that need richer fields.
 func buildOpenRouterServerToolCall(item responses.ResponseOutputItemUnion) ai.ToolCall {
 	raw := item.RawJSON()
+	args := extractOpenRouterArgs(raw)
 	return ai.ToolCall{
 		ID:         item.ID,
 		Name:       item.Type,
+		Arguments:  args,
 		Server:     true,
 		ServerType: serverTypeForOpenRouterItem(item.Type),
 		Output: &ai.ServerToolOutput{
-			Content: "",
+			Content: openRouterOutputSummary(item.Type, raw),
 			Raw:     json.RawMessage(raw),
 			IsError: item.Status == "failed",
 		},
 	}
+}
+
+// extractOpenRouterArgs pulls common server-tool arguments from a raw
+// OpenRouter output item payload. Returns nil when no recognized fields
+// are present so callers can distinguish "no args" from "empty args".
+func extractOpenRouterArgs(raw string) map[string]any {
+	if raw == "" {
+		return nil
+	}
+	args := map[string]any{}
+	for _, key := range []string{"query", "url", "timezone"} {
+		if v := gjson.Get(raw, key); v.Exists() && v.String() != "" {
+			args[key] = v.String()
+		}
+		// Some payloads nest under "action" or "input".
+		if v := gjson.Get(raw, "action."+key); v.Exists() && v.String() != "" {
+			args[key] = v.String()
+		}
+		if v := gjson.Get(raw, "input."+key); v.Exists() && v.String() != "" {
+			args[key] = v.String()
+		}
+	}
+	if len(args) == 0 {
+		return nil
+	}
+	return args
+}
+
+// openRouterOutputSummary renders a one-line description of what a server
+// tool did in this turn. Falls back to the empty string when the payload
+// shape isn't recognized — Output.Raw still carries the full JSON.
+func openRouterOutputSummary(itemType, raw string) string {
+	if raw == "" {
+		return ""
+	}
+	switch itemType {
+	case "openrouter:web_search":
+		if q := gjson.Get(raw, "query"); q.Exists() {
+			return "search: " + q.String()
+		}
+		if q := gjson.Get(raw, "input.query"); q.Exists() {
+			return "search: " + q.String()
+		}
+	case "openrouter:web_fetch":
+		if u := gjson.Get(raw, "url"); u.Exists() {
+			return "fetch: " + u.String()
+		}
+		if u := gjson.Get(raw, "input.url"); u.Exists() {
+			return "fetch: " + u.String()
+		}
+	case "openrouter:datetime":
+		if tz := gjson.Get(raw, "timezone"); tz.Exists() {
+			return "datetime: " + tz.String()
+		}
+	}
+	return ""
 }
 
 // serverTypeForItem maps a Responses API item type to the canonical pi-go
