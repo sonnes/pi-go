@@ -91,7 +91,10 @@ func WithExtensionMutator(key string, mutate func(any) any) Option {
 	}
 }
 
-// WithTools sets the tools available for the agent to call.
+// WithTools sets the tools available for the agent. Mix client-side
+// function tools (e.g. [ai.DefineTool]) with provider-hosted server
+// tools (e.g. [ai.DefineServerTool]) — the agent advertises both to
+// the model and runs only the function tools locally.
 func WithTools(tools ...ai.Tool) Option {
 	return func(c *config) { c.tools = tools }
 }

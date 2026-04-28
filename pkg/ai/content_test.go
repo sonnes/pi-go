@@ -52,3 +52,31 @@ func TestAsContent_File(t *testing.T) {
 	assert.Equal(t, "application/pdf", f.MimeType)
 	assert.Equal(t, "report.pdf", f.Filename)
 }
+
+func TestToolCall_ServerVariant(t *testing.T) {
+	c := ai.Content(ai.ToolCall{
+		ID:         "srvtoolu_01",
+		Name:       "web_search",
+		Server:     true,
+		ServerType: ai.ServerToolWebSearch,
+		Arguments:  map[string]any{"query": "weather sf"},
+		Output: &ai.ServerToolOutput{
+			Content: "1. example.com — sunny\n",
+		},
+	})
+
+	tc, ok := ai.AsContent[ai.ToolCall](c)
+	assert.True(t, ok)
+	assert.True(t, tc.Server)
+	assert.Equal(t, ai.ServerToolWebSearch, tc.ServerType)
+	assert.NotNil(t, tc.Output)
+	assert.Equal(t, "1. example.com — sunny\n", tc.Output.Content)
+	assert.False(t, tc.Output.IsError)
+}
+
+func TestToolCall_FunctionVariant_DefaultsToNonServer(t *testing.T) {
+	tc := ai.ToolCall{ID: "id", Name: "fn"}
+	assert.False(t, tc.Server)
+	assert.Equal(t, ai.ServerToolType(""), tc.ServerType)
+	assert.Nil(t, tc.Output)
+}

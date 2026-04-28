@@ -24,6 +24,15 @@ Use `AsContent[T]` for safe type assertion — it handles nil safely.
 - **Image** — base64-encoded image data with MIME type. Used in user messages (input images) and image generation results.
 - **File** — a document/file attachment in user messages. Exactly one of `Data` (base64), `URL`, or `FileID` should be set. `MimeType` is the IANA media type (e.g. `application/pdf`, `text/plain`); `Filename` is optional.
 - **ToolCall** — a tool invocation from the model. Carries `ID`, `Name`, and `Arguments`. The agent loop matches `Name` to a registered [Tool](/concepts/ai/tools), executes it, and feeds back a `ToolResultMessage`. `ID` links the call to its result.
+  - For provider-hosted **server tools** (web search, code execution, ...), the same `ToolCall` block carries the result inline: `Server` is `true`, `ServerType` identifies the canonical tool, and `Output` is a `*ServerToolOutput`. There is no separate `ToolResultMessage` — the provider has already executed the call and the agent skips local execution.
+
+## ServerToolOutput
+
+`ServerToolOutput` is the result of a provider-executed server tool, attached to its `ToolCall`:
+
+- **`Content`** — a normalized text rendering of the result (e.g. a numbered list of "Title — URL" entries for web search, concatenated stdout/stderr for code execution). Suitable for display or for feeding back into a prompt.
+- **`Raw`** — the provider's original JSON, retained so callers can extract structured fields (citations, encrypted indices, per-chunk confidence scores) that don't fit the normalized rendering.
+- **`IsError`** — true when the provider reported a failed invocation.
 
 ## File support per provider
 

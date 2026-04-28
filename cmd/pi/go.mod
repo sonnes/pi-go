@@ -11,6 +11,7 @@ require (
 	github.com/sonnes/pi-go/pkg/ai/provider/geminicli v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/google v0.0.0
 	github.com/sonnes/pi-go/pkg/ai/provider/openai v0.0.0
+	github.com/sonnes/pi-go/pkg/ai/provider/openairesponses v0.0.0
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli/v3 v3.3.3
 )
@@ -23,12 +24,12 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
 	github.com/charmbracelet/lipgloss v1.1.0 // indirect
-	github.com/charmbracelet/log v0.4.2 // indirect
+	github.com/charmbracelet/log v1.0.0 // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-logfmt/logfmt v0.6.0 // indirect
+	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
@@ -69,4 +70,5 @@ replace (
 	github.com/sonnes/pi-go/pkg/ai/provider/geminicli => ../../pkg/ai/provider/geminicli
 	github.com/sonnes/pi-go/pkg/ai/provider/google => ../../pkg/ai/provider/google
 	github.com/sonnes/pi-go/pkg/ai/provider/openai => ../../pkg/ai/provider/openai
+	github.com/sonnes/pi-go/pkg/ai/provider/openairesponses => ../../pkg/ai/provider/openairesponses
 )

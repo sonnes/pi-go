@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -103,6 +104,12 @@ func (p *Provider) StreamText(
 		// Track block types by index for content_block_stop.
 		var blockTypes []string
 
+		// Pending server-tool calls awaiting their result block. Server tools
+		// stream as two paired blocks (server_tool_use + web_search_tool_result);
+		// we merge them into a single ai.ToolCall with Output populated when the
+		// result arrives, and emit one EventToolEnd at that point.
+		pendingServerCalls := map[string]*ai.ToolCall{}
+
 		for stream.Next() {
 			chunk := stream.Current()
 			_ = acc.Accumulate(chunk)
@@ -121,7 +128,7 @@ func (p *Provider) StreamText(
 						Type:         ai.EventThinkStart,
 						ContentIndex: int(chunk.Index),
 					})
-				case "tool_use":
+				case "tool_use", "server_tool_use":
 					push(ai.Event{
 						Type:         ai.EventToolStart,
 						ContentIndex: int(chunk.Index),
@@ -188,9 +195,49 @@ func (p *Provider) StreamText(
 								},
 							})
 						}
+					case "server_tool_use":
+						// Stash the call; emit when its result block arrives.
+						if idx < len(acc.Content) {
+							stu := acc.Content[idx].AsServerToolUse()
+							pendingServerCalls[stu.ID] = &ai.ToolCall{
+								ID:         stu.ID,
+								Name:       string(stu.Name),
+								Arguments:  serverToolInputToMap(stu.Input),
+								Server:     true,
+								ServerType: serverTypeForName(string(stu.Name)),
+							}
+						}
+					case "web_search_tool_result":
+						if idx < len(acc.Content) {
+							res := acc.Content[idx].AsWebSearchToolResult()
+							call := pendingServerCalls[res.ToolUseID]
+							if call == nil {
+								call = &ai.ToolCall{
+									ID:         res.ToolUseID,
+									Server:     true,
+									ServerType: ai.ServerToolWebSearch,
+								}
+							}
+							call.Output = buildWebSearchOutput(res)
+							delete(pendingServerCalls, res.ToolUseID)
+							push(ai.Event{
+								Type:         ai.EventToolEnd,
+								ContentIndex: idx,
+								ToolCall:     call,
+							})
+						}
 					}
 				}
 			}
+		}
+
+		// Drain any server-tool calls that never received a result (rare; usually
+		// indicates an upstream error mid-stream). Emit them with no Output.
+		for _, call := range pendingServerCalls {
+			push(ai.Event{
+				Type:     ai.EventToolEnd,
+				ToolCall: call,
+			})
 		}
 
 		if err := stream.Err(); err != nil && !errors.Is(err, io.EOF) {
@@ -294,8 +341,16 @@ func thinkingBudget(level ai.ThinkingLevel) int64 {
 }
 
 // buildMessage constructs the final ai.Message from the accumulated response.
+//
+// Server-tool blocks (server_tool_use + web_search_tool_result) are merged into
+// a single ai.ToolCall with Server=true and Output populated. Function tool_use
+// blocks remain as bare ai.ToolCall (Output nil; client executes them).
 func buildMessage(model ai.Model, acc *anthropic.Message) *ai.Message {
 	var content []ai.Content
+
+	// Maps server_tool_use ID to the index in content where its merged ToolCall
+	// lives, so the matching result block can attach Output without re-scanning.
+	serverIdx := map[string]int{}
 
 	for _, block := range acc.Content {
 		switch block.Type {
@@ -316,6 +371,32 @@ func buildMessage(model ai.Model, acc *anthropic.Message) *ai.Message {
 				Name:      block.Name,
 				Arguments: args,
 			})
+		case "server_tool_use":
+			stu := block.AsServerToolUse()
+			content = append(content, ai.ToolCall{
+				ID:         stu.ID,
+				Name:       string(stu.Name),
+				Arguments:  serverToolInputToMap(stu.Input),
+				Server:     true,
+				ServerType: serverTypeForName(string(stu.Name)),
+			})
+			serverIdx[stu.ID] = len(content) - 1
+		case "web_search_tool_result":
+			res := block.AsWebSearchToolResult()
+			out := buildWebSearchOutput(res)
+			if i, ok := serverIdx[res.ToolUseID]; ok {
+				tc := content[i].(ai.ToolCall)
+				tc.Output = out
+				content[i] = tc
+				delete(serverIdx, res.ToolUseID)
+			} else {
+				content = append(content, ai.ToolCall{
+					ID:         res.ToolUseID,
+					Server:     true,
+					ServerType: ai.ServerToolWebSearch,
+					Output:     out,
+				})
+			}
 		}
 	}
 
@@ -353,6 +434,64 @@ func mapStopReason(reason string) ai.StopReason {
 	default:
 		return ai.StopReasonStop
 	}
+}
+
+// serverTypeForName maps an Anthropic server-tool block name to the canonical
+// pi-go [ai.ServerToolType]. Unknown names yield the empty type.
+func serverTypeForName(name string) ai.ServerToolType {
+	switch name {
+	case "web_search":
+		return ai.ServerToolWebSearch
+	default:
+		return ai.ServerToolType(name)
+	}
+}
+
+// serverToolInputToMap converts a server_tool_use Input (typed as `any` by
+// the SDK because the shape varies per tool) to a map[string]any so it can
+// fit pi-go's [ai.ToolCall.Arguments].
+func serverToolInputToMap(input any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	if m, ok := input.(map[string]any); ok {
+		return m
+	}
+	data, err := json.Marshal(input)
+	if err != nil {
+		return nil
+	}
+	var out map[string]any
+	_ = json.Unmarshal(data, &out)
+	return out
+}
+
+// buildWebSearchOutput converts a [WebSearchToolResultBlock] to an
+// [ai.ServerToolOutput]. Successful results are rendered as a numbered list
+// of "Title — URL" entries; errors are surfaced via IsError with the error
+// code in Content. Raw retains the provider's full JSON for callers that want
+// to extract per-result fields like encrypted_content for follow-up turns.
+func buildWebSearchOutput(res anthropic.WebSearchToolResultBlock) *ai.ServerToolOutput {
+	out := &ai.ServerToolOutput{
+		Raw: json.RawMessage(res.RawJSON()),
+	}
+
+	if errBlock := res.Content.AsResponseWebSearchToolResultError(); errBlock.ErrorCode != "" {
+		out.IsError = true
+		out.Content = string(errBlock.ErrorCode)
+		return out
+	}
+
+	results := res.Content.OfWebSearchResultBlockArray
+	var b strings.Builder
+	for i, r := range results {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		fmt.Fprintf(&b, "%d. %s — %s", i+1, r.Title, r.URL)
+	}
+	out.Content = b.String()
+	return out
 }
 
 // Option configures the Anthropic provider.

@@ -206,11 +206,20 @@ func convertToolResultMessage(
 }
 
 // convertTools converts ai.ToolInfo to Responses API tool params.
+// Function tools become OfFunction; server tools route through convertServerTool
+// and are silently skipped if the type is unsupported.
 func convertTools(
 	tools []ai.ToolInfo,
 ) []responses.ToolUnionParam {
 	result := make([]responses.ToolUnionParam, 0, len(tools))
 	for _, t := range tools {
+		if t.Kind == ai.ToolKindServer {
+			if p, ok := convertServerTool(t); ok {
+				result = append(result, p)
+			}
+			continue
+		}
+
 		var schemaMap map[string]any
 		if t.InputSchema != nil {
 			if data, err := json.Marshal(t.InputSchema); err == nil {
@@ -226,6 +235,104 @@ func convertTools(
 				Strict:      param.NewOpt(false),
 			},
 		})
+	}
+	return result
+}
+
+// convertServerTool maps a pi-go server-tool ToolInfo to a Responses API typed
+// tool param. Returns false if the type is not currently supported by this
+// adapter.
+//
+// Supported config keys:
+//   - web_search: search_context_size ("low"|"medium"|"high"), type
+//     ("web_search_preview"|"web_search_preview_2025_03_11")
+//   - code_execution: container (string container ID; empty = "auto")
+func convertServerTool(t ai.ToolInfo) (responses.ToolUnionParam, bool) {
+	switch t.ServerType {
+	case ai.ServerToolWebSearch:
+		ws := &responses.WebSearchToolParam{
+			Type: responses.WebSearchToolTypeWebSearchPreview,
+		}
+		if v, ok := t.ServerConfig["type"].(string); ok && v != "" {
+			ws.Type = responses.WebSearchToolType(v)
+		}
+		if v, ok := t.ServerConfig["search_context_size"].(string); ok && v != "" {
+			ws.SearchContextSize = responses.WebSearchToolSearchContextSize(v)
+		}
+		return responses.ToolUnionParam{OfWebSearchPreview: ws}, true
+
+	case ai.ServerToolCodeExecution:
+		ci := &responses.ToolCodeInterpreterParam{
+			Container: responses.ToolCodeInterpreterContainerUnionParam{
+				OfCodeInterpreterContainerAuto: &responses.ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam{},
+			},
+		}
+		if v, ok := t.ServerConfig["container"].(string); ok && v != "" {
+			ci.Container = responses.ToolCodeInterpreterContainerUnionParam{
+				OfString: param.NewOpt(v),
+			}
+		}
+		return responses.ToolUnionParam{OfCodeInterpreter: ci}, true
+
+	default:
+		return responses.ToolUnionParam{}, false
+	}
+}
+
+// openRouterServerToolName maps a pi-go [ai.ServerToolType] to the OpenRouter
+// namespaced tool type. Server tools that OpenRouter does not expose return
+// the empty string so the caller can drop them silently.
+func openRouterServerToolName(t ai.ServerToolType) string {
+	switch t {
+	case ai.ServerToolWebSearch:
+		return "openrouter:web_search"
+	case ai.ServerToolWebFetch:
+		return "openrouter:web_fetch"
+	case ai.ServerToolDateTime:
+		return "openrouter:datetime"
+	default:
+		return ""
+	}
+}
+
+// convertOpenRouterTools converts pi-go tools to the JSON-shaped slice that
+// OpenRouter's Responses API expects in the request body's "tools" array.
+//
+// Function tools become `{"type": "function", ...}`; server tools become
+// `{"type": "openrouter:<name>", ...}` with [ai.ToolInfo.ServerConfig] keys
+// merged in. Server-tool types that OpenRouter does not expose (code
+// execution, file search, computer, MCP, bash, text editor) are dropped
+// silently — same convention as [convertServerTool] for the OpenAI adapter.
+func convertOpenRouterTools(tools []ai.ToolInfo) []map[string]any {
+	result := make([]map[string]any, 0, len(tools))
+	for _, t := range tools {
+		if t.Kind == ai.ToolKindServer {
+			name := openRouterServerToolName(t.ServerType)
+			if name == "" {
+				continue
+			}
+			tool := map[string]any{"type": name}
+			for k, v := range t.ServerConfig {
+				tool[k] = v
+			}
+			result = append(result, tool)
+			continue
+		}
+
+		fn := map[string]any{
+			"type":        "function",
+			"name":        t.Name,
+			"description": t.Description,
+			"strict":      false,
+		}
+		if t.InputSchema != nil {
+			if data, err := json.Marshal(t.InputSchema); err == nil {
+				var schemaMap map[string]any
+				_ = json.Unmarshal(data, &schemaMap)
+				fn["parameters"] = schemaMap
+			}
+		}
+		result = append(result, fn)
 	}
 	return result
 }

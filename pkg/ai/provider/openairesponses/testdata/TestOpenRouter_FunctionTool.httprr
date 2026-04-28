@@ -1,0 +1,49 @@
+httprr trace v1
+640 5613
+POST https://openrouter.ai/api/v1/responses HTTP/1.1
+Host: openrouter.ai
+User-Agent: Go-http-client/1.1
+Content-Length: 452
+Accept: application/json
+Content-Type: application/json
+
+{"instructions":"Use the get_weather tool when asked about weather.","max_output_tokens":200,"store":false,"input":[{"content":"What's the weather in NYC?","role":"user"}],"model":"openai/gpt-4o-mini","stream":true,"tools":[{"description":"Get the weather for a city","name":"get_weather","parameters":{"additionalProperties":false,"properties":{"location":{"type":"string"}},"required":["location"],"type":"object"},"strict":false,"type":"function"}]}HTTP/2.0 200 OK
+Connection: close
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: X-Generation-Id,cf-ray
+Cache-Control: no-cache
+Cf-Ray: 9f3519480cb92b0d-DEL
+Content-Type: text/event-stream
+Date: Tue, 28 Apr 2026 09:39:16 GMT
+Permissions-Policy: payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+Referrer-Policy: no-referrer, strict-origin-when-cross-origin
+Server: cloudflare
+X-Content-Type-Options: nosniff
+X-Generation-Id: gen-1777369155-axxIKXC363GyawRqQZo1
+
+data: {"type":"response.created","response":{"id":"gen-1777369155-axxIKXC363GyawRqQZo1","object":"response","created_at":1777369155,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"get_weather","description":"Get the weather for a city","strict":false,"parameters":{"additionalProperties":false,"properties":{"location":{"type":"string"}},"required":["location"],"type":"object"}}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":200,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use the get_weather tool when asked about weather.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":null},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{"id":"gen-1777369155-axxIKXC363GyawRqQZo1","object":"response","created_at":1777369155,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"get_weather","description":"Get the weather for a city","strict":false,"parameters":{"additionalProperties":false,"properties":{"location":{"type":"string"}},"required":["location"],"type":"object"}}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":200,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use the get_weather tool when asked about weather.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":null},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"fc_tmp_hs83m5u1n57","type":"function_call","status":"in_progress","call_id":"call_wp4OAMQErnLQb2b660cI7keK","name":"get_weather","arguments":""},"sequence_number":2}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_tmp_hs83m5u1n57","delta":"{\"","sequence_number":3}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_tmp_hs83m5u1n57","delta":"location","sequence_number":4}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_tmp_hs83m5u1n57","delta":"\":\"","sequence_number":5}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_tmp_hs83m5u1n57","delta":"NY","sequence_number":6}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_tmp_hs83m5u1n57","delta":"C","sequence_number":7}
+
+data: {"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_tmp_hs83m5u1n57","delta":"\"}","sequence_number":8}
+
+data: {"type":"response.function_call_arguments.done","output_index":0,"item_id":"fc_tmp_hs83m5u1n57","name":"get_weather","arguments":"{\"location\":\"NYC\"}","sequence_number":9}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"fc_tmp_hs83m5u1n57","type":"function_call","status":"completed","call_id":"call_wp4OAMQErnLQb2b660cI7keK","name":"get_weather","arguments":"{\"location\":\"NYC\"}"},"sequence_number":10}
+
+data: {"type":"response.completed","response":{"id":"gen-1777369155-axxIKXC363GyawRqQZo1","object":"response","created_at":1777369155,"model":"openai/gpt-4o-mini","status":"completed","completed_at":1777369156,"output":[{"id":"fc_tmp_hs83m5u1n57","type":"function_call","status":"completed","call_id":"call_wp4OAMQErnLQb2b660cI7keK","name":"get_weather","arguments":"{\"location\":\"NYC\"}"}],"error":null,"incomplete_details":null,"tools":[{"type":"function","name":"get_weather","description":"Get the weather for a city","strict":false,"parameters":{"additionalProperties":false,"properties":{"location":{"type":"string"}},"required":["location"],"type":"object"}}],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":200,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use the get_weather tool when asked about weather.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":{"input_tokens":60,"input_tokens_details":{"cached_tokens":0},"output_tokens":15,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":75,"cost":0.000018,"is_byok":false,"cost_details":{"upstream_inference_cost":0.000018,"upstream_inference_input_cost":0.000009,"upstream_inference_output_cost":0.000009}}},"sequence_number":11}
+
+data: [DONE]
+

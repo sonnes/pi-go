@@ -143,15 +143,17 @@ func (p *Provider) StreamText(
 		lastParts := depointerSlice(lastMessage.Parts)
 
 		var (
-			contentIndex int
-			inText       bool
-			inThink      bool
-			fullText     string
-			fullThinking string
-			hasToolCalls bool
-			finalContent []ai.Content
-			usage        ai.Usage
-			stopReason   ai.StopReason
+			contentIndex    int
+			inText          bool
+			inThink         bool
+			fullText        string
+			fullThinking    string
+			hasToolCalls    bool
+			finalContent    []ai.Content
+			usage           ai.Usage
+			stopReason      ai.StopReason
+			pendingExecCode *genai.ExecutableCode // most-recent ExecutableCode awaiting its result
+			groundingSeen   *genai.GroundingMetadata
 		)
 
 		for resp, err := range chat.SendMessageStream(ctx, lastParts...) {
@@ -287,7 +289,77 @@ func (p *Provider) StreamText(
 
 						finalContent = append(finalContent, *tc)
 						contentIndex++
+
+					case part.ExecutableCode != nil:
+						hasToolCalls = true
+						if inText {
+							finalContent = append(finalContent, ai.Text{Text: fullText})
+							push(ai.Event{
+								Type:         ai.EventTextEnd,
+								ContentIndex: contentIndex,
+								Content:      fullText,
+							})
+							inText = false
+							fullText = ""
+							contentIndex++
+						}
+						if inThink {
+							finalContent = append(finalContent, ai.Thinking{Thinking: fullThinking})
+							push(ai.Event{
+								Type:         ai.EventThinkEnd,
+								ContentIndex: contentIndex,
+								Content:      fullThinking,
+							})
+							inThink = false
+							fullThinking = ""
+							contentIndex++
+						}
+						pendingExecCode = part.ExecutableCode
+						push(ai.Event{
+							Type:         ai.EventToolStart,
+							ContentIndex: contentIndex,
+							ToolCall: &ai.ToolCall{
+								ID:         p.toolCallIDFunc(),
+								Name:       string(ai.ServerToolCodeExecution),
+								Server:     true,
+								ServerType: ai.ServerToolCodeExecution,
+							},
+						})
+
+					case part.CodeExecutionResult != nil:
+						res := part.CodeExecutionResult
+						tc := ai.ToolCall{
+							ID:         p.toolCallIDFunc(),
+							Name:       string(ai.ServerToolCodeExecution),
+							Server:     true,
+							ServerType: ai.ServerToolCodeExecution,
+							Output: &ai.ServerToolOutput{
+								Content: res.Output,
+								IsError: res.Outcome != "" && res.Outcome != genai.OutcomeOK,
+							},
+						}
+						if pendingExecCode != nil {
+							tc.Arguments = map[string]any{
+								"code":     pendingExecCode.Code,
+								"language": string(pendingExecCode.Language),
+							}
+							pendingExecCode = nil
+						}
+						push(ai.Event{
+							Type:         ai.EventToolEnd,
+							ContentIndex: contentIndex,
+							ToolCall:     &tc,
+						})
+						finalContent = append(finalContent, tc)
+						contentIndex++
 					}
+				}
+			}
+
+			if len(resp.Candidates) > 0 && resp.Candidates[0].GroundingMetadata != nil {
+				gm := resp.Candidates[0].GroundingMetadata
+				if len(gm.WebSearchQueries) > 0 || len(gm.GroundingChunks) > 0 {
+					groundingSeen = gm
 				}
 			}
 
@@ -319,6 +391,34 @@ func (p *Provider) StreamText(
 				Content:      fullText,
 			})
 			contentIndex++
+		}
+
+		if groundingSeen != nil {
+			tc := ai.ToolCall{
+				ID:         p.toolCallIDFunc(),
+				Name:       string(ai.ServerToolWebSearch),
+				Server:     true,
+				ServerType: ai.ServerToolWebSearch,
+				Output:     buildGroundingOutput(groundingSeen),
+			}
+			if len(groundingSeen.WebSearchQueries) > 0 {
+				tc.Arguments = map[string]any{
+					"queries": groundingSeen.WebSearchQueries,
+				}
+			}
+			push(ai.Event{
+				Type:         ai.EventToolStart,
+				ContentIndex: contentIndex,
+				ToolCall:     &tc,
+			})
+			push(ai.Event{
+				Type:         ai.EventToolEnd,
+				ContentIndex: contentIndex,
+				ToolCall:     &tc,
+			})
+			finalContent = append(finalContent, tc)
+			contentIndex++
+			hasToolCalls = true
 		}
 
 		if hasToolCalls {
@@ -382,9 +482,21 @@ func applyOptions(config *genai.GenerateContentConfig, opts ai.StreamOptions) {
 }
 
 // convertTools converts ai.ToolInfo definitions to Google format.
+//
+// Function tools collapse into a single Tool with FunctionDeclarations.
+// Server tools toggle dedicated fields on a separate Tool — Gemini does not
+// allow mixing FunctionDeclarations with google_search or code_execution in
+// the same Tool entry.
 func convertTools(tools []ai.ToolInfo, choice ai.ToolChoice) ([]*genai.Tool, *genai.ToolConfig) {
 	var funcs []*genai.FunctionDeclaration
+	var serverTool genai.Tool
+
 	for _, t := range tools {
+		if t.Kind == ai.ToolKindServer {
+			applyServerTool(&serverTool, t)
+			continue
+		}
+
 		decl := &genai.FunctionDeclaration{
 			Name:        t.Name,
 			Description: t.Description,
@@ -402,7 +514,11 @@ func convertTools(tools []ai.ToolInfo, choice ai.ToolChoice) ([]*genai.Tool, *ge
 
 	var googleTools []*genai.Tool
 	if len(funcs) > 0 {
-		googleTools = []*genai.Tool{{FunctionDeclarations: funcs}}
+		googleTools = append(googleTools, &genai.Tool{FunctionDeclarations: funcs})
+	}
+	if serverTool.GoogleSearch != nil || serverTool.CodeExecution != nil || serverTool.URLContext != nil {
+		t := serverTool
+		googleTools = append(googleTools, &t)
 	}
 
 	var toolConfig *genai.ToolConfig
@@ -435,6 +551,45 @@ func convertTools(tools []ai.ToolInfo, choice ai.ToolChoice) ([]*genai.Tool, *ge
 	}
 
 	return googleTools, toolConfig
+}
+
+// applyServerTool toggles the appropriate field on a [genai.Tool] for the
+// given pi-go server-tool ToolInfo. Unsupported types are silently skipped.
+func applyServerTool(t *genai.Tool, info ai.ToolInfo) {
+	switch info.ServerType {
+	case ai.ServerToolWebSearch:
+		t.GoogleSearch = &genai.GoogleSearch{}
+	case ai.ServerToolCodeExecution:
+		t.CodeExecution = &genai.ToolCodeExecution{}
+	}
+}
+
+// buildGroundingOutput converts a [genai.GroundingMetadata] block into an
+// [ai.ServerToolOutput]. Content is a numbered list of grounding-chunk URIs
+// and titles; Raw retains the marshaled JSON for callers that want to extract
+// per-chunk fields like the supporting confidence scores.
+func buildGroundingOutput(gm *genai.GroundingMetadata) *ai.ServerToolOutput {
+	out := &ai.ServerToolOutput{}
+
+	var lines []string
+	for i, chunk := range gm.GroundingChunks {
+		if chunk == nil || chunk.Web == nil {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%d. %s — %s", i+1, chunk.Web.Title, chunk.Web.URI))
+	}
+	if len(lines) > 0 {
+		joined := lines[0]
+		for _, l := range lines[1:] {
+			joined += "\n" + l
+		}
+		out.Content = joined
+	}
+
+	if data, err := json.Marshal(gm); err == nil {
+		out.Raw = data
+	}
+	return out
 }
 
 // mapToGenaiSchema converts a JSON schema map to Google's genai.Schema.

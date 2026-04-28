@@ -8,6 +8,34 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
+// ToolKind distinguishes client-executed function tools from
+// provider-executed server (built-in) tools. Branching logic compares
+// against [ToolKindServer]; the empty zero value is treated as a
+// function tool for backwards compatibility.
+type ToolKind string
+
+const (
+	ToolKindFunction ToolKind = "function"
+	ToolKindServer   ToolKind = "server"
+)
+
+// ServerToolType is the canonical pi-go identifier for a provider-hosted tool.
+// Each provider adapter maps these to its own typed configuration.
+type ServerToolType string
+
+const (
+	ServerToolWebSearch     ServerToolType = "web_search"
+	ServerToolWebFetch      ServerToolType = "web_fetch"
+	ServerToolCodeExecution ServerToolType = "code_execution"
+	ServerToolComputer      ServerToolType = "computer"
+	ServerToolBash          ServerToolType = "bash"
+	ServerToolTextEditor    ServerToolType = "text_editor"
+	ServerToolFileSearch    ServerToolType = "file_search"
+	ServerToolToolSearch    ServerToolType = "tool_search"
+	ServerToolMCP           ServerToolType = "mcp"
+	ServerToolDateTime      ServerToolType = "datetime"
+)
+
 // ToolInfo contains tool metadata for model consumption.
 type ToolInfo struct {
 	Name string `json:"name"`
@@ -21,6 +49,47 @@ type ToolInfo struct {
 	InputSchema  *jsonschema.Schema `json:"input_schema"`
 	OutputSchema *jsonschema.Schema `json:"output_schema,omitempty"`
 	Parallel     bool               `json:"parallel,omitempty"`
+
+	// Kind, ServerType, and ServerConfig are only meaningful when this
+	// ToolInfo describes a provider-hosted server tool ([ToolKindServer]).
+	// For function tools the zero values apply and these fields are ignored.
+	Kind         ToolKind       `json:"kind,omitempty"`
+	ServerType   ServerToolType `json:"server_type,omitempty"`
+	ServerConfig map[string]any `json:"server_config,omitempty"`
+}
+
+// DefineServerTool wraps a [ToolInfo] describing a provider-hosted server
+// tool into a [Tool]. The returned tool is advertised to the model through
+// the same [Tool] interface as function tools, but is executed by the
+// provider — calling Run on it always returns an error.
+//
+// Kind is forced to [ToolKindServer]; callers should populate Name,
+// ServerType, and (optionally) ServerConfig:
+//
+//	ai.DefineServerTool(ai.ToolInfo{
+//	    Name:       "web_search",
+//	    ServerType: ai.ServerToolWebSearch,
+//	    ServerConfig: map[string]any{"max_uses": 5},
+//	})
+func DefineServerTool(info ToolInfo) Tool {
+	info.Kind = ToolKindServer
+	if info.Name == "" {
+		info.Name = string(info.ServerType)
+	}
+	return &serverToolImpl{info: info}
+}
+
+// serverToolImpl is a [Tool] adapter for provider-hosted tools. Run is never
+// invoked by the agent for server tools — they're filtered out before
+// execution because the provider has already produced the result inline.
+type serverToolImpl struct {
+	info ToolInfo
+}
+
+func (s *serverToolImpl) Info() ToolInfo { return s.info }
+
+func (s *serverToolImpl) Run(_ context.Context, call ToolCallReq) (ToolResult, error) {
+	return NewErrorResult(call.ID, fmt.Sprintf("server tool %q is provider-executed; client cannot invoke it", s.info.Name)), nil
 }
 
 // ToolCall represents a tool invocation from the model.
