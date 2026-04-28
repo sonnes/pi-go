@@ -22,12 +22,31 @@ Tools let models call Go functions. The SDK handles schema generation, JSON mars
 
 Any type implementing `Tool` (with `Info()` and `Run()` methods) can be used. `DefineTool` returns a `ToolDef` that implements this. Custom tools can implement the interface directly for full control over schema and execution.
 
+## Function tools vs. server tools
+
+`ToolInfo.Kind` distinguishes the two flavors. `ToolKindFunction` (`"function"`) is the client-executed function tool described above; `ToolKindServer` (`"server"`) marks a provider-hosted tool — web search, code execution, etc. — that the provider runs on its own infrastructure. Branching logic in the agent and provider adapters compares against `ToolKindServer`, so an unset `Kind` (the empty zero value of `ToolKind`) is treated as a function tool.
+
+Construct server tools with `DefineServerTool`:
+
+```go
+agent.WithTools(
+    ai.DefineServerTool(ai.ToolInfo{
+        ServerType:   ai.ServerToolWebSearch,
+        ServerConfig: map[string]any{"max_uses": 5},
+    }),
+)
+```
+
+`ServerType` is one of the canonical `ai.ServerToolType` constants (`ServerToolWebSearch`, `ServerToolCodeExecution`, ...). `ServerConfig` is a free-form map; each provider adapter consumes the keys it understands and ignores the rest. Server tools share the same `WithTools` plumbing as function tools, so the two flavors mix freely. The agent advertises both to the model but executes only the function tools — server-tool calls are filtered out (`tc.Server == true`) before the executor runs. See [Server-Side Tools](/capabilities/server-tools) for per-provider coverage.
+
 ## Execution flow
 
 1. Model returns a `ToolCall` content block with `ID`, `Name`, and `Arguments`.
 2. Agent matches the tool by name, creates a `ToolCallReq`.
 3. `Run` deserializes input, calls the typed function, serializes output.
 4. Errors from the function become `IsError: true` results visible to the model.
+
+For server tools, the provider executes the call inline and returns the result on the same `ToolCall` block (`Server == true`, `Output` populated). The agent emits a single `EventToolEnd` per server call but skips local execution and the `tool_execution_*` events.
 
 ## Streaming progress
 

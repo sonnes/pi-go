@@ -1,5 +1,7 @@
 package ai
 
+import "encoding/json"
+
 // Content is a sealed interface for content blocks within messages.
 // The concrete types are Text, Thinking, Image, File, and ToolCall.
 type Content interface {
@@ -49,14 +51,37 @@ type File struct {
 func (File) content() {}
 
 // ToolCall represents a tool invocation by the model.
+//
+// For client-side function tools, the model emits a ToolCall and the client
+// executes it; the result is sent back as a separate tool-result message.
+//
+// For provider-hosted server tools, the provider executes the call inline.
+// Server is true, ServerType identifies the canonical tool, and Output (when
+// populated) carries the provider-emitted result alongside the invocation.
 type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments map[string]any
 	Signature string // provider-specific signature (e.g. Google thought_signature)
+
+	Server     bool              // true if this call was executed by the provider
+	ServerType ServerToolType    // canonical type when Server is true
+	Output     *ServerToolOutput // result of provider-side execution, when available
 }
 
 func (ToolCall) content() {}
+
+// ServerToolOutput carries the result of a provider-executed server tool.
+//
+// Content is a normalized text rendering (e.g. concatenated search-result
+// snippets, code stdout/stderr, fetched body) suitable for display or for
+// feeding back into the model. Raw retains the provider's original JSON for
+// callers that need structured fields (citations, encrypted indices, etc.).
+type ServerToolOutput struct {
+	Content string
+	Raw     json.RawMessage
+	IsError bool
+}
 
 // AsContent converts a Content interface to a specific concrete type.
 func AsContent[T Content](c Content) (T, bool) {

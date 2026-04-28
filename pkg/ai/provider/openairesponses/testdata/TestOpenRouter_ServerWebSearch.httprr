@@ -1,0 +1,649 @@
+httprr trace v1
+491 63896
+POST https://openrouter.ai/api/v1/responses HTTP/1.1
+Host: openrouter.ai
+User-Agent: Go-http-client/1.1
+Content-Length: 303
+Accept: application/json
+Content-Type: application/json
+
+{"instructions":"Use web_search to ground your answer with recent sources.","max_output_tokens":600,"store":false,"input":[{"content":"What was Anthropic's most recent product launch?","role":"user"}],"model":"openai/gpt-4o-mini","stream":true,"tools":[{"max_results":3,"type":"openrouter:web_search"}]}HTTP/2.0 200 OK
+Connection: close
+Access-Control-Allow-Origin: *
+Access-Control-Expose-Headers: X-Generation-Id,cf-ray
+Cache-Control: no-cache
+Cf-Ray: 9f35194def752b0d-DEL
+Content-Type: text/event-stream
+Date: Tue, 28 Apr 2026 09:39:26 GMT
+Permissions-Policy: payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com" "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+Referrer-Policy: no-referrer, strict-origin-when-cross-origin
+Server: cloudflare
+X-Content-Type-Options: nosniff
+X-Generation-Id: gen-1777369156-wMj2elsMOx0ddYL9s8SK
+
+data: {"type":"response.created","response":{"id":"gen-1777369156-wMj2elsMOx0ddYL9s8SK","object":"response","created_at":1777369156,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":600,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use web_search to ground your answer with recent sources.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":null},"sequence_number":0}
+
+data: {"type":"response.in_progress","response":{"id":"gen-1777369156-wMj2elsMOx0ddYL9s8SK","object":"response","created_at":1777369156,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":600,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use web_search to ground your answer with recent sources.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":null},"sequence_number":1}
+
+data: {"type":"response.output_item.added","output_index":0,"item":{"id":"st_tmp_4pe3noupgrs","type":"openrouter:web_search","status":"in_progress"},"sequence_number":2}
+
+data: {"type":"response.output_item.done","output_index":0,"item":{"id":"st_tmp_4pe3noupgrs","type":"openrouter:web_search","status":"completed"},"sequence_number":3}
+
+data: {"type":"response.output_item.added","output_index":1,"item":{"id":"msg_tmp_v03lyel88p","type":"message","status":"in_progress","role":"assistant","content":[]},"sequence_number":4}
+
+data: {"type":"response.content_part.added","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"part":{"type":"output_text","text":"","annotations":[],"logprobs":[]},"sequence_number":5}
+
+data: {"type":"response.output_text.annotation.added","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"annotation_index":0,"annotation":{"type":"url_citation","url":"https://techcrunch.com/2023/07/11/anthropic-releases-claude-2-the-second-generation-of-its-ai-chatbot","title":"Anthropic releases Claude 2, its second-gen AI chatbot | TechCrunch","start_index":0,"end_index":0},"sequence_number":6}
+
+data: {"type":"response.output_text.annotation.added","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"annotation_index":1,"annotation":{"type":"url_citation","url":"https://techcrunch.com/2023/03/14/anthropic-launches-claude-a-chatbot-to-rival-openais-chatgpt/","title":"Anthropic launches Claude, a chatbot to rival OpenAI's ChatGPT | TechCrunch","start_index":0,"end_index":0},"sequence_number":7}
+
+data: {"type":"response.output_text.annotation.added","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"annotation_index":2,"annotation":{"type":"url_citation","url":"https://www.anthropic.com/news/claude-2-1","title":"Introducing Claude 2.1 \\ Anthropic","start_index":0,"end_index":0},"sequence_number":8}
+
+data: {"type":"response.output_text.annotation.added","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"annotation_index":3,"annotation":{"type":"url_citation","url":"https://www.anthropic.com/news/introducing-claude","title":"Introducing Claude \\ Anthropic","start_index":0,"end_index":0},"sequence_number":9}
+
+data: {"type":"response.output_text.annotation.added","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"annotation_index":4,"annotation":{"type":"url_citation","url":"https://techcrunch.com/2023/08/09/anthropic-launches-improved-version-of-its-entry-level-llm","title":"Anthropic launches improved version of its entry-level LLM | TechCrunch","start_index":0,"end_index":0},"sequence_number":10}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"Anth","logprobs":[],"sequence_number":11}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"ropic","logprobs":[],"sequence_number":12}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"'s","logprobs":[],"sequence_number":13}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" most","logprobs":[],"sequence_number":14}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" recent","logprobs":[],"sequence_number":15}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" product","logprobs":[],"sequence_number":16}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" launch","logprobs":[],"sequence_number":17}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" is","logprobs":[],"sequence_number":18}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" **","logprobs":[],"sequence_number":19}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"Claude","logprobs":[],"sequence_number":20}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":21}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"2","logprobs":[],"sequence_number":22}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":23}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"1","logprobs":[],"sequence_number":24}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"**,","logprobs":[],"sequence_number":25}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" announced","logprobs":[],"sequence_number":26}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" on","logprobs":[],"sequence_number":27}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" **","logprobs":[],"sequence_number":28}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"November","logprobs":[],"sequence_number":29}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":30}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"21","logprobs":[],"sequence_number":31}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":32}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":33}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"202","logprobs":[],"sequence_number":34}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"3","logprobs":[],"sequence_number":35}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"**","logprobs":[],"sequence_number":36}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":37}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" This","logprobs":[],"sequence_number":38}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" version","logprobs":[],"sequence_number":39}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" introduces","logprobs":[],"sequence_number":40}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" several","logprobs":[],"sequence_number":41}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" significant","logprobs":[],"sequence_number":42}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" improvements","logprobs":[],"sequence_number":43}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":44}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" including","logprobs":[],"sequence_number":45}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":":\n\n","logprobs":[],"sequence_number":46}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"1","logprobs":[],"sequence_number":47}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":48}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" **","logprobs":[],"sequence_number":49}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"200","logprobs":[],"sequence_number":50}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":51}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"000","logprobs":[],"sequence_number":52}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Token","logprobs":[],"sequence_number":53}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Context","logprobs":[],"sequence_number":54}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Window","logprobs":[],"sequence_number":55}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"**","logprobs":[],"sequence_number":56}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":":","logprobs":[],"sequence_number":57}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" This","logprobs":[],"sequence_number":58}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" feature","logprobs":[],"sequence_number":59}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" allows","logprobs":[],"sequence_number":60}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Claude","logprobs":[],"sequence_number":61}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":62}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"2","logprobs":[],"sequence_number":63}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":64}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"1","logprobs":[],"sequence_number":65}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":66}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" process","logprobs":[],"sequence_number":67}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" and","logprobs":[],"sequence_number":68}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" analyze","logprobs":[],"sequence_number":69}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" large","logprobs":[],"sequence_number":70}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" amounts","logprobs":[],"sequence_number":71}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" of","logprobs":[],"sequence_number":72}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" text","logprobs":[],"sequence_number":73}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":74}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" enabling","logprobs":[],"sequence_number":75}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" it","logprobs":[],"sequence_number":76}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":77}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" summarize","logprobs":[],"sequence_number":78}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" lengthy","logprobs":[],"sequence_number":79}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" documents","logprobs":[],"sequence_number":80}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":81}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" perform","logprobs":[],"sequence_number":82}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" question","logprobs":[],"sequence_number":83}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-and","logprobs":[],"sequence_number":84}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-answer","logprobs":[],"sequence_number":85}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" tasks","logprobs":[],"sequence_number":86}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" over","logprobs":[],"sequence_number":87}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" extensive","logprobs":[],"sequence_number":88}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" content","logprobs":[],"sequence_number":89}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":90}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" and","logprobs":[],"sequence_number":91}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" more","logprobs":[],"sequence_number":92}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":93}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" This","logprobs":[],"sequence_number":94}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" is","logprobs":[],"sequence_number":95}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" an","logprobs":[],"sequence_number":96}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" industry","logprobs":[],"sequence_number":97}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-leading","logprobs":[],"sequence_number":98}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" capability","logprobs":[],"sequence_number":99}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" that","logprobs":[],"sequence_number":100}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" allows","logprobs":[],"sequence_number":101}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" users","logprobs":[],"sequence_number":102}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":103}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" relay","logprobs":[],"sequence_number":104}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" up","logprobs":[],"sequence_number":105}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":106}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":107}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"150","logprobs":[],"sequence_number":108}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":109}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"000","logprobs":[],"sequence_number":110}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" words","logprobs":[],"sequence_number":111}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" or","logprobs":[],"sequence_number":112}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" over","logprobs":[],"sequence_number":113}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":114}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"500","logprobs":[],"sequence_number":115}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" pages","logprobs":[],"sequence_number":116}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" of","logprobs":[],"sequence_number":117}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" material","logprobs":[],"sequence_number":118}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":119}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" the","logprobs":[],"sequence_number":120}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" model","logprobs":[],"sequence_number":121}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" in","logprobs":[],"sequence_number":122}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" a","logprobs":[],"sequence_number":123}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" single","logprobs":[],"sequence_number":124}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" interaction","logprobs":[],"sequence_number":125}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".\n\n","logprobs":[],"sequence_number":126}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"2","logprobs":[],"sequence_number":127}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":128}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" **","logprobs":[],"sequence_number":129}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"Reduced","logprobs":[],"sequence_number":130}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Hall","logprobs":[],"sequence_number":131}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"uc","logprobs":[],"sequence_number":132}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"ination","logprobs":[],"sequence_number":133}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Rates","logprobs":[],"sequence_number":134}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"**","logprobs":[],"sequence_number":135}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":":","logprobs":[],"sequence_number":136}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Claude","logprobs":[],"sequence_number":137}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":138}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"2","logprobs":[],"sequence_number":139}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":140}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"1","logprobs":[],"sequence_number":141}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" has","logprobs":[],"sequence_number":142}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" achieved","logprobs":[],"sequence_number":143}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" a","logprobs":[],"sequence_number":144}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" **","logprobs":[],"sequence_number":145}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"2","logprobs":[],"sequence_number":146}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"x","logprobs":[],"sequence_number":147}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" decrease","logprobs":[],"sequence_number":148}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" in","logprobs":[],"sequence_number":149}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" false","logprobs":[],"sequence_number":150}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" statements","logprobs":[],"sequence_number":151}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"**","logprobs":[],"sequence_number":152}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" compared","logprobs":[],"sequence_number":153}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":154}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" its","logprobs":[],"sequence_number":155}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" predecessor","logprobs":[],"sequence_number":156}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":157}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" enhancing","logprobs":[],"sequence_number":158}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" its","logprobs":[],"sequence_number":159}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" reliability","logprobs":[],"sequence_number":160}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" for","logprobs":[],"sequence_number":161}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" enterprise","logprobs":[],"sequence_number":162}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" applications","logprobs":[],"sequence_number":163}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".\n\n","logprobs":[],"sequence_number":164}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"3","logprobs":[],"sequence_number":165}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":166}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" **","logprobs":[],"sequence_number":167}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"Beta","logprobs":[],"sequence_number":168}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Feature","logprobs":[],"sequence_number":169}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":":","logprobs":[],"sequence_number":170}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Tool","logprobs":[],"sequence_number":171}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Use","logprobs":[],"sequence_number":172}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"**","logprobs":[],"sequence_number":173}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":":","logprobs":[],"sequence_number":174}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" This","logprobs":[],"sequence_number":175}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" allows","logprobs":[],"sequence_number":176}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Claude","logprobs":[],"sequence_number":177}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":178}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" integrate","logprobs":[],"sequence_number":179}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" with","logprobs":[],"sequence_number":180}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" user","logprobs":[],"sequence_number":181}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-defined","logprobs":[],"sequence_number":182}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" processes","logprobs":[],"sequence_number":183}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" and","logprobs":[],"sequence_number":184}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" APIs","logprobs":[],"sequence_number":185}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":186}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" expanding","logprobs":[],"sequence_number":187}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" its","logprobs":[],"sequence_number":188}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" versatility","logprobs":[],"sequence_number":189}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" in","logprobs":[],"sequence_number":190}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" real","logprobs":[],"sequence_number":191}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-world","logprobs":[],"sequence_number":192}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" applications","logprobs":[],"sequence_number":193}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" by","logprobs":[],"sequence_number":194}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" enabling","logprobs":[],"sequence_number":195}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" it","logprobs":[],"sequence_number":196}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":197}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" perform","logprobs":[],"sequence_number":198}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" specific","logprobs":[],"sequence_number":199}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" tasks","logprobs":[],"sequence_number":200}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" such","logprobs":[],"sequence_number":201}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" as","logprobs":[],"sequence_number":202}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" calculations","logprobs":[],"sequence_number":203}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" or","logprobs":[],"sequence_number":204}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" data","logprobs":[],"sequence_number":205}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" retrieval","logprobs":[],"sequence_number":206}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" from","logprobs":[],"sequence_number":207}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" external","logprobs":[],"sequence_number":208}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" databases","logprobs":[],"sequence_number":209}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".\n\n","logprobs":[],"sequence_number":210}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"4","logprobs":[],"sequence_number":211}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":212}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" **","logprobs":[],"sequence_number":213}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"Im","logprobs":[],"sequence_number":214}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"provements","logprobs":[],"sequence_number":215}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" in","logprobs":[],"sequence_number":216}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Accuracy","logprobs":[],"sequence_number":217}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" and","logprobs":[],"sequence_number":218}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Com","logprobs":[],"sequence_number":219}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"preh","logprobs":[],"sequence_number":220}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"ension","logprobs":[],"sequence_number":221}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"**","logprobs":[],"sequence_number":222}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":":","logprobs":[],"sequence_number":223}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" The","logprobs":[],"sequence_number":224}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" model","logprobs":[],"sequence_number":225}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" has","logprobs":[],"sequence_number":226}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" seen","logprobs":[],"sequence_number":227}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" enhancements","logprobs":[],"sequence_number":228}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" in","logprobs":[],"sequence_number":229}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" its","logprobs":[],"sequence_number":230}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ability","logprobs":[],"sequence_number":231}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":232}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" comprehend","logprobs":[],"sequence_number":233}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" and","logprobs":[],"sequence_number":234}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" summarize","logprobs":[],"sequence_number":235}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" complex","logprobs":[],"sequence_number":236}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" information","logprobs":[],"sequence_number":237}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":238}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" making","logprobs":[],"sequence_number":239}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" it","logprobs":[],"sequence_number":240}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" suitable","logprobs":[],"sequence_number":241}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" for","logprobs":[],"sequence_number":242}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" sensitive","logprobs":[],"sequence_number":243}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" tasks","logprobs":[],"sequence_number":244}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" such","logprobs":[],"sequence_number":245}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" as","logprobs":[],"sequence_number":246}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" legal","logprobs":[],"sequence_number":247}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" and","logprobs":[],"sequence_number":248}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" financial","logprobs":[],"sequence_number":249}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" document","logprobs":[],"sequence_number":250}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" analysis","logprobs":[],"sequence_number":251}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".\n\n","logprobs":[],"sequence_number":252}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"These","logprobs":[],"sequence_number":253}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" updates","logprobs":[],"sequence_number":254}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" aim","logprobs":[],"sequence_number":255}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" to","logprobs":[],"sequence_number":256}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" make","logprobs":[],"sequence_number":257}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Claude","logprobs":[],"sequence_number":258}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" ","logprobs":[],"sequence_number":259}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"2","logprobs":[],"sequence_number":260}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":261}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"1","logprobs":[],"sequence_number":262}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" more","logprobs":[],"sequence_number":263}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" effective","logprobs":[],"sequence_number":264}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" and","logprobs":[],"sequence_number":265}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" user","logprobs":[],"sequence_number":266}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-friendly","logprobs":[],"sequence_number":267}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" for","logprobs":[],"sequence_number":268}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" businesses","logprobs":[],"sequence_number":269}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" across","logprobs":[],"sequence_number":270}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" various","logprobs":[],"sequence_number":271}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" industries","logprobs":[],"sequence_number":272}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".","logprobs":[],"sequence_number":273}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" For","logprobs":[],"sequence_number":274}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" more","logprobs":[],"sequence_number":275}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" details","logprobs":[],"sequence_number":276}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":",","logprobs":[],"sequence_number":277}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" you","logprobs":[],"sequence_number":278}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" can","logprobs":[],"sequence_number":279}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" read","logprobs":[],"sequence_number":280}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" the","logprobs":[],"sequence_number":281}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" official","logprobs":[],"sequence_number":282}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" announcement","logprobs":[],"sequence_number":283}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" on","logprobs":[],"sequence_number":284}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" Anth","logprobs":[],"sequence_number":285}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"ropic","logprobs":[],"sequence_number":286}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"'s","logprobs":[],"sequence_number":287}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" website","logprobs":[],"sequence_number":288}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":" [","logprobs":[],"sequence_number":289}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"here","logprobs":[],"sequence_number":290}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"](","logprobs":[],"sequence_number":291}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"https","logprobs":[],"sequence_number":292}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"://","logprobs":[],"sequence_number":293}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"www","logprobs":[],"sequence_number":294}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".an","logprobs":[],"sequence_number":295}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"th","logprobs":[],"sequence_number":296}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"ropic","logprobs":[],"sequence_number":297}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":".com","logprobs":[],"sequence_number":298}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"/news","logprobs":[],"sequence_number":299}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"/","logprobs":[],"sequence_number":300}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"cla","logprobs":[],"sequence_number":301}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"ude","logprobs":[],"sequence_number":302}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-","logprobs":[],"sequence_number":303}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"2","logprobs":[],"sequence_number":304}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"-","logprobs":[],"sequence_number":305}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":"1","logprobs":[],"sequence_number":306}
+
+data: {"type":"response.output_text.delta","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"delta":").","logprobs":[],"sequence_number":307}
+
+data: {"type":"response.output_text.done","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"text":"Anthropic's most recent product launch is **Claude 2.1**, announced on **November 21, 2023**. This version introduces several significant improvements, including:\n\n1. **200,000 Token Context Window**: This feature allows Claude 2.1 to process and analyze large amounts of text, enabling it to summarize lengthy documents, perform question-and-answer tasks over extensive content, and more. This is an industry-leading capability that allows users to relay up to 150,000 words or over 500 pages of material to the model in a single interaction.\n\n2. **Reduced Hallucination Rates**: Claude 2.1 has achieved a **2x decrease in false statements** compared to its predecessor, enhancing its reliability for enterprise applications.\n\n3. **Beta Feature: Tool Use**: This allows Claude to integrate with user-defined processes and APIs, expanding its versatility in real-world applications by enabling it to perform specific tasks such as calculations or data retrieval from external databases.\n\n4. **Improvements in Accuracy and Comprehension**: The model has seen enhancements in its ability to comprehend and summarize complex information, making it suitable for sensitive tasks such as legal and financial document analysis.\n\nThese updates aim to make Claude 2.1 more effective and user-friendly for businesses across various industries. For more details, you can read the official announcement on Anthropic's website [here](https://www.anthropic.com/news/claude-2-1).","logprobs":[],"sequence_number":308}
+
+data: {"type":"response.content_part.done","output_index":1,"item_id":"msg_tmp_v03lyel88p","content_index":0,"part":{"type":"output_text","text":"Anthropic's most recent product launch is **Claude 2.1**, announced on **November 21, 2023**. This version introduces several significant improvements, including:\n\n1. **200,000 Token Context Window**: This feature allows Claude 2.1 to process and analyze large amounts of text, enabling it to summarize lengthy documents, perform question-and-answer tasks over extensive content, and more. This is an industry-leading capability that allows users to relay up to 150,000 words or over 500 pages of material to the model in a single interaction.\n\n2. **Reduced Hallucination Rates**: Claude 2.1 has achieved a **2x decrease in false statements** compared to its predecessor, enhancing its reliability for enterprise applications.\n\n3. **Beta Feature: Tool Use**: This allows Claude to integrate with user-defined processes and APIs, expanding its versatility in real-world applications by enabling it to perform specific tasks such as calculations or data retrieval from external databases.\n\n4. **Improvements in Accuracy and Comprehension**: The model has seen enhancements in its ability to comprehend and summarize complex information, making it suitable for sensitive tasks such as legal and financial document analysis.\n\nThese updates aim to make Claude 2.1 more effective and user-friendly for businesses across various industries. For more details, you can read the official announcement on Anthropic's website [here](https://www.anthropic.com/news/claude-2-1).","annotations":[{"type":"url_citation","url":"https://techcrunch.com/2023/07/11/anthropic-releases-claude-2-the-second-generation-of-its-ai-chatbot","title":"Anthropic releases Claude 2, its second-gen AI chatbot | TechCrunch","start_index":0,"end_index":0},{"type":"url_citation","url":"https://techcrunch.com/2023/03/14/anthropic-launches-claude-a-chatbot-to-rival-openais-chatgpt/","title":"Anthropic launches Claude, a chatbot to rival OpenAI's ChatGPT | TechCrunch","start_index":0,"end_index":0},{"type":"url_citation","url":"https://www.anthropic.com/news/claude-2-1","title":"Introducing Claude 2.1 \\ Anthropic","start_index":0,"end_index":0},{"type":"url_citation","url":"https://www.anthropic.com/news/introducing-claude","title":"Introducing Claude \\ Anthropic","start_index":0,"end_index":0},{"type":"url_citation","url":"https://techcrunch.com/2023/08/09/anthropic-launches-improved-version-of-its-entry-level-llm","title":"Anthropic launches improved version of its entry-level LLM | TechCrunch","start_index":0,"end_index":0}],"logprobs":[]},"sequence_number":309}
+
+data: {"type":"response.output_item.done","output_index":1,"item":{"id":"msg_tmp_v03lyel88p","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Anthropic's most recent product launch is **Claude 2.1**, announced on **November 21, 2023**. This version introduces several significant improvements, including:\n\n1. **200,000 Token Context Window**: This feature allows Claude 2.1 to process and analyze large amounts of text, enabling it to summarize lengthy documents, perform question-and-answer tasks over extensive content, and more. This is an industry-leading capability that allows users to relay up to 150,000 words or over 500 pages of material to the model in a single interaction.\n\n2. **Reduced Hallucination Rates**: Claude 2.1 has achieved a **2x decrease in false statements** compared to its predecessor, enhancing its reliability for enterprise applications.\n\n3. **Beta Feature: Tool Use**: This allows Claude to integrate with user-defined processes and APIs, expanding its versatility in real-world applications by enabling it to perform specific tasks such as calculations or data retrieval from external databases.\n\n4. **Improvements in Accuracy and Comprehension**: The model has seen enhancements in its ability to comprehend and summarize complex information, making it suitable for sensitive tasks such as legal and financial document analysis.\n\nThese updates aim to make Claude 2.1 more effective and user-friendly for businesses across various industries. For more details, you can read the official announcement on Anthropic's website [here](https://www.anthropic.com/news/claude-2-1).","annotations":[{"type":"url_citation","url":"https://techcrunch.com/2023/07/11/anthropic-releases-claude-2-the-second-generation-of-its-ai-chatbot","title":"Anthropic releases Claude 2, its second-gen AI chatbot | TechCrunch","start_index":0,"end_index":0},{"type":"url_citation","url":"https://techcrunch.com/2023/03/14/anthropic-launches-claude-a-chatbot-to-rival-openais-chatgpt/","title":"Anthropic launches Claude, a chatbot to rival OpenAI's ChatGPT | TechCrunch","start_index":0,"end_index":0},{"type":"url_citation","url":"https://www.anthropic.com/news/claude-2-1","title":"Introducing Claude 2.1 \\ Anthropic","start_index":0,"end_index":0},{"type":"url_citation","url":"https://www.anthropic.com/news/introducing-claude","title":"Introducing Claude \\ Anthropic","start_index":0,"end_index":0},{"type":"url_citation","url":"https://techcrunch.com/2023/08/09/anthropic-launches-improved-version-of-its-entry-level-llm","title":"Anthropic launches improved version of its entry-level LLM | TechCrunch","start_index":0,"end_index":0}],"logprobs":[]}]},"sequence_number":310}
+
+data: {"type":"response.completed","response":{"id":"gen-1777369156-wMj2elsMOx0ddYL9s8SK","object":"response","created_at":1777369156,"model":"openai/gpt-4o-mini","status":"completed","completed_at":1777369173,"output":[{"type":"openrouter:web_search","id":"st_tmp_4pe3noupgrs","status":"completed"},{"id":"msg_tmp_v03lyel88p","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Anthropic's most recent product launch is **Claude 2.1**, announced on **November 21, 2023**. This version introduces several significant improvements, including:\n\n1. **200,000 Token Context Window**: This feature allows Claude 2.1 to process and analyze large amounts of text, enabling it to summarize lengthy documents, perform question-and-answer tasks over extensive content, and more. This is an industry-leading capability that allows users to relay up to 150,000 words or over 500 pages of material to the model in a single interaction.\n\n2. **Reduced Hallucination Rates**: Claude 2.1 has achieved a **2x decrease in false statements** compared to its predecessor, enhancing its reliability for enterprise applications.\n\n3. **Beta Feature: Tool Use**: This allows Claude to integrate with user-defined processes and APIs, expanding its versatility in real-world applications by enabling it to perform specific tasks such as calculations or data retrieval from external databases.\n\n4. **Improvements in Accuracy and Comprehension**: The model has seen enhancements in its ability to comprehend and summarize complex information, making it suitable for sensitive tasks such as legal and financial document analysis.\n\nThese updates aim to make Claude 2.1 more effective and user-friendly for businesses across various industries. For more details, you can read the official announcement on Anthropic's website [here](https://www.anthropic.com/news/claude-2-1).","annotations":[{"type":"url_citation","url":"https://techcrunch.com/2023/07/11/anthropic-releases-claude-2-the-second-generation-of-its-ai-chatbot","title":"Anthropic releases Claude 2, its second-gen AI chatbot | TechCrunch","start_index":0,"end_index":0},{"type":"url_citation","url":"https://techcrunch.com/2023/03/14/anthropic-launches-claude-a-chatbot-to-rival-openais-chatgpt/","title":"Anthropic launches Claude, a chatbot to rival OpenAI's ChatGPT | TechCrunch","start_index":0,"end_index":0},{"type":"url_citation","url":"https://www.anthropic.com/news/claude-2-1","title":"Introducing Claude 2.1 \\ Anthropic","start_index":0,"end_index":0},{"type":"url_citation","url":"https://www.anthropic.com/news/introducing-claude","title":"Introducing Claude \\ Anthropic","start_index":0,"end_index":0},{"type":"url_citation","url":"https://techcrunch.com/2023/08/09/anthropic-launches-improved-version-of-its-entry-level-llm","title":"Anthropic launches improved version of its entry-level LLM | TechCrunch","start_index":0,"end_index":0}],"logprobs":[]}]}],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":600,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":"Use web_search to ground your answer with recent sources.","text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"usage":{"input_tokens":10038,"input_tokens_details":{"cached_tokens":0},"output_tokens":321,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":10359,"cost":0.0216983}},"sequence_number":311}
+
+data: [DONE]
+

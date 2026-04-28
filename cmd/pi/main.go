@@ -11,6 +11,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/provider/geminicli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
+	"github.com/sonnes/pi-go/pkg/ai/provider/openairesponses"
 
 	oaioption "github.com/openai/openai-go/option"
 )
@@ -55,6 +57,10 @@ func main() {
 				Usage: "Allowed tools for claude mode (comma-separated)",
 			},
 			&cli.StringFlag{
+				Name:  "server-tools",
+				Usage: "Provider-hosted server tools for api mode (comma-separated: web_search, code_execution)",
+			},
+			&cli.StringFlag{
 				Name:  "provider",
 				Usage: "Provider name (anthropic, openai, google) — overrides auto-detection",
 			},
@@ -77,9 +83,10 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	model := cmd.String("model")
 	turns := int(cmd.Int("turns"))
 	tools := cmd.String("tools")
+	serverTools := cmd.String("server-tools")
 	provider := cmd.String("provider")
 
-	a, err := createAgent(mode, model, turns, tools, provider)
+	a, err := createAgent(mode, model, turns, tools, serverTools, provider)
 	if err != nil {
 		return err
 	}
@@ -108,15 +115,50 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	return scanner.Err()
 }
 
-func createAgent(mode, model string, turns int, tools, provider string) (agent.Agent, error) {
+func createAgent(mode, model string, turns int, tools, serverTools, provider string) (agent.Agent, error) {
 	switch mode {
 	case "claude":
 		return createClaudeAgent(model, turns, tools), nil
 	case "api":
-		return createAPIAgent(model, turns, provider)
+		return createAPIAgent(model, turns, serverTools, provider)
 	default:
 		return nil, fmt.Errorf("unknown agent mode: %s (use claude or api)", mode)
 	}
+}
+
+// parseServerTools converts a comma-separated list of server-tool names
+// (e.g. "web_search,code_execution") into [ai.Tool] entries built via
+// [ai.DefineServerTool]. Empty input returns nil.
+func parseServerTools(spec string) ([]ai.Tool, error) {
+	if spec == "" {
+		return nil, nil
+	}
+
+	known := map[string]ai.ServerToolType{
+		"web_search":     ai.ServerToolWebSearch,
+		"code_execution": ai.ServerToolCodeExecution,
+		"web_fetch":      ai.ServerToolWebFetch,
+		"file_search":    ai.ServerToolFileSearch,
+		"computer":       ai.ServerToolComputer,
+		"bash":           ai.ServerToolBash,
+		"text_editor":    ai.ServerToolTextEditor,
+		"tool_search":    ai.ServerToolToolSearch,
+		"mcp":            ai.ServerToolMCP,
+	}
+
+	var tools []ai.Tool
+	for _, raw := range strings.Split(spec, ",") {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		typ, ok := known[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown server tool %q (known: web_search, code_execution, web_fetch, file_search, computer, bash, text_editor, tool_search, mcp)", name)
+		}
+		tools = append(tools, ai.DefineServerTool(ai.ToolInfo{ServerType: typ}))
+	}
+	return tools, nil
 }
 
 func createClaudeAgent(model string, turns int, tools string) agent.Agent {
@@ -166,7 +208,7 @@ var providers = []providerEntry{
 		envKey: "OPENROUTER_API_KEY",
 		name:   "OpenRouter",
 		create: func(apiKey string) (ai.Provider, error) {
-			return openai.New(
+			return openairesponses.NewForOpenRouter(
 				oaioption.WithAPIKey(apiKey),
 				oaioption.WithBaseURL("https://openrouter.ai/api/v1"),
 			), nil
@@ -209,7 +251,7 @@ var providers = []providerEntry{
 	},
 }
 
-func createAPIAgent(model string, turns int, providerHint string) (agent.Agent, error) {
+func createAPIAgent(model string, turns int, serverToolsSpec, providerHint string) (agent.Agent, error) {
 	var (
 		p    ai.Provider
 		name string
@@ -241,6 +283,15 @@ func createAPIAgent(model string, turns int, providerHint string) (agent.Agent, 
 	opts := []agent.Option{agent.WithModel(m)}
 	if turns > 0 {
 		opts = append(opts, agent.WithMaxTurns(turns))
+	}
+
+	serverTools, err := parseServerTools(serverToolsSpec)
+	if err != nil {
+		return nil, err
+	}
+	if len(serverTools) > 0 {
+		opts = append(opts, agent.WithTools(serverTools...))
+		fmt.Fprintf(os.Stderr, "[server tools: %s]\n", serverToolsSpec)
 	}
 
 	return agent.New(opts...), nil
@@ -395,6 +446,34 @@ func sendAndPrint(ctx context.Context, a agent.Agent, prompt string) error {
 	return nil
 }
 
+// printServerToolCall renders a one-line summary of a provider-executed
+// server-tool call to stderr — name, arguments, and a truncated rendering
+// of its Output (when present).
+func printServerToolCall(tc ai.ToolCall) {
+	name := string(tc.ServerType)
+	if name == "" {
+		name = tc.Name
+	}
+	fmt.Fprintf(os.Stderr, "\n[server tool: %s", name)
+	if len(tc.Arguments) > 0 {
+		if data, err := json.Marshal(tc.Arguments); err == nil {
+			fmt.Fprintf(os.Stderr, " args=%s", data)
+		}
+	}
+	fmt.Fprintln(os.Stderr, "]")
+	if tc.Output != nil {
+		out := tc.Output.Content
+		if len(out) > 200 {
+			out = out[:200] + "..."
+		}
+		marker := "result"
+		if tc.Output.IsError {
+			marker = "error"
+		}
+		fmt.Fprintf(os.Stderr, "[%s: %s]\n", marker, out)
+	}
+}
+
 func handleEvent(evt agent.Event) {
 	switch evt.Type {
 	case agent.EventMessageUpdate:
@@ -408,6 +487,20 @@ func handleEvent(evt agent.Event) {
 			// text arrives at message_start. Print it.
 			if text := evt.Message.Text(); text != "" {
 				fmt.Print(text)
+			}
+		}
+
+	case agent.EventMessageEnd:
+		// Surface provider-executed server-tool calls that bypassed
+		// EventToolExecution* (those events fire only for client-side
+		// function tools).
+		if evt.Message != nil && evt.Message.Role == ai.RoleAssistant {
+			for _, c := range evt.Message.Content {
+				tc, ok := ai.AsContent[ai.ToolCall](c)
+				if !ok || !tc.Server {
+					continue
+				}
+				printServerToolCall(tc)
 			}
 		}
 

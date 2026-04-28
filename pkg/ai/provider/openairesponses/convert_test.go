@@ -336,3 +336,193 @@ func TestMapThinkingLevel(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertTools_ServerWebSearch(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "web_search",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebSearch,
+			ServerConfig: map[string]any{
+				"search_context_size": "high",
+			},
+		},
+	}
+
+	result := convertTools(tools)
+	require.Len(t, result, 1)
+	require.NotNil(t, result[0].OfWebSearchPreview)
+
+	body, err := json.Marshal(result[0].OfWebSearchPreview)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	assert.Equal(t, "web_search_preview", got["type"])
+	assert.Equal(t, "high", got["search_context_size"])
+}
+
+func TestConvertTools_ServerCodeInterpreter(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "code_execution",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolCodeExecution,
+		},
+	}
+
+	result := convertTools(tools)
+	require.Len(t, result, 1)
+	require.NotNil(t, result[0].OfCodeInterpreter)
+
+	body, err := json.Marshal(result[0].OfCodeInterpreter)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	assert.Equal(t, "code_interpreter", got["type"])
+	// Default container is the auto sentinel object.
+	assert.NotNil(t, got["container"])
+}
+
+func TestConvertOpenRouterTools_FunctionTool(t *testing.T) {
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"type": "object",
+		"properties": {"location": {"type": "string"}},
+		"required": ["location"]
+	}`), &schema))
+
+	tools := []ai.ToolInfo{
+		{
+			Name:        "get_weather",
+			Description: "Get the weather",
+		},
+	}
+	// Encode the schema by hand because ToolInfo.InputSchema is a typed
+	// *jsonschema.Schema; the helper is in the broader test scaffolding.
+	tools[0].InputSchema = nil
+
+	got := convertOpenRouterTools(tools)
+	require.Len(t, got, 1)
+	assert.Equal(t, "function", got[0]["type"])
+	assert.Equal(t, "get_weather", got[0]["name"])
+	assert.Equal(t, "Get the weather", got[0]["description"])
+}
+
+func TestConvertOpenRouterTools_ServerTools(t *testing.T) {
+	tests := []struct {
+		name     string
+		tool     ai.ToolInfo
+		wantType string
+		wantKeys map[string]any
+	}{
+		{
+			name: "web_search basic",
+			tool: ai.ToolInfo{
+				Kind:       ai.ToolKindServer,
+				ServerType: ai.ServerToolWebSearch,
+			},
+			wantType: "openrouter:web_search",
+		},
+		{
+			name: "web_search with config",
+			tool: ai.ToolInfo{
+				Kind:       ai.ToolKindServer,
+				ServerType: ai.ServerToolWebSearch,
+				ServerConfig: map[string]any{
+					"engine":      "exa",
+					"max_results": 10,
+				},
+			},
+			wantType: "openrouter:web_search",
+			wantKeys: map[string]any{
+				"engine":      "exa",
+				"max_results": float64(10),
+			},
+		},
+		{
+			name: "web_fetch",
+			tool: ai.ToolInfo{
+				Kind:       ai.ToolKindServer,
+				ServerType: ai.ServerToolWebFetch,
+				ServerConfig: map[string]any{
+					"max_uses": 3,
+				},
+			},
+			wantType: "openrouter:web_fetch",
+			wantKeys: map[string]any{"max_uses": float64(3)},
+		},
+		{
+			name: "datetime",
+			tool: ai.ToolInfo{
+				Kind:       ai.ToolKindServer,
+				ServerType: ai.ServerToolDateTime,
+				ServerConfig: map[string]any{
+					"timezone": "America/New_York",
+				},
+			},
+			wantType: "openrouter:datetime",
+			wantKeys: map[string]any{"timezone": "America/New_York"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := convertOpenRouterTools([]ai.ToolInfo{tt.tool})
+			require.Len(t, got, 1)
+
+			// Round-trip through JSON to assert the wire shape.
+			data, err := json.Marshal(got[0])
+			require.NoError(t, err)
+			var raw map[string]any
+			require.NoError(t, json.Unmarshal(data, &raw))
+
+			assert.Equal(t, tt.wantType, raw["type"])
+			for k, v := range tt.wantKeys {
+				assert.Equal(t, v, raw[k], "key %s", k)
+			}
+		})
+	}
+}
+
+func TestConvertOpenRouterTools_DropsUnsupportedServerTypes(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{Kind: ai.ToolKindServer, ServerType: ai.ServerToolCodeExecution},
+		{Kind: ai.ToolKindServer, ServerType: ai.ServerToolFileSearch},
+		{Kind: ai.ToolKindServer, ServerType: ai.ServerToolComputer},
+		{Kind: ai.ToolKindServer, ServerType: ai.ServerToolMCP},
+		{Kind: ai.ToolKindServer, ServerType: ai.ServerToolBash},
+	}
+
+	got := convertOpenRouterTools(tools)
+	assert.Empty(t, got, "OpenRouter doesn't expose these server tools, drop silently")
+}
+
+func TestConvertOpenRouterTools_FunctionAndServerMixed(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{Name: "get_weather", Description: "weather"},
+		{Kind: ai.ToolKindServer, ServerType: ai.ServerToolWebSearch},
+	}
+
+	got := convertOpenRouterTools(tools)
+	require.Len(t, got, 2)
+	assert.Equal(t, "function", got[0]["type"])
+	assert.Equal(t, "openrouter:web_search", got[1]["type"])
+}
+
+func TestServerTypeForItem(t *testing.T) {
+	cases := map[string]ai.ServerToolType{
+		"web_search_call":       ai.ServerToolWebSearch,
+		"code_interpreter_call": ai.ServerToolCodeExecution,
+		"file_search_call":      ai.ServerToolFileSearch,
+		"computer_call":         ai.ServerToolComputer,
+		"mcp_call":              ai.ServerToolMCP,
+		"unknown_call":          ai.ServerToolType(""),
+	}
+	for input, want := range cases {
+		assert.Equal(t, want, serverTypeForItem(input), input)
+	}
+}

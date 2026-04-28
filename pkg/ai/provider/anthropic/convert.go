@@ -166,10 +166,19 @@ func convertToolResult(msg ai.Message) anthropic.ContentBlockParamUnion {
 }
 
 // convertTools converts ai.ToolInfo definitions to Anthropic ToolUnionParam format.
+// Function tools become OfTool entries; server tools route through convertServerTool
+// and may be silently skipped if the tool type is unsupported on the non-beta API.
 func convertTools(tools []ai.ToolInfo) []anthropic.ToolUnionParam {
 	result := make([]anthropic.ToolUnionParam, 0, len(tools))
 
 	for _, t := range tools {
+		if t.Kind == ai.ToolKindServer {
+			if param, ok := convertServerTool(t); ok {
+				result = append(result, param)
+			}
+			continue
+		}
+
 		var properties any
 		var required []string
 
@@ -206,6 +215,39 @@ func convertTools(tools []ai.ToolInfo) []anthropic.ToolUnionParam {
 	}
 
 	return result
+}
+
+// convertServerTool maps a pi-go server-tool ToolInfo to an Anthropic typed
+// tool param. Returns false if the type is not supported by the non-beta API.
+//
+// Supported config keys (per [ai.ServerToolType]):
+//   - web_search: max_uses (int), strict (bool), allowed_domains ([]string),
+//     blocked_domains ([]string)
+func convertServerTool(t ai.ToolInfo) (anthropic.ToolUnionParam, bool) {
+	switch t.ServerType {
+	case ai.ServerToolWebSearch:
+		ws := &anthropic.WebSearchTool20250305Param{}
+		if v, ok := t.ServerConfig["max_uses"].(int); ok {
+			ws.MaxUses = param.NewOpt(int64(v))
+		} else if v, ok := t.ServerConfig["max_uses"].(int64); ok {
+			ws.MaxUses = param.NewOpt(v)
+		}
+		if v, ok := t.ServerConfig["strict"].(bool); ok {
+			ws.Strict = param.NewOpt(v)
+		}
+		if v, ok := t.ServerConfig["allowed_domains"].([]string); ok {
+			ws.AllowedDomains = v
+		}
+		if v, ok := t.ServerConfig["blocked_domains"].([]string); ok {
+			ws.BlockedDomains = v
+		}
+		return anthropic.ToolUnionParam{OfWebSearchTool20250305: ws}, true
+	default:
+		// Other server tools (code_execution, web_fetch, computer use, MCP) live
+		// only on the beta API and require migrating this provider to the beta
+		// SDK; skip silently for now.
+		return anthropic.ToolUnionParam{}, false
+	}
 }
 
 // convertToolChoice converts a ToolChoice to Anthropic format.

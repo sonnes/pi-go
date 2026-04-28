@@ -150,3 +150,49 @@ func TestNewImageResult(t *testing.T) {
 	assert.Equal(t, "image/png", r.MediaType)
 	assert.False(t, r.IsError)
 }
+
+func TestToolInfo_ZeroKindIsNotServer(t *testing.T) {
+	// The zero-value ToolKind ("") is treated as a function tool —
+	// branching logic compares against ToolKindServer, not Function.
+	info := ai.ToolInfo{Name: "x"}
+	assert.NotEqual(t, ai.ToolKindServer, info.Kind)
+}
+
+func TestDefineServerTool(t *testing.T) {
+	t.Run("forces Kind=Server and defaults Name from ServerType", func(t *testing.T) {
+		tool := ai.DefineServerTool(ai.ToolInfo{
+			ServerType:   ai.ServerToolWebSearch,
+			ServerConfig: map[string]any{"max_uses": 2},
+		})
+
+		info := tool.Info()
+		assert.Equal(t, "web_search", info.Name)
+		assert.Equal(t, ai.ToolKindServer, info.Kind)
+		assert.Equal(t, ai.ServerToolWebSearch, info.ServerType)
+		assert.Equal(t, 2, info.ServerConfig["max_uses"])
+	})
+
+	t.Run("preserves explicit Name when set", func(t *testing.T) {
+		tool := ai.DefineServerTool(ai.ToolInfo{
+			Name:       "google_search",
+			ServerType: ai.ServerToolWebSearch,
+		})
+		assert.Equal(t, "google_search", tool.Info().Name)
+	})
+
+	t.Run("Run always returns an error result", func(t *testing.T) {
+		// Server tools are provider-executed; the agent filters them
+		// before reaching Run, but defense-in-depth still matters.
+		tool := ai.DefineServerTool(ai.ToolInfo{
+			ServerType: ai.ServerToolWebSearch,
+		})
+
+		res, err := tool.Run(context.Background(), ai.ToolCallReq{
+			ID:   "x",
+			Name: "web_search",
+		})
+		require.NoError(t, err)
+		assert.True(t, res.IsError)
+		assert.Contains(t, res.Content, "provider-executed")
+	})
+}

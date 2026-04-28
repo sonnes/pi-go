@@ -53,8 +53,14 @@ func New(opts ...Option) *Default {
 	toolInfo := make([]ai.ToolInfo, len(c.tools))
 	for i, t := range c.tools {
 		info := t.Info()
-		toolMap[info.Name] = t
 		toolInfo[i] = info
+		// Server tools are advertised to the model but executed by the
+		// provider, so they're omitted from toolMap to keep the
+		// executor focused on function tools only.
+		if info.Kind == ai.ToolKindServer {
+			continue
+		}
+		toolMap[info.Name] = t
 	}
 
 	msgs := make([]Message, len(c.history))
@@ -336,13 +342,32 @@ func (a *Default) executeTurn(
 		return tr, nil
 	}
 
-	toolCalls := assistantMsg.ToolCalls()
+	// Server-tool calls are executed by the provider; the agent only runs
+	// client-side function tools.
+	toolCalls := filterFunctionCalls(assistantMsg.ToolCalls())
+	if len(toolCalls) == 0 {
+		return tr, nil
+	}
+
 	tr.toolResults = a.executeTools(ctx, push, toolCalls)
 	tr.cont = true
 
 	emitMessages(push, wrapMessages(tr.toolResults), false)
 
 	return tr, nil
+}
+
+// filterFunctionCalls returns the subset of tool calls that the agent should
+// execute locally — i.e. function tools, not provider-executed server tools.
+func filterFunctionCalls(calls []ai.ToolCall) []ai.ToolCall {
+	out := calls[:0:0]
+	for _, tc := range calls {
+		if tc.Server {
+			continue
+		}
+		out = append(out, tc)
+	}
+	return out
 }
 
 // streamText dispatches to the provider bound with [WithProvider] when
