@@ -31,13 +31,15 @@ A complete run emits events in this order:
 agent_start               ← first event; carries SessionID if available
   turn_start
     message_start (assistant)
-      message_update  ← repeated as tokens stream
+      message_update  ← repeated as tokens stream (provider-dependent)
     message_end
-    tool_execution_start  ← if tool calls present
+    ┌── for each tool call (interleaved per-call) ──┐
+    tool_execution_start
       tool_execution_update  ← optional streaming progress
     tool_execution_end
     message_start (tool result)
     message_end
+    └────────────────────────────────────────────────┘
   turn_end
   turn_start  ← next turn if tools were called
     ...
@@ -49,6 +51,24 @@ agent_start               ← first event; carries SessionID if available
   turn_end
 agent_end
 ```
+
+`message_update` events are provider-dependent. The `Default` agent
+emits one per provider delta as text/thinking/tool blocks accumulate.
+Transports that deliver complete messages per line (e.g. the Claude CLI
+agent's NDJSON `assistant` lines) skip directly from `message_start` to
+`message_end` with no intermediate updates.
+
+When tool calls run in parallel (all calls in the batch are
+parallel-safe), per-call event groups remain self-consistent — each
+goroutine pushes its own `tool_execution_start → tool_execution_end →
+message_start (tool result) → message_end` as a contiguous sub-sequence
+through the broker — but groups for different calls may interleave with
+each other.
+
+If the provider stream errors mid-message, the agent still emits
+`message_end` (carrying the partial accumulated message) so consumers
+tracking message scope never see a dangling `message_start`. The
+matching `turn_end` and `agent_end (Err)` follow.
 
 ## Incremental message accumulation
 
