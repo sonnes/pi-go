@@ -17,14 +17,18 @@ import (
 // Loop flow:
 //
 //	agent_start
-//	  message_start/end (user messages)
 //	  turn_start
 //	    buildPrompt → streamText → streamTurn
 //	    message_start/update/end (assistant)
-//	    [if tool_use: executeTools → message_start/end (tool results)]
+//	    [if tool_use, for each call: tool_execution_start/end →
+//	     message_start/end (tool result)]
 //	  turn_end
 //	  ... repeat if tool_use and under maxTurns ...
 //	agent_end
+//
+// Caller-supplied input messages (Send / SendMessages) are not echoed
+// as message_start/end events — only messages produced by the loop are
+// emitted on the stream.
 type Default struct {
 	config   config
 	toolMap  map[string]ai.Tool
@@ -350,8 +354,6 @@ func (a *Default) executeTurn(
 	tr.toolResults = a.executeTools(ctx, push, toolCalls)
 	tr.cont = true
 
-	emitMessages(push, wrapMessages(tr.toolResults), false)
-
 	return tr, nil
 }
 
@@ -420,6 +422,16 @@ func streamTurn(
 
 	for evt, err := range aiStream.Events() {
 		if err != nil {
+			// Keep message_start/message_end paired even when the stream
+			// errors mid-flight: emit message_end with the partial we have
+			// accumulated so consumers tracking message scope don't see a
+			// dangling start.
+			if started {
+				push(Event{
+					Type:    EventMessageEnd,
+					Message: snapshotMessage(partial),
+				})
+			}
 			return nil, err
 		}
 
@@ -616,6 +628,7 @@ func (a *Default) executeSingleTool(
 		ToolName:   tc.Name,
 		Result:     toolResult.Content,
 	})
+	emitToolResult(push, msg)
 	return msg
 }
 
@@ -664,7 +677,8 @@ func (a *Default) runTool(
 }
 
 // finishToolError creates an error tool result message and emits the
-// [EventToolExecutionEnd] event.
+// [EventToolExecutionEnd] event followed by message_start/message_end
+// for the tool result.
 func finishToolError(push func(Event), tc ai.ToolCall, errMsg string) ai.Message {
 	msg := ai.ErrorToolResultMessage(tc.ID, tc.Name, errMsg)
 	push(Event{
@@ -674,7 +688,17 @@ func finishToolError(push func(Event), tc ai.ToolCall, errMsg string) ai.Message
 		Result:     errMsg,
 		IsError:    true,
 	})
+	emitToolResult(push, msg)
 	return msg
+}
+
+// emitToolResult publishes the message_start / message_end pair for a
+// tool result message, immediately after [EventToolExecutionEnd]. The
+// pair is emitted per-tool so the lifecycle order matches the spec
+// diagram in docs/concepts/agent/streaming.md.
+func emitToolResult(push func(Event), msg ai.Message) {
+	push(Event{Type: EventMessageStart, Message: &msg})
+	push(Event{Type: EventMessageEnd, Message: &msg})
 }
 
 // emitMessages pushes message_start/message_end events for each
@@ -698,15 +722,6 @@ func emitMessages(push func(Event), msgs []Message, input bool) {
 			Input:   input,
 		})
 	}
-}
-
-// wrapMessages wraps a slice of [ai.Message] into [Message] values.
-func wrapMessages(msgs []ai.Message) []Message {
-	out := make([]Message, len(msgs))
-	for i, m := range msgs {
-		out[i] = NewLLMMessage(m)
-	}
-	return out
 }
 
 // addUsage sums two [ai.Usage] values.

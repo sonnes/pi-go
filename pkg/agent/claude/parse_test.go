@@ -263,8 +263,9 @@ func TestMapper_HandleLine(t *testing.T) {
 				makeAssistantLine(t, "Hello!", "end_turn"),
 				{Type: "result", Subtype: "success", Result: "Hello!"},
 			},
+			// system/init is filtered by readLoop and produces no
+			// parser events — runTurn emits AgentStart explicitly.
 			events: []agent.EventType{
-				agent.EventAgentStart,
 				agent.EventTurnStart,
 				agent.EventMessageStart,
 				agent.EventMessageEnd,
@@ -280,7 +281,6 @@ func TestMapper_HandleLine(t *testing.T) {
 				{Type: "result", Subtype: "success", Result: "The file contains Go code."},
 			},
 			events: []agent.EventType{
-				agent.EventAgentStart,
 				// Turn 1: assistant with tool_use (turn stays open)
 				agent.EventTurnStart,
 				agent.EventMessageStart,
@@ -295,13 +295,11 @@ func TestMapper_HandleLine(t *testing.T) {
 			},
 		},
 		{
-			name: "system init emits agent start",
+			name: "system init produces no parser events",
 			lines: []rawLine{
 				{Type: "system", Subtype: "init", SessionID: "s1"},
 			},
-			events: []agent.EventType{
-				agent.EventAgentStart,
-			},
+			events: nil,
 		},
 		{
 			name: "unknown line type skipped",
@@ -312,7 +310,6 @@ func TestMapper_HandleLine(t *testing.T) {
 				{Type: "result", Subtype: "success", Result: "Hello!"},
 			},
 			events: []agent.EventType{
-				agent.EventAgentStart,
 				agent.EventTurnStart,
 				agent.EventMessageStart,
 				agent.EventMessageEnd,
@@ -329,22 +326,23 @@ func TestMapper_HandleLine(t *testing.T) {
 				gotEvents = append(gotEvents, m.handleLine(line)...)
 			}
 
-			gotTypes := make([]agent.EventType, len(gotEvents))
-			for i, e := range gotEvents {
-				gotTypes[i] = e.Type
+			var gotTypes []agent.EventType
+			for _, e := range gotEvents {
+				gotTypes = append(gotTypes, e.Type)
 			}
 			assert.Equal(t, tt.events, gotTypes)
 		})
 	}
 }
 
-func TestMapper_SessionID(t *testing.T) {
+// system/init is consumed by [Agent.readLoop] (which captures
+// SessionID and skips parser dispatch). The parser itself produces no
+// events for that line — runTurn emits AgentStart explicitly per Send.
+func TestMapper_SystemInitNoEvents(t *testing.T) {
 	m := &parser{}
 	events := m.handleLine(rawLine{Type: "system", Subtype: "init", SessionID: "sess-abc"})
 
-	require.Len(t, events, 1)
-	assert.Equal(t, agent.EventAgentStart, events[0].Type)
-	assert.Equal(t, "sess-abc", events[0].SessionID)
+	assert.Empty(t, events)
 }
 
 func TestMapper_Usage(t *testing.T) {
@@ -557,7 +555,7 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 	}
 
 	assert.Equal(t, []agent.EventType{
-		agent.EventAgentStart,
+		// system/init is filtered by readLoop, not the parser.
 		// Turn 1: assistant calls tool, turn stays open for results
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -577,9 +575,6 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 		// Result (deduplicated — no extra message)
 	}, types)
 
-	// Session ID is carried on the EventAgentStart event.
-	require.Equal(t, agent.EventAgentStart, allEvents[0].Type)
-	assert.Equal(t, "sess-1", allEvents[0].SessionID)
 	require.Len(t, m.messages, 3) // assistant + tool_result + assistant
 	assert.Equal(t, ai.RoleAssistant, m.messages[0].Role)
 	assert.Equal(t, ai.RoleToolResult, m.messages[1].Role)
