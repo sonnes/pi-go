@@ -121,23 +121,34 @@ func (a *Agent) Send(ctx context.Context, input string) error {
 // message (with its full content blocks) through the subprocess. Non-user
 // messages are retained in history but not forwarded — the CLI owns its
 // own context via --resume.
+//
+// The call is validated before any state mutation: if msgs contains no
+// [agent.LLMMessage] with role=user, an error is returned synchronously
+// and no events are published, matching the entry-point validation
+// convention shared with [agent.Default].
 func (a *Agent) SendMessages(
 	ctx context.Context,
 	msgs ...agent.Message,
 ) error {
+	var userMsg *ai.Message
+	for i := len(msgs) - 1; i >= 0; i-- {
+		lm, ok := agent.AsLLMMessage(msgs[i])
+		if !ok || lm.Message.Role != ai.RoleUser {
+			continue
+		}
+		m := lm.Message
+		userMsg = &m
+		break
+	}
+	if userMsg == nil {
+		return errors.New("claude: SendMessages requires at least one user message")
+	}
+
 	a.mu.Lock()
 	a.messages = append(a.messages, msgs...)
 	a.mu.Unlock()
 
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if lm, ok := agent.AsLLMMessage(msgs[i]); ok {
-			if lm.Message.Role == ai.RoleUser {
-				return a.runTurn(ctx, lm.Message)
-			}
-		}
-	}
-
-	return errors.New("claude: SendMessages requires at least one user message")
+	return a.runTurn(ctx, *userMsg)
 }
 
 // Continue is not supported in stream-json mode. Use [WithSessionID]

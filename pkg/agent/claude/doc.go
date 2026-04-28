@@ -51,4 +51,24 @@
 //	// calling Send. Continue is not supported in stream-json mode.
 //	a2 := claude.New(claude.WithSessionID(sid))
 //	a2.Send(ctx, "pick up where we left off")
+//
+// # Limitations vs. the Default agent
+//
+// The Claude CLI subprocess owns the entire agent loop — tool dispatch,
+// system prompts, and multi-turn state are managed internally by the
+// CLI rather than by this package. As a result:
+//
+//   - Lifecycle hooks registered via [agent.WithHook] are NOT invoked.
+//     [agent.HookBeforeCall], [agent.HookBeforeTool], [agent.HookAfterTool],
+//     [agent.HookAfterTurn], and [agent.HookBeforeStop] all have no
+//     effect when used with this agent. Use the [agent.Default] agent
+//     if you need hooks.
+//   - [agent.Agent.Continue] is not supported in stream-json mode; pair
+//     [WithSessionID] with [Agent.Send] to resume a prior conversation.
+//   - Tool execution events do not carry [agent.Event.PartialResult] —
+//     the CLI does not surface in-flight tool progress over its stdout
+//     protocol, so [agent.EventToolExecutionUpdate] is never emitted.
+//   - [agent.EventMessageUpdate] is not emitted: each NDJSON assistant
+//     line is a complete message, so the lifecycle goes directly from
+//     message_start to message_end with no intermediate updates.
 package claude
