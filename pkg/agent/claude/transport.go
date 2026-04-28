@@ -191,6 +191,9 @@ func buildArgs(cfg config) []string {
 	if len(cfg.disallowedTools) > 0 {
 		a = append(a, "--disallowedTools", strings.Join(cfg.disallowedTools, ","))
 	}
+	if cfg.mcpConfig != "" {
+		a = append(a, "--mcp-config", cfg.mcpConfig)
+	}
 	if cfg.maxTurns > 0 {
 		a = append(a, "--max-turns", strconv.Itoa(cfg.maxTurns))
 	}

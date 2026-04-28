@@ -2,6 +2,7 @@ package openairesponses
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/openai/openai-go/responses"
@@ -511,6 +512,102 @@ func TestConvertOpenRouterTools_FunctionAndServerMixed(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, "function", got[0]["type"])
 	assert.Equal(t, "openrouter:web_search", got[1]["type"])
+}
+
+func TestServerToolNameByType_KeyedByCallerName(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{Name: "get_weather"}, // function tool — ignored
+		{
+			Name:       "WebSearch",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebSearch,
+		},
+		{
+			Name:       "DateTime",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolDateTime,
+		},
+	}
+	got := serverToolNameByType(tools)
+	assert.Equal(t, "WebSearch", got[ai.ServerToolWebSearch])
+	assert.Equal(t, "DateTime", got[ai.ServerToolDateTime])
+	assert.NotContains(t, got, ai.ServerToolType(""), "function tools must not pollute the map")
+}
+
+func TestCanonicalServerToolName_FallsBackWhenMissing(t *testing.T) {
+	names := map[ai.ServerToolType]string{
+		ai.ServerToolWebSearch: "WebSearch",
+	}
+	assert.Equal(t, "WebSearch",
+		canonicalServerToolName(ai.ServerToolWebSearch, names, "openrouter:web_search"))
+	assert.Equal(t, "fallback",
+		canonicalServerToolName(ai.ServerToolDateTime, names, "fallback"))
+}
+
+func TestExtractOpenRouterArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want map[string]any
+	}{
+		{
+			name: "top-level query",
+			raw:  `{"type":"openrouter:web_search","query":"anthropic news"}`,
+			want: map[string]any{"query": "anthropic news"},
+		},
+		{
+			name: "nested under action",
+			raw:  `{"action":{"query":"openai status"}}`,
+			want: map[string]any{"query": "openai status"},
+		},
+		{
+			name: "nested under input.url",
+			raw:  `{"input":{"url":"https://example.com"}}`,
+			want: map[string]any{"url": "https://example.com"},
+		},
+		{
+			name: "datetime timezone",
+			raw:  `{"timezone":"America/Los_Angeles"}`,
+			want: map[string]any{"timezone": "America/Los_Angeles"},
+		},
+		{
+			name: "no recognized fields",
+			raw:  `{"foo":"bar"}`,
+			want: nil,
+		},
+		{
+			name: "empty payload",
+			raw:  ``,
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractOpenRouterArgs(tt.raw)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestOpenRouterOutputSummary(t *testing.T) {
+	cases := map[string][2]string{
+		"web_search nested": {`{"action":{"query":"hello"}}`, ""},
+		"web_search top":    {`{"query":"hello"}`, "search: hello"},
+		"web_fetch top":     {`{"url":"https://example.com"}`, "fetch: https://example.com"},
+		"datetime":          {`{"timezone":"UTC"}`, "datetime: UTC"},
+		"unknown shape":     {`{"foo":"bar"}`, ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			itemType := "openrouter:web_search"
+			if strings.Contains(name, "fetch") {
+				itemType = "openrouter:web_fetch"
+			} else if strings.Contains(name, "datetime") {
+				itemType = "openrouter:datetime"
+			}
+			assert.Equal(t, c[1], openRouterOutputSummary(itemType, c[0]))
+		})
+	}
 }
 
 func TestServerTypeForItem(t *testing.T) {

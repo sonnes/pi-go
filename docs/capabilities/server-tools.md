@@ -24,7 +24,7 @@ agent.New(
 )
 ```
 
-Provider-executed results arrive on the same `ai.ToolCall` that holds the invocation, with `Server == true` and `Output` populated by [`ai.ServerToolOutput`](../../pkg/ai/content.go). `Output.Content` is a normalized text rendering; `Output.Raw` retains the provider's JSON for callers that need structured fields.
+Provider-executed results arrive on the same `ai.ToolCall` that holds the invocation, with `Server == true` and `Output` populated by [`ai.ServerToolOutput`](../../pkg/ai/content.go). `Output.Content` is a normalized text rendering; `Output.Raw` retains the provider's JSON for callers that need structured fields. The `ToolCall.Name` is rewritten to the caller-registered `ToolInfo.Name` (e.g. `"WebSearch"`) rather than the raw provider item type (`web_search_call`, `openrouter:web_search`), so persisted history has the same shape for function tools and server tools.
 
 ## Overview
 

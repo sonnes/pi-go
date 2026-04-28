@@ -139,6 +139,42 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, "Paris", tc.Arguments["location"])
 }
 
+func TestMessageJSONRoundTrip_ServerToolCall(t *testing.T) {
+	original := ai.AssistantMessage(
+		ai.ToolCall{
+			ID:         "srv-1",
+			Name:       "WebSearch",
+			Arguments:  map[string]any{"query": "anthropic news"},
+			Server:     true,
+			ServerType: ai.ServerToolWebSearch,
+			Output: &ai.ServerToolOutput{
+				Content: "search: anthropic news",
+				Raw:     json.RawMessage(`{"query":"anthropic news","results":[]}`),
+				IsError: false,
+			},
+		},
+	)
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var decoded ai.Message
+	require.NoError(t, json.Unmarshal(data, &decoded))
+
+	require.Len(t, decoded.Content, 1)
+	tc, ok := ai.AsContent[ai.ToolCall](decoded.Content[0])
+	require.True(t, ok)
+	assert.Equal(t, "srv-1", tc.ID)
+	assert.Equal(t, "WebSearch", tc.Name)
+	assert.Equal(t, "anthropic news", tc.Arguments["query"])
+	assert.True(t, tc.Server, "Server flag must round-trip")
+	assert.Equal(t, ai.ServerToolWebSearch, tc.ServerType)
+	require.NotNil(t, tc.Output, "Output must round-trip")
+	assert.Equal(t, "search: anthropic news", tc.Output.Content)
+	assert.JSONEq(t, `{"query":"anthropic news","results":[]}`, string(tc.Output.Raw))
+	assert.False(t, tc.Output.IsError)
+}
+
 func TestMessageJSONRoundTrip_File(t *testing.T) {
 	original := ai.UserFileMessage(
 		"analyze this report",
