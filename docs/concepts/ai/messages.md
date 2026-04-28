@@ -32,7 +32,7 @@ Helper functions (`UserMessage`, `AssistantMessage`, `ToolResultMessage`, etc.) 
 
 ## JSON serialization
 
-Custom `MarshalJSON`/`UnmarshalJSON` for clean wire format — content blocks carry a `type` discriminator, zero-valued fields are omitted, timestamps use RFC3339Nano.
+Custom `MarshalJSON`/`UnmarshalJSON` for clean wire format — content blocks carry a `type` discriminator, zero-valued fields are omitted, timestamps use RFC3339Nano. Server-tool calls round-trip the `Server`, `ServerType`, and `Output` (`Content`, `Raw`, `IsError`) fields on `ToolCall` so persisted history replays with the same shape providers produced.
 
 ## Related
 

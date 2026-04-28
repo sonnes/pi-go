@@ -769,7 +769,6 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 	types := eventTypes(events)
 
 	// Expected lifecycle:
-	// message_start (user), message_end (user)
 	// agent_start
 	//   turn_start
 	//     message_start (assistant), message_update*, message_end (assistant)
@@ -782,7 +781,7 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 	// agent_end
 
 	// Verify key ordering invariants.
-	assert.Equal(t, EventMessageStart, types[0])
+	assert.Equal(t, EventAgentStart, types[0])
 	assert.Equal(t, EventAgentEnd, types[len(types)-1])
 
 	// Every turn_start has a matching turn_end.
@@ -822,7 +821,8 @@ func TestSend_MessageEventsForAllTypes(t *testing.T) {
 		require.NoError(t, a.Send(t.Context(), "go"))
 	})
 
-	// Count message_start events — should include user, assistant(s), tool_result.
+	// Count message_start events — caller input is not echoed; only
+	// messages produced by the loop count.
 	msgStarts := 0
 	msgEnds := 0
 	for _, e := range events {
@@ -834,8 +834,8 @@ func TestSend_MessageEventsForAllTypes(t *testing.T) {
 		}
 	}
 
-	// user + assistant (tool call) + tool result + assistant (final) = 4 message pairs
-	assert.Equal(t, 4, msgStarts)
+	// assistant (tool call) + tool result + assistant (final) = 3 message pairs
+	assert.Equal(t, 3, msgStarts)
 	assert.Equal(t, msgStarts, msgEnds, "every message_start must have a matching message_end")
 }
 
@@ -1119,7 +1119,7 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 			break
 		}
 	}
-	assert.Equal(t, EventMessageStart, firstEvents[0].Type)
+	assert.Equal(t, EventAgentStart, firstEvents[0].Type)
 	assert.Equal(t, EventAgentEnd, firstEvents[len(firstEvents)-1].Type)
 
 	// Second Send on the same subscriber.
@@ -1132,7 +1132,7 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 			break
 		}
 	}
-	assert.Equal(t, EventMessageStart, secondEvents[0].Type)
+	assert.Equal(t, EventAgentStart, secondEvents[0].Type)
 	assert.Equal(t, EventAgentEnd, secondEvents[len(secondEvents)-1].Type)
 
 	// History should have both turns.

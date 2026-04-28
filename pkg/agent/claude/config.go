@@ -25,6 +25,7 @@ type config struct {
 	agents             map[string]AgentDef
 	systemPrompt       string
 	appendSystemPrompt string
+	mcpConfig          string
 	history            []agent.Message
 }
 
@@ -117,4 +118,11 @@ func WithAgents(agents map[string]AgentDef) agent.Option {
 // passes it via --system-prompt.
 func WithAppendSystemPrompt(prompt string) agent.Option {
 	return mutate(func(c *config) { c.appendSystemPrompt = prompt })
+}
+
+// WithMCPConfig sets --mcp-config to spec, which the Claude CLI accepts
+// as either a file path or an inline JSON document describing the MCP
+// servers to connect to. Empty string disables the flag entirely.
+func WithMCPConfig(spec string) agent.Option {
+	return mutate(func(c *config) { c.mcpConfig = spec })
 }

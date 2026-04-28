@@ -272,10 +272,9 @@ func (a *Agent) runTurn(ctx context.Context, userMsg ai.Message) error {
 
 	publish := a.broker.Publish
 
-	// Emit the user message start/end so consumers see the input turn.
-	publish(agent.Event{Type: agent.EventMessageStart, Message: &userMsg})
-	publish(agent.Event{Type: agent.EventMessageEnd, Message: &userMsg})
-	// AgentStart fires once per Send so event consumers can bracket each turn.
+	// Caller-supplied user messages are not echoed back to subscribers
+	// — the caller already has them. AgentStart still fires once per
+	// Send so event consumers can bracket each turn.
 	a.mu.Lock()
 	sid := a.sessionID
 	a.mu.Unlock()
