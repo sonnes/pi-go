@@ -32,14 +32,16 @@ func cacheMarker(
 	return marker, true
 }
 
-// isOfficialAnthropicURL reports whether the configured base URL points at
-// Anthropic's first-party API. An empty URL is treated as official since the
-// SDK's default routes there.
+// isOfficialAnthropicURL reports whether the configured base URL supports the
+// 1h cache TTL extension. An empty URL is treated as official since the SDK's
+// default routes to api.anthropic.com. OpenRouter is included because it
+// explicitly documents support for the "ttl": "1h" field.
 func isOfficialAnthropicURL(baseURL string) bool {
 	if baseURL == "" {
 		return true
 	}
-	return strings.Contains(baseURL, "api.anthropic.com")
+	return strings.Contains(baseURL, "api.anthropic.com") ||
+		strings.Contains(baseURL, "openrouter.ai")
 }
 
 // applyCacheControlToLastBlock attaches a cache_control marker to the final
