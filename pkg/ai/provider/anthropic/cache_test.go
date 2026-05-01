@@ -74,7 +74,7 @@ func TestBuildParams_CacheControl_LongOfficialURLSets1hTTL(t *testing.T) {
 	}
 	opts := ai.StreamOptions{CacheRetention: ai.CacheRetentionLong}
 
-	for _, baseURL := range []string{"", "https://api.anthropic.com/v1/"} {
+	for _, baseURL := range []string{"", "https://api.anthropic.com/v1/", "https://openrouter.ai/api/v1"} {
 		t.Run(baseURL, func(t *testing.T) {
 			params, _ := buildParams(ai.Model{ID: "claude"}, prompt, opts, baseURL)
 
