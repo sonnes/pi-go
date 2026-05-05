@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/urfave/cli/v3"
 
@@ -91,10 +92,26 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	// One session-level subscription drains every event, including
+	// session_init (first Send) and session_end (Close). Per-Send
+	// synchronization uses agent.Wait. Close before wg.Wait so the
+	// subscriber channel closes cleanly after session_end.
+	ch := a.Subscribe(ctx)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for pe := range ch {
+			handleEvent(pe.Payload())
+		}
+	}()
+	defer wg.Wait()
+	defer a.Close()
+
 	// Single-shot if prompt provided as args.
 	if args := cmd.Args(); args.Len() > 0 {
 		prompt := strings.Join(args.Slice(), " ")
-		return sendAndPrint(ctx, a, prompt)
+		return sendAndWait(ctx, a, prompt)
 	}
 
 	// Interactive multi-turn.
@@ -106,7 +123,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 			fmt.Fprint(os.Stderr, "> ")
 			continue
 		}
-		if err := sendAndPrint(ctx, a, line); err != nil {
+		if err := sendAndWait(ctx, a, line); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
 		fmt.Fprint(os.Stderr, "\n> ")
@@ -426,60 +443,144 @@ func findProviderName(clientID string) string {
 	return ""
 }
 
-func sendAndPrint(ctx context.Context, a agent.Agent, prompt string) error {
-	subCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	ch := a.Subscribe(subCtx)
-
+func sendAndWait(ctx context.Context, a agent.Agent, prompt string) error {
 	if err := a.Send(ctx, prompt); err != nil {
 		return err
 	}
-
-	for pe := range ch {
-		evt := pe.Payload()
-		handleEvent(evt)
-		if evt.Type == agent.EventAgentEnd {
-			return evt.Err
-		}
-	}
-
-	return nil
+	_, err := a.Wait(ctx)
+	return err
 }
 
-// printServerToolCall renders a one-line summary of a provider-executed
-// server-tool call to stderr — name, arguments, and a truncated rendering
-// of its Output (when present).
+// ANSI colors for stderr event log. Always emitted — modern terminals
+// handle them, and they remain readable when stderr is redirected to a
+// file or piped through `less -R`.
+const (
+	colorReset  = "\033[0m"
+	colorDim    = "\033[2m"
+	colorBold   = "\033[1m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorCyan   = "\033[36m"
+)
+
+// logEvent writes one bracketed, colorized event line to stderr. Empty
+// fields are skipped so callers can pass conditional values without
+// pre-filtering.
+func logEvent(color, label string, fields ...string) {
+	var b strings.Builder
+	b.WriteString(color)
+	b.WriteByte('[')
+	b.WriteString(label)
+	b.WriteByte(']')
+	b.WriteString(colorReset)
+	for _, f := range fields {
+		if f == "" {
+			continue
+		}
+		b.WriteByte(' ')
+		b.WriteString(f)
+	}
+	fmt.Fprintln(os.Stderr, b.String())
+}
+
+func optField(key, val string) string {
+	if val == "" {
+		return ""
+	}
+	return key + "=" + val
+}
+
+func errField(err error) string {
+	if err == nil {
+		return ""
+	}
+	return "err=" + err.Error()
+}
+
+func usageFields(u ai.Usage) []string {
+	fields := []string{
+		fmt.Sprintf("in=%d", u.Input),
+		fmt.Sprintf("out=%d", u.Output),
+		fmt.Sprintf("total=%d", u.Total),
+	}
+	if u.CacheRead > 0 {
+		fields = append(fields, fmt.Sprintf("cache_read=%d", u.CacheRead))
+	}
+	if u.CacheWrite > 0 {
+		fields = append(fields, fmt.Sprintf("cache_write=%d", u.CacheWrite))
+	}
+	if u.Cost.Total > 0 {
+		fields = append(fields, fmt.Sprintf("$%.4f", u.Cost.Total))
+	}
+	return fields
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
+// printServerToolCall renders a provider-executed server-tool call to
+// stderr — name, arguments, and a truncated rendering of its Output
+// (when present).
 func printServerToolCall(tc ai.ToolCall) {
 	name := string(tc.ServerType)
 	if name == "" {
 		name = tc.Name
 	}
-	fmt.Fprintf(os.Stderr, "\n[server tool: %s", name)
+	var argField string
 	if len(tc.Arguments) > 0 {
 		if data, err := json.Marshal(tc.Arguments); err == nil {
-			fmt.Fprintf(os.Stderr, " args=%s", data)
+			argField = "args=" + truncate(string(data), 200)
 		}
 	}
-	fmt.Fprintln(os.Stderr, "]")
-	if tc.Output != nil {
-		out := tc.Output.Content
-		if len(out) > 200 {
-			out = out[:200] + "..."
-		}
-		marker := "result"
-		if tc.Output.IsError {
-			marker = "error"
-		}
-		fmt.Fprintf(os.Stderr, "[%s: %s]\n", marker, out)
+	logEvent(colorYellow, "server-tool:"+name, argField)
+	if tc.Output == nil {
+		return
+	}
+	out := truncate(tc.Output.Content, 200)
+	if tc.Output.IsError {
+		logEvent(colorRed, "server-tool:"+name+":error", "result="+out)
+	} else {
+		logEvent(colorGreen, "server-tool:"+name+":done", "result="+out)
 	}
 }
 
 func handleEvent(evt agent.Event) {
 	switch evt.Type {
-	case agent.EventMessageUpdate:
-		if evt.AssistantEvent != nil {
-			fmt.Print(evt.AssistantEvent.Delta)
+	case agent.EventSessionInit:
+		logEvent(colorCyan+colorBold, "session:init", optField("sid", evt.SessionID))
+
+	case agent.EventSessionEnd:
+		logEvent(colorCyan+colorBold, "session:end", errField(evt.Err))
+
+	case agent.EventAgentStart:
+		logEvent(colorBlue, "agent:start", optField("sid", evt.SessionID))
+
+	case agent.EventAgentEnd:
+		// Insert a blank line so streamed assistant text on stdout
+		// doesn't visually run into the trailing meta block.
+		fmt.Fprintln(os.Stderr)
+		if evt.Usage.Total > 0 {
+			logEvent(colorGreen, "usage", usageFields(evt.Usage)...)
 		}
+		if evt.Err != nil {
+			logEvent(colorRed+colorBold, "error", "msg="+evt.Err.Error())
+		}
+		logEvent(colorBlue, "agent:end")
+
+	case agent.EventTurnStart:
+		logEvent(colorDim, "turn:start")
+
+	case agent.EventTurnEnd:
+		// Streamed assistant text on stdout doesn't end in \n; insert
+		// one on stderr so the bracketed event lands on its own line.
+		fmt.Fprintln(os.Stderr)
+		logEvent(colorDim, "turn:end")
 
 	case agent.EventMessageStart:
 		if evt.Message != nil && evt.Message.Role == ai.RoleAssistant {
@@ -488,6 +589,11 @@ func handleEvent(evt agent.Event) {
 			if text := evt.Message.Text(); text != "" {
 				fmt.Print(text)
 			}
+		}
+
+	case agent.EventMessageUpdate:
+		if evt.AssistantEvent != nil {
+			fmt.Print(evt.AssistantEvent.Delta)
 		}
 
 	case agent.EventMessageEnd:
@@ -505,40 +611,26 @@ func handleEvent(evt agent.Event) {
 		}
 
 	case agent.EventToolExecutionStart:
-		fmt.Fprintf(os.Stderr, "\n[tool: %s]\n", evt.ToolName)
+		var argField string
+		if len(evt.Args) > 0 {
+			if data, err := json.Marshal(evt.Args); err == nil {
+				argField = "args=" + truncate(string(data), 200)
+			}
+		}
+		logEvent(colorYellow, "tool:"+evt.ToolName, argField)
+
+	case agent.EventToolExecutionUpdate:
+		if evt.PartialResult != nil {
+			partial := truncate(fmt.Sprintf("%v", evt.PartialResult), 100)
+			logEvent(colorYellow+colorDim, "tool:"+evt.ToolName+":update", "partial="+partial)
+		}
 
 	case agent.EventToolExecutionEnd:
-		result := fmt.Sprintf("%v", evt.Result)
-		if len(result) > 200 {
-			result = result[:200] + "..."
-		}
-		fmt.Fprintf(os.Stderr, "[result: %s]\n", result)
-
-	case agent.EventAgentEnd:
-		fmt.Fprintln(os.Stderr)
-		if evt.Usage.Total > 0 {
-			fmt.Fprintf(
-				os.Stderr,
-				"[usage: %d in, %d out, %d total",
-				evt.Usage.Input,
-				evt.Usage.Output,
-				evt.Usage.Total,
-			)
-			if evt.Usage.CacheRead > 0 || evt.Usage.CacheWrite > 0 {
-				fmt.Fprintf(
-					os.Stderr,
-					", %d cache_read, %d cache_write",
-					evt.Usage.CacheRead,
-					evt.Usage.CacheWrite,
-				)
-			}
-			if evt.Usage.Cost.Total > 0 {
-				fmt.Fprintf(os.Stderr, ", $%.4f", evt.Usage.Cost.Total)
-			}
-			fmt.Fprintln(os.Stderr, "]")
-		}
-		if evt.Err != nil {
-			fmt.Fprintf(os.Stderr, "[error: %v]\n", evt.Err)
+		result := truncate(fmt.Sprintf("%v", evt.Result), 200)
+		if evt.IsError {
+			logEvent(colorRed, "tool:"+evt.ToolName+":error", "result="+result)
+		} else {
+			logEvent(colorGreen, "tool:"+evt.ToolName+":done", "result="+result)
 		}
 	}
 }

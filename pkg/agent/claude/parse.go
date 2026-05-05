@@ -176,11 +176,12 @@ type parser struct {
 // handleLine processes a single NDJSON line and returns zero or more
 // agent events. The caller pushes each returned event.
 //
-// system/init lines are intentionally not handled here: the [Agent]
-// emits [agent.EventAgentStart] explicitly per Send (see
-// claude.go:runTurn) so the event fires once per turn rather than once
-// per subprocess. The [Agent.readLoop] consumes the session_id off the
-// init line and skips parser dispatch for that case.
+// system/init lines are intercepted by [Agent.readLoop], not the
+// parser: the agent emits [agent.EventSessionInit] (once per subprocess
+// lifetime) on init. Per-run [agent.EventAgentStart] is published by
+// readLoop just before the next batch of parser events (signalled by
+// [Agent.expectAgentStart]); [agent.EventAgentEnd] is emitted by
+// [Agent.finishTurn].
 func (m *parser) handleLine(line rawLine) []agent.Event {
 	switch line.Type {
 	case "assistant":

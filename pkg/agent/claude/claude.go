@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
@@ -31,6 +32,21 @@ type Agent struct {
 	sessionID string
 	messages  []agent.Message
 	err       error
+
+	// session lifecycle tracking — session_init fires once when the
+	// subprocess emits its system/init line; session_end fires once
+	// from Close (and only if session_init fired).
+	sessionInitOnce  sync.Once
+	sessionEndOnce   sync.Once
+	sessionInitFired bool
+
+	// expectAgentStart signals the readLoop to publish [agent.EventAgentStart]
+	// just before its next batch of parser events. runTurn sets this true
+	// before writing the user line; readLoop atomically clears it when it
+	// publishes the bracket. Routing the publish through readLoop keeps
+	// agent_start ordered ahead of every per-turn parser event from the
+	// same subprocess line.
+	expectAgentStart atomic.Bool
 
 	// transport is the active subprocess, created on first Send.
 	transport transportIface
@@ -193,7 +209,11 @@ func (a *Agent) Wait(ctx context.Context) ([]ai.Message, error) {
 }
 
 // Close shuts down the subprocess and the event broker. Subsequent calls
-// to [Agent.Subscribe] return closed channels.
+// to [Agent.Subscribe] return closed channels. If the subprocess emitted
+// its `system/init` line during the agent's lifetime
+// ([agent.EventSessionInit] fired), Close emits a matching
+// [agent.EventSessionEnd] before shutting down the broker, carrying any
+// transport exit error.
 func (a *Agent) Close() {
 	a.mu.Lock()
 	t := a.transport
@@ -208,7 +228,50 @@ func (a *Agent) Close() {
 		<-readerDone
 	}
 
+	if a.sessionInitFired {
+		a.sessionEndOnce.Do(func() {
+			var exitErr error
+			if t != nil {
+				exitErr = t.exitErr()
+			}
+			a.broker.Publish(agent.Event{
+				Type: agent.EventSessionEnd,
+				Err:  exitErr,
+			})
+		})
+	}
+
 	a.broker.Shutdown()
+}
+
+// fireSessionInit emits [agent.EventSessionInit] on the very first
+// `system/init` line and is a no-op on subsequent calls.
+func (a *Agent) fireSessionInit(sid string) {
+	a.sessionInitOnce.Do(func() {
+		a.sessionInitFired = true
+		a.broker.Publish(agent.Event{
+			Type:      agent.EventSessionInit,
+			SessionID: sid,
+		})
+	})
+}
+
+// maybePublishAgentStart publishes [agent.EventAgentStart] if runTurn
+// flagged that the bracket is owed for the current turn. It is called
+// from readLoop just before publishing each parser event so that
+// agent_start is always serialized ahead of the turn's parser output
+// — the sole publishing goroutine for a turn is readLoop.
+func (a *Agent) maybePublishAgentStart() {
+	if !a.expectAgentStart.CompareAndSwap(true, false) {
+		return
+	}
+	a.mu.Lock()
+	sid := a.sessionID
+	a.mu.Unlock()
+	a.broker.Publish(agent.Event{
+		Type:      agent.EventAgentStart,
+		SessionID: sid,
+	})
 }
 
 // Messages returns a copy of the current conversation history.
@@ -281,17 +344,16 @@ func (a *Agent) runTurn(ctx context.Context, userMsg ai.Message) error {
 		return nil
 	}
 
-	publish := a.broker.Publish
-
-	// Caller-supplied user messages are not echoed back to subscribers
-	// — the caller already has them. AgentStart still fires once per
-	// Send so event consumers can bracket each turn.
-	a.mu.Lock()
-	sid := a.sessionID
-	a.mu.Unlock()
-	publish(agent.Event{Type: agent.EventAgentStart, SessionID: sid})
+	// Mark that readLoop owes an agent_start for this turn. readLoop
+	// publishes it inline with the next batch of parser events so
+	// agent_start is guaranteed to precede any per-turn parser output
+	// (and, on the first turn, to follow the session_init that the
+	// init line produced). Caller-supplied user messages are not
+	// echoed back — the caller already has them.
+	a.expectAgentStart.Store(true)
 
 	if err := a.transport.writeUserMessage(line); err != nil {
+		a.expectAgentStart.Store(false)
 		a.finishTurn(turnResult{err: err})
 		return nil
 	}
@@ -407,12 +469,18 @@ func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 				}
 				a.mu.Unlock()
 			}
-			// Skip parser dispatch: runTurn emits AgentStart per turn so the
-			// event is consistent on every send, not just the first.
+			// Subprocess startup → session_init (once per subprocess
+			// lifetime). Per-run brackets are emitted separately by
+			// runTurn as agent_start / agent_end.
+			a.fireSessionInit(line.SessionID)
 			continue
 		}
 
-		for _, evt := range p.handleLine(line) {
+		events := p.handleLine(line)
+		if len(events) > 0 {
+			a.maybePublishAgentStart()
+		}
+		for _, evt := range events {
 			a.broker.Publish(evt)
 		}
 
