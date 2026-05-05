@@ -102,9 +102,11 @@ func (f *fakeTransport) writes() [][]byte {
 	return out
 }
 
-// newTestAgent builds an Agent wired to a fake transport. The provided
-// emitter is run in a goroutine after the first stdin write; it receives
-// the transport so it can emit canned NDJSON lines.
+// newTestAgent builds an Agent wired to a fake transport. The emitter
+// runs in a goroutine and receives the transport so it can choose when
+// to emit lines (typically after waiting on [fakeTransport.pendingWrite]
+// to mirror the real Claude CLI, which only emits its `system/init`
+// line and any subsequent output in response to a stdin user message).
 func newTestAgent(
 	t *testing.T,
 	startErr error,
@@ -120,22 +122,22 @@ func newTestAgent(
 		return ft, nil
 	}
 	if emit != nil {
-		go func() {
-			select {
-			case <-ft.pendingWrite:
-				emit(ft)
-			case <-ft.exitedCh:
-			}
-		}()
+		go emit(ft)
 	}
 	return a, ft
 }
 
-// emitString returns an emitter that writes the given NDJSON then leaves
-// the pipe open (pipe writes block only if reader stops — closing would
-// EOF the scanner and drop any late turnDone delivery).
+// emitString returns an emitter that emits the given NDJSON only after
+// the agent writes a user message to stdin — matching the real Claude
+// CLI which is silent until it receives input and then streams its
+// `system/init` line followed by the assistant/result blocks.
 func emitString(s string) func(*fakeTransport) {
 	return func(ft *fakeTransport) {
+		select {
+		case <-ft.pendingWrite:
+		case <-ft.exitedCh:
+			return
+		}
 		ft.emit(s)
 	}
 }
@@ -155,6 +157,7 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
+		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant
@@ -205,6 +208,7 @@ func TestAgent_Send_MultiTurn(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
+		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -301,6 +305,9 @@ func TestAgent_Send_StartError(t *testing.T) {
 		assert.NotEqual(t, agent.EventAgentStart, e.Type,
 			"agent_start must not fire when transport fails to start",
 		)
+		assert.NotEqual(t, agent.EventSessionInit, e.Type,
+			"session_init must not fire when transport fails to start",
+		)
 	}
 	last := events[len(events)-1]
 	assert.Equal(t, agent.EventAgentEnd, last.Type)
@@ -356,6 +363,7 @@ func TestAgent_Send_FullToolLoop(t *testing.T) {
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
+		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant with tool_use
@@ -422,15 +430,15 @@ func TestAgent_Send_TwoTurnsReuseTransport(t *testing.T) {
 		return ft, nil
 	}
 
-	// Emitter: first write → turn1 output, second write → turn2 output.
+	// Mimic the real CLI: silent until the first stdin write. The
+	// init line accompanies the first turn's assistant/result block.
 	go func() {
-		for i, body := range []string{turn1, turn2} {
+		for _, body := range []string{turn1, turn2} {
 			select {
 			case <-ft.pendingWrite:
 			case <-ft.exitedCh:
 				return
 			}
-			_ = i
 			ft.emit(body)
 		}
 	}()
@@ -475,6 +483,79 @@ func TestAgent_SendMessages_RichContent(t *testing.T) {
 	require.Len(t, blocks, 2)
 	assert.Equal(t, "text", blocks[0]["type"])
 	assert.Equal(t, "image", blocks[1]["type"])
+}
+
+// TestSessionLifecycle_TwoSendsThenClose verifies session_init fires
+// once with the SessionID from the first turn's init line, session_end
+// fires once on Close, and per-Send agent_start/agent_end pairs sit
+// between.
+func TestSessionLifecycle_TwoSendsThenClose(t *testing.T) {
+	turn1 := `{"type":"system","subtype":"init","session_id":"sess-life"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}}
+{"type":"result","subtype":"success","result":"ok"}
+`
+	turn2 := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}}
+{"type":"result","subtype":"success","result":"ok"}
+`
+	ft := newFakeTransport()
+	a := New()
+	a.newTransport = func(ctx context.Context, cfg config) (transportIface, error) {
+		return ft, nil
+	}
+
+	go func() {
+		for _, body := range []string{turn1, turn2} {
+			select {
+			case <-ft.pendingWrite:
+			case <-ft.exitedCh:
+				return
+			}
+			ft.emit(body)
+		}
+	}()
+
+	ctx := context.Background()
+	ch := a.Subscribe(ctx)
+
+	require.NoError(t, a.Send(ctx, "one"))
+	_, err := a.Wait(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, a.Send(ctx, "two"))
+	_, err = a.Wait(ctx)
+	require.NoError(t, err)
+
+	a.Close()
+
+	var events []agent.Event
+	for pe := range ch {
+		events = append(events, pe.Payload())
+	}
+
+	var inits, ends, agentStarts, agentEnds int
+	var initSID string
+	for _, e := range events {
+		switch e.Type {
+		case agent.EventSessionInit:
+			inits++
+			initSID = e.SessionID
+		case agent.EventSessionEnd:
+			ends++
+		case agent.EventAgentStart:
+			agentStarts++
+		case agent.EventAgentEnd:
+			agentEnds++
+		}
+	}
+	assert.Equal(t, 1, inits, "session_init fires once")
+	assert.Equal(t, 1, ends, "session_end fires once")
+	assert.Equal(t, 2, agentStarts, "agent_start fires once per Send")
+	assert.Equal(t, 2, agentEnds, "agent_end fires once per Send")
+	assert.Equal(t, "sess-life", initSID, "session_init carries the subprocess session_id")
+
+	require.GreaterOrEqual(t, len(events), 1)
+	assert.Equal(t, agent.EventSessionInit, events[0].Type)
+	assert.Equal(t, agent.EventSessionEnd, events[len(events)-1].Type)
 }
 
 // --- helpers ---

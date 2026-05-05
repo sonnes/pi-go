@@ -10,12 +10,27 @@ import (
 type EventType string
 
 const (
-	// EventAgentStart signals that the agent backend is initialized and
-	// ready to produce events. It fires once per [Agent.Send] or
-	// [Agent.Continue] call as the first event of the run — caller-supplied
-	// input messages are not echoed back. Subscribers may not receive this
-	// event if the backend fails before initialization; in that case only
-	// [EventAgentEnd] (with Err set) is emitted.
+	// EventSessionInit signals the agent backend (subprocess, in-process
+	// loop, …) has been initialized. Fires exactly once per agent
+	// lifetime — before the first [EventAgentStart]. For the Claude CLI
+	// agent it carries the [Event.SessionID] from the subprocess
+	// `system/init` line. If the backend fails to initialize at all
+	// (e.g. subprocess startup error), this event is not emitted.
+	EventSessionInit EventType = "session_init"
+
+	// EventSessionEnd signals the agent backend has shut down. Fires
+	// exactly once per agent lifetime, after the final [EventAgentEnd]
+	// and immediately before the broker shuts down. Only emitted if
+	// [EventSessionInit] previously fired. Carries [Event.Err] when the
+	// backend exited with an error.
+	EventSessionEnd EventType = "session_end"
+
+	// EventAgentStart brackets a single run — one [Agent.Send],
+	// [Agent.Continue], or [Agent.SendMessages] call. Fires as the first
+	// event of the run, after any [EventSessionInit]. Caller-supplied
+	// input messages are not echoed back. If the backend fails before
+	// the run begins (e.g. subprocess startup error), this event is
+	// skipped and only [EventAgentEnd] (with Err set) is emitted.
 	EventAgentStart EventType = "agent_start"
 
 	EventAgentEnd            EventType = "agent_end"
@@ -76,6 +91,28 @@ type Event struct {
 // event type, keeping the wire format clean.
 func (e Event) MarshalJSON() ([]byte, error) {
 	switch e.Type {
+	case EventSessionInit:
+		return json.Marshal(struct {
+			Type      EventType `json:"type"`
+			SessionID string    `json:"session_id,omitempty"`
+		}{
+			Type:      e.Type,
+			SessionID: e.SessionID,
+		})
+
+	case EventSessionEnd:
+		var errStr string
+		if e.Err != nil {
+			errStr = e.Err.Error()
+		}
+		return json.Marshal(struct {
+			Type  EventType `json:"type"`
+			Error string    `json:"error,omitempty"`
+		}{
+			Type:  e.Type,
+			Error: errStr,
+		})
+
 	case EventAgentStart:
 		return json.Marshal(struct {
 			Type      EventType `json:"type"`
