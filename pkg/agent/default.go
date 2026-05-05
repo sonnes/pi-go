@@ -16,6 +16,7 @@ import (
 //
 // Loop flow:
 //
+//	session_init  ← once, before the first run
 //	agent_start
 //	  turn_start
 //	    buildPrompt → streamText → streamTurn
@@ -25,6 +26,7 @@ import (
 //	  turn_end
 //	  ... repeat if tool_use and under maxTurns ...
 //	agent_end
+//	session_end   ← once, on Close
 //
 // Caller-supplied input messages (Send / SendMessages) are not echoed
 // as message_start/end events — only messages produced by the loop are
@@ -41,6 +43,12 @@ type Default struct {
 	lastMsgs []ai.Message
 	messages []Message
 	err      error
+
+	// session lifecycle tracking — session_init fires once on first run,
+	// session_end fires once on Close (and only if session_init fired).
+	sessionInitOnce  sync.Once
+	sessionEndOnce   sync.Once
+	sessionInitFired bool
 }
 
 var _ Agent = (*Default)(nil)
@@ -129,8 +137,32 @@ func (a *Default) Wait(ctx context.Context) ([]ai.Message, error) {
 
 // Close shuts down the agent's event broker, closing all subscriber
 // channels. Subsequent calls to [Default.Subscribe] return closed channels.
+// If a run is in flight, Close waits for it to finish so [EventSessionEnd]
+// is published after the loop's final [EventAgentEnd]. If the agent ever
+// ran (session_init was emitted), Close emits a matching [EventSessionEnd]
+// before shutting down the broker.
 func (a *Default) Close() {
+	a.mu.Lock()
+	done := a.done
+	a.mu.Unlock()
+	if done != nil {
+		<-done
+	}
+	if a.sessionInitFired {
+		a.sessionEndOnce.Do(func() {
+			a.broker.Publish(Event{Type: EventSessionEnd})
+		})
+	}
 	a.broker.Shutdown()
+}
+
+// fireSessionInit emits [EventSessionInit] on the very first run and
+// is a no-op on subsequent calls.
+func (a *Default) fireSessionInit() {
+	a.sessionInitOnce.Do(func() {
+		a.sessionInitFired = true
+		a.broker.Publish(Event{Type: EventSessionInit})
+	})
 }
 
 // Messages returns a copy of the current conversation history.
@@ -222,6 +254,7 @@ func (a *Default) loop(
 		loopErr     error
 	)
 
+	a.fireSessionInit()
 	push(Event{Type: EventAgentStart})
 
 	defer func() {

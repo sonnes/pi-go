@@ -769,6 +769,7 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 	types := eventTypes(events)
 
 	// Expected lifecycle:
+	// session_init
 	// agent_start
 	//   turn_start
 	//     message_start (assistant), message_update*, message_end (assistant)
@@ -781,7 +782,9 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 	// agent_end
 
 	// Verify key ordering invariants.
-	assert.Equal(t, EventAgentStart, types[0])
+	require.GreaterOrEqual(t, len(types), 2)
+	assert.Equal(t, EventSessionInit, types[0])
+	assert.Equal(t, EventAgentStart, types[1])
 	assert.Equal(t, EventAgentEnd, types[len(types)-1])
 
 	// Every turn_start has a matching turn_end.
@@ -1119,10 +1122,13 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 			break
 		}
 	}
-	assert.Equal(t, EventAgentStart, firstEvents[0].Type)
+	// First run leads with session_init (once per agent lifetime), then agent_start.
+	require.GreaterOrEqual(t, len(firstEvents), 2)
+	assert.Equal(t, EventSessionInit, firstEvents[0].Type)
+	assert.Equal(t, EventAgentStart, firstEvents[1].Type)
 	assert.Equal(t, EventAgentEnd, firstEvents[len(firstEvents)-1].Type)
 
-	// Second Send on the same subscriber.
+	// Second Send on the same subscriber — no second session_init.
 	require.NoError(t, a.Send(t.Context(), "world"))
 	var secondEvents []Event
 	for pe := range ch {
@@ -1134,6 +1140,11 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 	}
 	assert.Equal(t, EventAgentStart, secondEvents[0].Type)
 	assert.Equal(t, EventAgentEnd, secondEvents[len(secondEvents)-1].Type)
+	for _, evt := range secondEvents {
+		assert.NotEqual(t, EventSessionInit, evt.Type,
+			"session_init must fire only once per agent lifetime",
+		)
+	}
 
 	// History should have both turns.
 	assert.Len(t, a.Messages(), 4) // user+assistant + user+assistant
@@ -1311,4 +1322,116 @@ func TestSend_SnapshotIndependence(t *testing.T) {
 	firstText := snapshots[0].Text()
 	lastText := snapshots[len(snapshots)-1].Text()
 	assert.NotEqual(t, firstText, lastText, "snapshots should differ (not aliased)")
+}
+
+// TestSessionLifecycle_SendThenClose verifies that session_init fires
+// exactly once on the first run and session_end fires exactly once on
+// Close, wrapping all per-run agent_start/agent_end pairs.
+func TestSessionLifecycle_SendThenClose(t *testing.T) {
+	registerMock(t,
+		textStream("first reply", ai.Usage{}),
+		textStream("second reply", ai.Usage{}),
+	)
+
+	a := New(WithModel(testModel()))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ch := a.Subscribe(ctx)
+
+	require.NoError(t, a.Send(t.Context(), "one"))
+	_, err := a.Wait(t.Context())
+	require.NoError(t, err)
+
+	require.NoError(t, a.Send(t.Context(), "two"))
+	_, err = a.Wait(t.Context())
+	require.NoError(t, err)
+
+	a.Close()
+
+	var events []Event
+	for pe := range ch {
+		events = append(events, pe.Payload())
+	}
+
+	var inits, ends, agentStarts, agentEnds int
+	for _, e := range events {
+		switch e.Type {
+		case EventSessionInit:
+			inits++
+		case EventSessionEnd:
+			ends++
+		case EventAgentStart:
+			agentStarts++
+		case EventAgentEnd:
+			agentEnds++
+		}
+	}
+	assert.Equal(t, 1, inits, "session_init fires once")
+	assert.Equal(t, 1, ends, "session_end fires once")
+	assert.Equal(t, 2, agentStarts, "agent_start fires once per Send")
+	assert.Equal(t, 2, agentEnds, "agent_end fires once per Send")
+
+	require.GreaterOrEqual(t, len(events), 1)
+	assert.Equal(t, EventSessionInit, events[0].Type)
+	assert.Equal(t, EventSessionEnd, events[len(events)-1].Type)
+}
+
+// TestSessionLifecycle_CloseWithoutSend verifies that closing a never-used
+// agent emits no session events at all.
+func TestSessionLifecycle_CloseWithoutSend(t *testing.T) {
+	a := New(WithModel(testModel()))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ch := a.Subscribe(ctx)
+
+	a.Close()
+
+	var events []Event
+	for pe := range ch {
+		events = append(events, pe.Payload())
+	}
+
+	assert.Empty(t, events, "Close on a never-used agent should publish no events")
+}
+
+// TestSessionLifecycle_CloseWithoutWait verifies that calling Close
+// immediately after Send (without Wait) is race-free and still preserves
+// the documented session_end-after-agent_end ordering. Run with -race
+// to catch regressions of the sessionInitFired data race.
+func TestSessionLifecycle_CloseWithoutWait(t *testing.T) {
+	registerMock(t, textStream("hi", ai.Usage{}))
+
+	a := New(WithModel(testModel()))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ch := a.Subscribe(ctx)
+
+	require.NoError(t, a.Send(t.Context(), "x"))
+	a.Close()
+
+	var events []Event
+	for pe := range ch {
+		events = append(events, pe.Payload())
+	}
+
+	require.NotEmpty(t, events)
+
+	var lastAgentEnd, sessionEnd int = -1, -1
+	for i, e := range events {
+		switch e.Type {
+		case EventAgentEnd:
+			lastAgentEnd = i
+		case EventSessionEnd:
+			sessionEnd = i
+		}
+	}
+	require.NotEqual(t, -1, lastAgentEnd, "agent_end must fire")
+	require.NotEqual(t, -1, sessionEnd, "session_end must fire")
+	assert.Less(t, lastAgentEnd, sessionEnd,
+		"session_end must come after the final agent_end",
+	)
+	assert.Equal(t, EventSessionEnd, events[len(events)-1].Type)
 }
