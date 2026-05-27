@@ -19,6 +19,13 @@ func LoginConfig(clientID string) oauth.LoginConfig {
 			"profile",
 			"email",
 			"offline_access",
+			"api.connectors.read",
+			"api.connectors.invoke",
+		},
+		ExtraParams: map[string]string{
+			"id_token_add_organizations": "true",
+			"codex_cli_simplified_flow":  "true",
+			"originator":                 "codex_cli_rs",
 		},
 	}
 }

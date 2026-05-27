@@ -25,7 +25,7 @@ See also [docs/concepts/auth/oauth.md](../concepts/auth/oauth.md) for the design
 
 | Provider | API | pi-go | Notes |
 |---|---|---|---|
-| Anthropic | ✅ Claude.ai OAuth | ✅ | endpoint `https://platform.claude.com/v1/oauth/token`, beta header `claude-code-20250219,oauth-2025-04-20` ([oauth.go:111](../../pkg/ai/provider/anthropic/oauth.go#L111)) |
+| Anthropic | ✅ Claude.ai OAuth | ✅ | authorize endpoint `https://claude.com/cai/oauth/authorize`, token endpoint `https://platform.claude.com/v1/oauth/token`, beta header `claude-code-20250219,oauth-2025-04-20` ([oauth.go:111](../../pkg/ai/provider/anthropic/oauth.go#L111)) |
 | OpenAI Chat | ✅ ChatGPT OAuth | ✅ | `NewWithOAuth` ([oauth.go:114-119](../../pkg/ai/provider/openai/oauth.go#L114)); endpoint `https://auth.openai.com/oauth/token` |
 | OpenAI Responses | ⚠️ via the same OAuth as Chat | ❌ | not implemented in this provider |
 | Google Gemini | ✅ Vertex OAuth (gcloud) | ❌ | `pkg/ai/provider/google` is API-key only |

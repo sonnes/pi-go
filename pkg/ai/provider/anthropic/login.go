@@ -3,7 +3,7 @@ package anthropic
 import "github.com/sonnes/pi-go/pkg/ai/oauth"
 
 // AuthorizeEndpoint is the Anthropic OAuth authorization endpoint.
-const AuthorizeEndpoint = "https://claude.ai/oauth/authorize"
+const AuthorizeEndpoint = "https://claude.com/cai/oauth/authorize"
 
 // LoginConfig returns an [oauth.LoginConfig] for Anthropic's OAuth flow.
 // The caller must set DisplayURL before passing to [oauth.Login].
@@ -22,6 +22,9 @@ func LoginConfig(clientID string) oauth.LoginConfig {
 			"user:sessions:claude_code",
 			"user:mcp_servers",
 			"user:file_upload",
+		},
+		ExtraParams: map[string]string{
+			"code": "true",
 		},
 	}
 }
