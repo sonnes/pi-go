@@ -11,8 +11,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -195,6 +197,62 @@ func createClaudeAgent(model string, turns int, tools string) agent.Agent {
 // api mode. Example: --agent api --model claude-cli/sonnet
 const claudeCLIModelPrefix = "claude-cli/"
 
+// openAICodexBaseURL is the ChatGPT/Codex Responses API mount. ChatGPT
+// OAuth access tokens are honored only on this backend, not on the
+// standard api.openai.com Chat Completions endpoint.
+const openAICodexBaseURL = "https://chatgpt.com/backend-api/codex"
+
+// newOpenAIOAuthProvider builds an OpenAI Responses provider authenticated
+// with a ChatGPT/Codex OAuth token. It routes through the Codex base URL
+// because these tokens are rejected (insufficient_quota) on the standard
+// Chat Completions endpoint. Optional refresh options persist rotated tokens.
+//
+// The Codex backend also requires a chatgpt-account-id header identifying the
+// account; without it every request fails with a misleading "model not
+// supported" 400. The account ID is read from the access token's JWT claims.
+func newOpenAIOAuthProvider(
+	clientID string,
+	creds oauth.Credentials,
+	refresh ...oauth.TransportOption,
+) ai.Provider {
+	transport := openai.NewOAuthTransport(clientID, creds, refresh...)
+	opts := []oaioption.RequestOption{
+		oaioption.WithBaseURL(openAICodexBaseURL),
+		oaioption.WithHTTPClient(&http.Client{Transport: transport}),
+	}
+	if accountID := chatgptAccountID(creds.AccessToken); accountID != "" {
+		opts = append(opts, oaioption.WithHeader("chatgpt-account-id", accountID))
+	}
+	return openairesponses.New(opts...)
+}
+
+// chatgptAccountID extracts the ChatGPT account ID from an OpenAI OAuth
+// access token. The token is a JWT whose payload carries the ID under the
+// "https://api.openai.com/auth" claim. It returns "" if token is not a
+// well-formed JWT or the claim is absent — the account ID is stable across
+// refreshes, so decoding the initial token once is sufficient.
+func chatgptAccountID(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+
+	var claims struct {
+		Auth struct {
+			ChatGPTAccountID string `json:"chatgpt_account_id"`
+		} `json:"https://api.openai.com/auth"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return ""
+	}
+	return claims.Auth.ChatGPTAccountID
+}
+
 // providerEntry describes how to detect and create an AI provider from
 // an environment variable. Entries are checked in order; the first
 // match wins.
@@ -237,7 +295,7 @@ var providers = []providerEntry{
 		create: func(token string) (ai.Provider, error) {
 			clientID := os.Getenv("OPENAI_OAUTH_CLIENT_ID")
 			creds := oauth.Credentials{AccessToken: token}
-			return openai.NewWithOAuth(clientID, creds), nil
+			return newOpenAIOAuthProvider(clientID, creds), nil
 		},
 	},
 	{
@@ -365,7 +423,7 @@ var authProviderOrder = []struct {
 		name: "openai",
 		create: func(sc StoredCredential) (ai.Provider, error) {
 			creds := sc.ToOAuthCredentials()
-			return openai.NewWithOAuth(
+			return newOpenAIOAuthProvider(
 				sc.ClientID, creds, persistRefresh(sc),
 			), nil
 		},

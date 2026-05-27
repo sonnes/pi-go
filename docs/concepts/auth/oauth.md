@@ -68,6 +68,7 @@ Provider-specific OAuth code (refreshers, transport constructors, login configs,
 - Sets `option.WithAuthToken` on the SDK client (Bearer auth instead of `x-api-key`)
 - Creates an `oauth.Transport` with the Anthropic refresher and OAuth-specific headers (`anthropic-beta`, `x-app`)
 - Wraps any existing `http.Client` transport (if one was provided via `WithHTTPClient`)
+- Login starts at `https://claude.com/cai/oauth/authorize` with `code=true`, matching Claude Code's Claude.ai subscription flow
 - Token exchange uses JSON, includes state parameter
 
 Token endpoint: `https://platform.claude.com/v1/oauth/token`
