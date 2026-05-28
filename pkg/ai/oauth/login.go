@@ -46,6 +46,14 @@ type LoginConfig struct {
 	// open in a browser. The application provides this callback to control
 	// how the URL is presented.
 	DisplayURL func(url string) error
+	// ReadCode, if set, enables a manual code-paste fallback for
+	// environments where the localhost callback cannot be reached (headless,
+	// SSH, VPS). It is called to obtain a pasted authorization code or full
+	// redirect URL. It runs concurrently with the localhost callback server;
+	// whichever delivers a valid code first wins. The callback should respect
+	// ctx cancellation. If the callback server cannot bind its port, login
+	// proceeds with the paste path alone.
+	ReadCode func(ctx context.Context) (string, error)
 }
 
 func (c LoginConfig) redirectPath() string {
@@ -59,9 +67,20 @@ func (c LoginConfig) redirectURI() string {
 	return fmt.Sprintf("http://localhost:%d%s", c.RedirectPort, c.redirectPath())
 }
 
+// callbackResult carries an authorization code (or error) from either the
+// localhost callback server or the manual paste path.
+type callbackResult struct {
+	code string
+	err  error
+}
+
 // Login performs an OAuth authorization code flow with PKCE.
-// It starts a local callback server, builds the authorize URL, waits for
-// the authorization code, and exchanges it for tokens.
+//
+// It starts a local callback server, builds the authorize URL, waits for the
+// authorization code, and exchanges it for tokens. If [LoginConfig.ReadCode]
+// is set, a manual code-paste path runs concurrently for environments where
+// the localhost callback cannot be reached; whichever delivers a valid code
+// first wins.
 func Login(ctx context.Context, cfg LoginConfig) (Credentials, error) {
 	pkce, err := GeneratePKCE()
 	if err != nil {
@@ -74,13 +93,50 @@ func Login(ctx context.Context, cfg LoginConfig) (Credentials, error) {
 	}
 	state := hex.EncodeToString(stateBytes)
 
-	// Channel for the authorization code from the callback.
-	type callbackResult struct {
-		code string
-		err  error
-	}
-	codeCh := make(chan callbackResult, 1)
+	// Buffered for up to two writers (callback server + paste goroutine).
+	codeCh := make(chan callbackResult, 2)
 
+	srv, err := startCallbackServer(cfg, state, codeCh)
+	if err != nil {
+		// Without a paste fallback there is no way to receive the code.
+		if cfg.ReadCode == nil {
+			return Credentials{}, err
+		}
+	} else {
+		defer srv.Close()
+	}
+
+	authURL, err := buildAuthorizeURL(cfg, state, pkce)
+	if err != nil {
+		return Credentials{}, err
+	}
+
+	if cfg.DisplayURL != nil {
+		if err := cfg.DisplayURL(authURL); err != nil {
+			return Credentials{}, fmt.Errorf("oauth: display URL: %w", err)
+		}
+	}
+
+	if cfg.ReadCode != nil {
+		go readPastedCode(ctx, cfg, state, codeCh)
+	}
+
+	// Wait for a code from either path, or context cancellation.
+	select {
+	case result := <-codeCh:
+		if result.err != nil {
+			return Credentials{}, result.err
+		}
+		return exchangeCode(ctx, cfg, result.code, state, pkce.Verifier)
+	case <-ctx.Done():
+		return Credentials{}, fmt.Errorf("oauth: login timed out waiting for callback")
+	}
+}
+
+// startCallbackServer binds the localhost redirect listener and serves the
+// OAuth callback, forwarding the authorization code to codeCh. The returned
+// server should be closed by the caller.
+func startCallbackServer(cfg LoginConfig, state string, codeCh chan<- callbackResult) (*http.Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(cfg.redirectPath(), func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("state") != state {
@@ -108,33 +164,55 @@ func Login(ctx context.Context, cfg LoginConfig) (Credentials, error) {
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.RedirectPort)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return Credentials{}, fmt.Errorf("oauth: listen on %s: %w", addr, err)
+		return nil, fmt.Errorf("oauth: listen on %s: %w", addr, err)
 	}
 
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(listener)
-	defer srv.Close()
+	return srv, nil
+}
 
-	// Build authorize URL.
-	authURL, err := buildAuthorizeURL(cfg, state, pkce)
+// readPastedCode invokes cfg.ReadCode, parses the pasted value, validates the
+// state (when the paste includes one), and forwards the result to codeCh.
+func readPastedCode(ctx context.Context, cfg LoginConfig, state string, codeCh chan<- callbackResult) {
+	input, err := cfg.ReadCode(ctx)
 	if err != nil {
-		return Credentials{}, err
+		codeCh <- callbackResult{err: fmt.Errorf("oauth: read code: %w", err)}
+		return
 	}
 
-	if err := cfg.DisplayURL(authURL); err != nil {
-		return Credentials{}, fmt.Errorf("oauth: display URL: %w", err)
+	code, pastedState := parsePastedCode(input)
+	if code == "" {
+		codeCh <- callbackResult{err: fmt.Errorf("oauth: no authorization code found in pasted input")}
+		return
+	}
+	if pastedState != "" && pastedState != state {
+		codeCh <- callbackResult{err: fmt.Errorf("oauth: state mismatch in pasted input")}
+		return
+	}
+	codeCh <- callbackResult{code: code}
+}
+
+// parsePastedCode extracts the authorization code and optional state from a
+// value pasted by the user. It accepts a full redirect URL
+// ("http://localhost:1455/callback?code=abc&state=xyz"), the "code#state"
+// form some providers display inline, or a bare authorization code.
+func parsePastedCode(input string) (code, state string) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return "", ""
 	}
 
-	// Wait for the callback or context cancellation.
-	select {
-	case result := <-codeCh:
-		if result.err != nil {
-			return Credentials{}, result.err
-		}
-		return exchangeCode(ctx, cfg, result.code, state, pkce.Verifier)
-	case <-ctx.Done():
-		return Credentials{}, fmt.Errorf("oauth: login timed out waiting for callback")
+	if u, err := url.Parse(input); err == nil && u.Query().Get("code") != "" {
+		q := u.Query()
+		return q.Get("code"), q.Get("state")
 	}
+
+	if before, after, found := strings.Cut(input, "#"); found {
+		return before, after
+	}
+
+	return input, ""
 }
 
 func buildAuthorizeURL(cfg LoginConfig, state string, pkce PKCE) (string, error) {
