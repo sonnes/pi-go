@@ -11,7 +11,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -209,21 +208,36 @@ const openAICodexBaseURL = "https://chatgpt.com/backend-api/codex"
 //
 // The Codex backend also requires a chatgpt-account-id header identifying the
 // account; without it every request fails with a misleading "model not
-// supported" 400. The account ID is read from the access token's JWT claims.
+// supported" 400. If accountID is empty it is read from the access token's
+// JWT claims; callers that already have it (e.g. the Codex CLI reuse tier)
+// pass it explicitly.
 func newOpenAIOAuthProvider(
 	clientID string,
+	accountID string,
 	creds oauth.Credentials,
 	refresh ...oauth.TransportOption,
 ) ai.Provider {
-	transport := openai.NewOAuthTransport(clientID, creds, refresh...)
+	// Layer the debug transport under OAuth so the verbose log captures the
+	// final wire request (post-refresh, post-header-injection).
+	opts0 := append(
+		[]oauth.TransportOption{oauth.WithBase(maybeDebugTransport(http.DefaultTransport))},
+		refresh...,
+	)
+	transport := openai.NewOAuthTransport(clientID, creds, opts0...)
 	opts := []oaioption.RequestOption{
 		oaioption.WithBaseURL(openAICodexBaseURL),
 		oaioption.WithHTTPClient(&http.Client{Transport: transport}),
 	}
-	if accountID := chatgptAccountID(creds.AccessToken); accountID != "" {
+	if accountID == "" {
+		accountID = chatgptAccountID(creds.AccessToken)
+	}
+	if accountID != "" {
 		opts = append(opts, oaioption.WithHeader("chatgpt-account-id", accountID))
 	}
-	return openairesponses.New(opts...)
+	// Codex backend requires its dialect: it enforces a non-empty
+	// `instructions` field that the default OpenAI Responses dialect omits
+	// when the caller has no system prompt.
+	return openairesponses.NewForCodex(opts...)
 }
 
 // chatgptAccountID extracts the ChatGPT account ID from an OpenAI OAuth
@@ -232,12 +246,7 @@ func newOpenAIOAuthProvider(
 // well-formed JWT or the claim is absent — the account ID is stable across
 // refreshes, so decoding the initial token once is sufficient.
 func chatgptAccountID(token string) string {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return ""
-	}
-
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	payload, err := jwtPayload(token)
 	if err != nil {
 		return ""
 	}
@@ -295,7 +304,7 @@ var providers = []providerEntry{
 		create: func(token string) (ai.Provider, error) {
 			clientID := os.Getenv("OPENAI_OAUTH_CLIENT_ID")
 			creds := oauth.Credentials{AccessToken: token}
-			return newOpenAIOAuthProvider(clientID, creds), nil
+			return newOpenAIOAuthProvider(clientID, "", creds), nil
 		},
 	},
 	{
@@ -379,8 +388,14 @@ func isAnthropicOAuthToken(token string) bool {
 }
 
 func detectProvider(hint string) (ai.Provider, string, error) {
-	// Try stored OAuth credentials from ~/.pigo/auth.json first.
+	// Precedence: explicit `pi login` credentials in ~/.pigo/auth.json, then
+	// subscription logins reused from official provider CLIs (Claude Code,
+	// Codex), then API keys / OAuth tokens from environment variables.
 	if p, name, err := detectFromAuthFile(hint); err == nil {
+		return p, name, nil
+	}
+
+	if p, name, err := detectFromCLICreds(hint); err == nil {
 		return p, name, nil
 	}
 
@@ -415,7 +430,11 @@ var authProviderOrder = []struct {
 		create: func(sc StoredCredential) (ai.Provider, error) {
 			creds := sc.ToOAuthCredentials()
 			return anthropic.New(
-				anthropic.WithOAuth(sc.ClientID, creds, persistRefresh(sc)),
+				anthropic.WithOAuth(
+					sc.ClientID, creds,
+					oauth.WithBase(maybeDebugTransport(http.DefaultTransport)),
+					persistRefresh(sc),
+				),
 			), nil
 		},
 	},
@@ -424,7 +443,7 @@ var authProviderOrder = []struct {
 		create: func(sc StoredCredential) (ai.Provider, error) {
 			creds := sc.ToOAuthCredentials()
 			return newOpenAIOAuthProvider(
-				sc.ClientID, creds, persistRefresh(sc),
+				sc.ClientID, "", creds, persistRefresh(sc),
 			), nil
 		},
 	},

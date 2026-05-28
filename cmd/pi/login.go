@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -107,9 +109,15 @@ func runLogin(ctx context.Context, cmd *cli.Command) error {
 	cfg := prov.loginConfig(clientID, clientSecret)
 	cfg.DisplayURL = func(u string) error {
 		fmt.Fprintf(os.Stderr, "\nOpen this URL in your browser to authenticate:\n\n  %s\n\n", u)
-		fmt.Fprintln(os.Stderr, "Waiting for callback...")
+		fmt.Fprintln(os.Stderr, "Waiting for callback, or paste the authorization code / redirect URL below.")
 		tryOpenBrowser(u)
 		return nil
+	}
+	// Manual-paste fallback for headless / SSH / VPS environments where the
+	// browser cannot reach the localhost callback. Runs concurrently with the
+	// callback server; whichever completes first wins.
+	cfg.ReadCode = func(ctx context.Context) (string, error) {
+		return readLine(ctx, os.Stdin)
 	}
 
 	loginCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -165,6 +173,36 @@ func findOAuthProvider(name string) (oauthProvider, error) {
 		}
 	}
 	return oauthProvider{}, fmt.Errorf("unknown provider: %s", name)
+}
+
+// readLine reads a single trimmed line from r, returning early if ctx is
+// cancelled. The underlying read may remain blocked on the descriptor after
+// cancellation, which is acceptable for a short-lived CLI command.
+func readLine(ctx context.Context, r io.Reader) (string, error) {
+	type result struct {
+		line string
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		scanner := bufio.NewScanner(r)
+		if scanner.Scan() {
+			ch <- result{line: strings.TrimSpace(scanner.Text())}
+			return
+		}
+		if err := scanner.Err(); err != nil {
+			ch <- result{err: err}
+			return
+		}
+		ch <- result{err: io.EOF}
+	}()
+
+	select {
+	case res := <-ch:
+		return res.line, res.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 func tryOpenBrowser(url string) {

@@ -33,7 +33,20 @@ const (
 	// See [docs/plans/2026-04-28-openrouter-responses-dialect.md] for the
 	// observed differences this dialect compensates for.
 	DialectOpenRouter
+	// DialectCodex targets ChatGPT's Codex backend at
+	// `chatgpt.com/backend-api/codex/responses`. The endpoint accepts the
+	// same Responses API SSE format as OpenAI but enforces an additional
+	// request-shape requirement: `instructions` must always be set and
+	// non-empty, even when no system prompt was provided. Without it the
+	// backend returns `{"detail":"Instructions are required"}`.
+	DialectCodex
 )
+
+// codexDefaultInstructions is the fallback `instructions` value sent under
+// [DialectCodex] when the caller did not provide a system prompt. The Codex
+// backend rejects requests with an empty instructions field; the exact text
+// is not significant beyond being non-empty.
+const codexDefaultInstructions = "You are a helpful coding assistant."
 
 // Provider implements [ai.Provider] for OpenAI's Responses API.
 //
@@ -71,6 +84,17 @@ func New(opts ...option.RequestOption) *Provider {
 func NewForOpenRouter(opts ...option.RequestOption) *Provider {
 	p := New(opts...)
 	p.dialect = DialectOpenRouter
+	return p
+}
+
+// NewForCodex creates a Responses-API provider that talks to ChatGPT's Codex
+// backend. The caller is expected to set the base URL to
+// "https://chatgpt.com/backend-api/codex" and supply a ChatGPT OAuth token
+// (e.g. via the OAuth transport); only the request-shape adjustments live
+// here. See [DialectCodex] for the differences this dialect compensates for.
+func NewForCodex(opts ...option.RequestOption) *Provider {
+	p := New(opts...)
+	p.dialect = DialectCodex
 	return p
 }
 
@@ -478,8 +502,13 @@ func buildParams(
 		Store: param.NewOpt(false),
 	}
 
-	if prompt.System != "" {
+	// Codex requires a non-empty instructions field. Fall back to a default
+	// when the caller did not supply a system prompt.
+	switch {
+	case prompt.System != "":
 		params.Instructions = param.NewOpt(prompt.System)
+	case dialect == DialectCodex:
+		params.Instructions = param.NewOpt(codexDefaultInstructions)
 	}
 
 	if opts.MaxTokens != nil {
