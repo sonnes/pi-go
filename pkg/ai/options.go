@@ -4,12 +4,66 @@ package ai
 type ThinkingLevel string
 
 const (
+	ThinkingOff     ThinkingLevel = "off"
 	ThinkingMinimal ThinkingLevel = "minimal"
 	ThinkingLow     ThinkingLevel = "low"
 	ThinkingMedium  ThinkingLevel = "medium"
 	ThinkingHigh    ThinkingLevel = "high"
 	ThinkingXHigh   ThinkingLevel = "xhigh"
 )
+
+var thinkingRanks = map[ThinkingLevel]int{
+	ThinkingOff:     0,
+	ThinkingMinimal: 1,
+	ThinkingLow:     2,
+	ThinkingMedium:  3,
+	ThinkingHigh:    4,
+	ThinkingXHigh:   5,
+}
+
+// NormalizeThinkingLevel maps the empty level to [ThinkingOff].
+func NormalizeThinkingLevel(level ThinkingLevel) ThinkingLevel {
+	if level == "" {
+		return ThinkingOff
+	}
+	return level
+}
+
+// ResolveThinkingLevel returns the closest thinking level supported by model.
+//
+// Unsupported positive levels degrade to the highest supported level below the
+// requested one. Unknown levels and models without thinking support resolve to
+// [ThinkingOff].
+func ResolveThinkingLevel(model Model, requested ThinkingLevel) (ThinkingLevel, bool) {
+	normalized := NormalizeThinkingLevel(requested)
+	requestedRank, ok := thinkingRanks[normalized]
+	if !ok {
+		return ThinkingOff, true
+	}
+
+	if normalized == ThinkingOff {
+		return ThinkingOff, false
+	}
+
+	best := ThinkingOff
+	bestRank := 0
+	for _, level := range model.ThinkingLevels {
+		level = NormalizeThinkingLevel(level)
+		rank, ok := thinkingRanks[level]
+		if !ok {
+			continue
+		}
+		if level == normalized {
+			return normalized, false
+		}
+		if rank <= requestedRank && rank > bestRank {
+			best = level
+			bestRank = rank
+		}
+	}
+
+	return best, best != normalized
+}
 
 // CacheRetention controls prompt-cache breakpoint placement and TTL across
 // providers. [CacheRetentionDefault] is equivalent to [CacheRetentionShort]:
