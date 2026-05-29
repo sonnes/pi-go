@@ -32,3 +32,25 @@ func TestCalculateCost(t *testing.T) {
 	assert.InDelta(t, 0.375, cost.CacheWrite, 0.0001)
 	assert.InDelta(t, 10.935, cost.Total, 0.0001)
 }
+
+func TestCalculateCostExtendedRates(t *testing.T) {
+	model := ai.Model{
+		Cost: ai.Cost{
+			Reasoning:   30.0,
+			InputAudio:  40.0,
+			OutputAudio: 80.0,
+		},
+	}
+	usage := ai.Usage{
+		Reasoning:   100_000,
+		InputAudio:  50_000,
+		OutputAudio: 25_000,
+	}
+
+	cost := ai.CalculateCost(model, usage)
+
+	assert.InDelta(t, 3.0, cost.Reasoning, 0.0001)
+	assert.InDelta(t, 2.0, cost.InputAudio, 0.0001)
+	assert.InDelta(t, 2.0, cost.OutputAudio, 0.0001)
+	assert.InDelta(t, 7.0, cost.Total, 0.0001)
+}

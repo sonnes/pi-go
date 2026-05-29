@@ -83,3 +83,67 @@ func TestResolveCacheRetention(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveThinkingLevel(t *testing.T) {
+	model := ai.Model{
+		ThinkingLevels: []ai.ThinkingLevel{
+			ai.ThinkingOff,
+			ai.ThinkingLow,
+			ai.ThinkingHigh,
+		},
+	}
+	tests := []struct {
+		name         string
+		requested    ai.ThinkingLevel
+		wantLevel    ai.ThinkingLevel
+		wantDegraded bool
+	}{
+		{
+			name:         "empty request resolves to off",
+			requested:    "",
+			wantLevel:    ai.ThinkingOff,
+			wantDegraded: false,
+		},
+		{
+			name:         "supported level stays selected",
+			requested:    ai.ThinkingHigh,
+			wantLevel:    ai.ThinkingHigh,
+			wantDegraded: false,
+		},
+		{
+			name:         "unsupported positive level maps down",
+			requested:    ai.ThinkingMedium,
+			wantLevel:    ai.ThinkingLow,
+			wantDegraded: true,
+		},
+		{
+			name:         "unsupported deepest level maps down",
+			requested:    ai.ThinkingXHigh,
+			wantLevel:    ai.ThinkingHigh,
+			wantDegraded: true,
+		},
+		{
+			name:         "unknown level maps off",
+			requested:    ai.ThinkingLevel("adaptive"),
+			wantLevel:    ai.ThinkingOff,
+			wantDegraded: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, degraded := ai.ResolveThinkingLevel(model, tt.requested)
+			assert.Equal(t, tt.wantLevel, got)
+			assert.Equal(t, tt.wantDegraded, degraded)
+		})
+	}
+}
+
+func TestResolveThinkingLevelWithoutModelSupport(t *testing.T) {
+	got, degraded := ai.ResolveThinkingLevel(
+		ai.Model{},
+		ai.ThinkingHigh,
+	)
+
+	assert.Equal(t, ai.ThinkingOff, got)
+	assert.True(t, degraded)
+}
