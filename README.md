@@ -6,7 +6,7 @@
 
 A provider-agnostic SDK for building AI agents in Go.
 
-Pi supports text generation, structured output, image generation, tool calling, streaming, and usage tracking across multiple providers (Anthropic, OpenAI, Google). It is a Go port of [Mario Zechner](https://github.com/badlogic)'s [pi](https://github.com/badlogic/pi-mono) project.
+Pi supports text generation, structured output, image generation, tool calling, streaming, and usage tracking across multiple providers (Anthropic, OpenAI, Google, and local CLI-backed agents). It is a Go port of [Mario Zechner](https://github.com/badlogic)'s [pi](https://github.com/badlogic/pi-mono) project.
 
 ## Design differences from pi-mono
 
@@ -24,7 +24,7 @@ Pi-go is a ground-up rewrite, not a transliteration. The core abstractions (mess
 
 **Streaming-first with dual consumption.** Every LLM call returns an `EventStream` that supports both patterns: iterate events with `Events()`, or block on the final message with `Result()`. `GenerateText` is literally `StreamText(...).Result()`. Pi-mono has separate `stream()` and `streamSimple()` methods with an async iterable plus a `.result()` promise.
 
-**Interface-based agent.** The `Agent` interface defines the contract; `Default` is the standard implementation. The primary motivation was supporting CLI-based agents — wrapping `claude` as a subprocess agent that works with a Claude subscription rather than API keys. The interface also makes it straightforward to test with mock agents or build alternative implementations. Pi-mono has a single concrete class.
+**Interface-based agent.** The `Agent` interface defines the contract; `Default` is the standard implementation. The primary motivation was supporting CLI-based agents — wrapping tools like `claude`, `codex`, and `cursor-agent` as subprocess agents that work with subscription CLIs rather than API keys. The interface also makes it straightforward to test with mock agents or build alternative implementations. Pi-mono has a single concrete class.
 
 ## Two-layer architecture
 
@@ -172,6 +172,8 @@ func main() {
 | OpenAI Chat Completions | `pkg/ai/provider/openai`          | `openai-completions` |
 | Google Gemini           | `pkg/ai/provider/google`          | `google-generative`  |
 | Claude CLI              | `pkg/ai/provider/claudecli`       | `claude-cli`         |
+| Codex CLI               | `pkg/ai/provider/codexcli`        | `codex-cli`          |
+| Cursor CLI              | `pkg/ai/provider/cursorcli`       | `cursor-cli`         |
 | Gemini CLI              | `pkg/ai/provider/geminicli`       | `gemini-cli`         |
 | OpenAI Responses        | `pkg/ai/provider/openairesponses` | `openai-responses`   |
 
