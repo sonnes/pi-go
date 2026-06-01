@@ -23,7 +23,7 @@ The agent's broker uses blocking publish, so events are never dropped. Multiple 
 
 The stream models two nested lifecycles:
 
-- **Session** — the lifetime of the agent backend (subprocess for the Claude CLI agent, in-process loop for the `Default` agent). `session_init` fires once when the backend is initialized; `session_end` fires once when the agent is `Close`d. For the Claude CLI agent, `session_init` carries the subprocess `SessionID` for resumption.
+- **Session** — the lifetime of the agent backend (subprocess-backed for the Claude and Codex CLI agents, in-process loop for the `Default` agent). `session_init` fires once when the backend is initialized; `session_end` fires once when the agent is `Close`d. For CLI agents, `session_init` carries the `SessionID` used for resumption.
 - **Run** — a single `Send` / `Continue` / `SendMessages` call. `agent_start` brackets the start of every run; `agent_end` brackets the end. Many runs share one session.
 
 `session_init` always precedes the very first `agent_start`. If the backend fails before initialization (e.g. subprocess startup error), neither `session_init` nor `agent_start` fires — only `agent_end` with `Err` set.

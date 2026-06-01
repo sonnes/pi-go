@@ -19,6 +19,7 @@ All major providers expose Server-Sent Events for incremental output. pi-go's [`
 | OpenAI Responses | ✅ event stream | ✅ | `Responses.NewStreaming` ([openairesponses.go:63](../../pkg/ai/provider/openairesponses/openairesponses.go#L63)) |
 | Google Gemini | ✅ SSE | ✅ | `chat.SendMessageStream` ([google.go:157](../../pkg/ai/provider/google/google.go#L157)) |
 | Claude CLI | ✅ NDJSON via `--output-format stream-json` | ⚠️ | pi-go consumes the NDJSON but emits a single completed message rather than incremental events ([claudecli/claude.go](../../pkg/ai/provider/claudecli/claude.go)) |
+| Codex CLI | ✅ JSONL via `codex exec --json` | ⚠️ | pi-go consumes JSONL item events and emits completed text/tool blocks rather than token deltas ([codexcli/codex.go](../../pkg/ai/provider/codexcli/codex.go)) |
 | Gemini CLI | ✅ SSE at `/v1internal:streamGenerateContent?alt=sse` | ✅ | direct HTTP+SSE ([geminicli.go:24](../../pkg/ai/provider/geminicli/geminicli.go#L24)) |
 
 ## Provider Documentation
@@ -28,8 +29,10 @@ All major providers expose Server-Sent Events for incremental output. pi-go's [`
 - [OpenAI Responses — Event types](https://platform.openai.com/docs/api-reference/responses-streaming)
 - [Google Gemini — Streaming generate](https://ai.google.dev/gemini-api/docs/text-generation#stream)
 - [Claude Code CLI — `--output-format stream-json`](https://docs.claude.com/en/docs/claude-code/cli-reference)
+- [Codex CLI](https://github.com/openai/codex)
 
 ## pi-go Gaps
 
 - **Claude CLI** does not emit per-delta events; full message is returned once. Streaming-style consumers see no progressive output.
+- **Codex CLI** emits completed JSONL items; pi-go surfaces command and text items but not token-level deltas.
 - No common heartbeat / keep-alive handling — long-running reasoning calls rely on the underlying SDK to keep the connection alive.

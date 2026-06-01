@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	codexagent "github.com/sonnes/pi-go/pkg/agent/codex"
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
@@ -137,4 +138,24 @@ func TestParseServerTools_AllRecognizedTypes(t *testing.T) {
 	for i, w := range want {
 		assert.Equal(t, w, tools[i].Info().ServerType, "index %d", i)
 	}
+}
+
+func TestCreateAgent_CodexMode(t *testing.T) {
+	a, err := createAgent("codex", "gpt-5.4", 0, "", "", "")
+	require.NoError(t, err)
+	defer a.Close()
+
+	_, ok := a.(*codexagent.Agent)
+	assert.True(t, ok)
+}
+
+func TestCreateAPIAgent_CodexCLIPrefix(t *testing.T) {
+	a, err := createAPIAgent("codex-cli/gpt-5.4", 0, "", "")
+	require.NoError(t, err)
+	defer a.Close()
+	defer ai.UnregisterProvider("codex-cli")
+
+	p, ok := ai.GetProvider("codex-cli")
+	require.True(t, ok)
+	assert.Equal(t, "codex-cli", p.API())
 }

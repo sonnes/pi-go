@@ -47,6 +47,17 @@ Design:
 - **`Close` tears down the subprocess.** Closing stdin gives the CLI a chance to drain before `SIGINT`/`SIGKILL` fallback.
 - **MCP servers via `WithMCPConfig`.** Pass either an absolute path to an `.mcp.json` file or an inline JSON document (`{"mcpServers": {...}}`); the value is forwarded verbatim to `claude --mcp-config` so MCP-provided tools become invocable inside the subprocess. Empty string disables the flag.
 
+## Codex CLI subprocess agent
+
+`pkg/agent/codex` provides an `Agent` backed by the Codex CLI's non-interactive JSONL mode. The first `Send` runs `codex exec --json`; when the CLI reports a thread ID, later sends run `codex exec resume --json <thread-id>` so Codex owns the conversation context.
+
+Design:
+
+- **Subprocess per turn.** Codex does not expose a Claude-style persistent stdin protocol, so each send starts a fresh non-interactive process.
+- **Thread resume.** `SessionID()` returns the Codex thread ID captured from `thread.started`. `WithSessionID` seeds a new agent with an existing thread ID.
+- **Command execution events.** Codex `command_execution` items are surfaced as `tool_execution_start` / `tool_execution_end` events with tool name `bash`; command output is attached to the turn's `ToolResults`.
+- **`Continue` is not supported.** Use `Send` with the next prompt to resume the captured thread.
+
 ## Agent interface
 
 `Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. The interface embeds `pubsub.Subscriber[Event]` so consumers can subscribe to events. It includes `Wait()` for blocking completion, plus `Messages()`, `IsRunning()`, and `Err()` for state observation. `Default` is the standard implementation.

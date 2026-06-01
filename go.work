@@ -4,8 +4,10 @@ use (
 	.
 	./cmd/pi
 	./pkg/agent/claude
+	./pkg/agent/codex
 	./pkg/ai/provider/anthropic
 	./pkg/ai/provider/claudecli
+	./pkg/ai/provider/codexcli
 	./pkg/ai/provider/geminicli
 	./pkg/ai/provider/google
 	./pkg/ai/provider/openai
