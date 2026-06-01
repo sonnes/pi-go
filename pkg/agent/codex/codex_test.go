@@ -36,6 +36,14 @@ const commandTurnJSONL = `{"type":"thread.started","thread_id":"thread-2"}
 {"type":"turn.completed","usage":{"input_tokens":20,"output_tokens":7}}
 `
 
+const todoTurnJSONL = `{"type":"thread.started","thread_id":"thread-3"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"todo_list","items":[{"text":"inspect state","completed":true},{"text":"report result","completed":false}]}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"done"}}
+{"type":"item.completed","item":{"id":"item_0","type":"todo_list","items":[{"text":"inspect state","completed":true},{"text":"report result","completed":false}]}}
+{"type":"turn.completed","usage":{"input_tokens":30,"output_tokens":9}}
+`
+
 type runnerCall struct {
 	cfg  config
 	args runArgs
@@ -208,6 +216,54 @@ func TestAgent_Send_CommandExecutionEvents(t *testing.T) {
 	require.Len(t, turnEnd.ToolResults, 1)
 	assert.Equal(t, ai.RoleToolResult, turnEnd.ToolResults[0].Role)
 	assert.Equal(t, "/tmp/project\n", turnEnd.ToolResults[0].Text())
+}
+
+func TestAgent_Send_TodoListMessages(t *testing.T) {
+	a := New()
+	_, restore := stubRunner(a, todoTurnJSONL)
+	defer restore()
+	defer a.Close()
+
+	ctx := context.Background()
+	ch := a.Subscribe(ctx)
+	require.NoError(t, a.Send(ctx, "make a plan"))
+
+	events := collectUntilAgentEnd(t, ch)
+
+	var ended []ai.Message
+	for i := range events {
+		if events[i].Type != agent.EventMessageEnd || events[i].Message == nil {
+			continue
+		}
+		ended = append(ended, *events[i].Message)
+	}
+
+	require.Len(t, ended, 3)
+
+	toolCalls := ended[0].ToolCalls()
+	require.Len(t, toolCalls, 1)
+	assert.Equal(t, "item_0", toolCalls[0].ID)
+	assert.Equal(t, "TodoWrite", toolCalls[0].Name)
+	assert.Equal(t, []map[string]any{
+		{
+			"content":     "inspect state",
+			"active_form": "inspect state",
+			"status":      "completed",
+		},
+		{
+			"content":     "report result",
+			"active_form": "report result",
+			"status":      "pending",
+		},
+	}, toolCalls[0].Arguments["todos"])
+
+	assert.Equal(t, "done", ended[1].Text())
+	assert.Equal(t, ai.RoleToolResult, ended[2].Role)
+	assert.Equal(t, "item_0", ended[2].ToolCallID)
+	assert.Equal(t, "TodoWrite", ended[2].ToolName)
+
+	last := events[len(events)-1]
+	require.Len(t, last.Messages, 3)
 }
 
 func TestAgent_ConcurrentSendRejected(t *testing.T) {
