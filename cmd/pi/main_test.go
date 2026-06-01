@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	codexagent "github.com/sonnes/pi-go/pkg/agent/codex"
+	cursoragent "github.com/sonnes/pi-go/pkg/agent/cursor"
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
@@ -149,6 +150,15 @@ func TestCreateAgent_CodexMode(t *testing.T) {
 	assert.True(t, ok)
 }
 
+func TestCreateAgent_CursorMode(t *testing.T) {
+	a, err := createAgent("cursor", "gpt-5", 0, "", "", "")
+	require.NoError(t, err)
+	defer a.Close()
+
+	_, ok := a.(*cursoragent.Agent)
+	assert.True(t, ok)
+}
+
 func TestCreateAPIAgent_CodexCLIPrefix(t *testing.T) {
 	a, err := createAPIAgent("codex-cli/gpt-5.4", 0, "", "")
 	require.NoError(t, err)
@@ -158,4 +168,15 @@ func TestCreateAPIAgent_CodexCLIPrefix(t *testing.T) {
 	p, ok := ai.GetProvider("codex-cli")
 	require.True(t, ok)
 	assert.Equal(t, "codex-cli", p.API())
+}
+
+func TestCreateAPIAgent_CursorCLIPrefix(t *testing.T) {
+	a, err := createAPIAgent("cursor-cli/gpt-5", 0, "", "")
+	require.NoError(t, err)
+	defer a.Close()
+	defer ai.UnregisterProvider("cursor-cli")
+
+	p, ok := ai.GetProvider("cursor-cli")
+	require.True(t, ok)
+	assert.Equal(t, "cursor-cli", p.API())
 }

@@ -23,11 +23,13 @@ import (
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/agent/claude"
 	codexagent "github.com/sonnes/pi-go/pkg/agent/codex"
+	cursoragent "github.com/sonnes/pi-go/pkg/agent/cursor"
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claudecli"
 	codexprov "github.com/sonnes/pi-go/pkg/ai/provider/codexcli"
+	cursorprov "github.com/sonnes/pi-go/pkg/ai/provider/cursorcli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/geminicli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
@@ -44,7 +46,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "agent",
 				Value: "claude",
-				Usage: "Agent mode: claude, codex, or api",
+				Usage: "Agent mode: claude, codex, cursor, or api",
 			},
 			&cli.StringFlag{
 				Name:  "model",
@@ -141,10 +143,12 @@ func createAgent(mode, model string, turns int, tools, serverTools, provider str
 		return createClaudeAgent(model, turns, tools), nil
 	case "codex":
 		return createCodexAgent(model, turns), nil
+	case "cursor":
+		return createCursorAgent(model, turns), nil
 	case "api":
 		return createAPIAgent(model, turns, serverTools, provider)
 	default:
-		return nil, fmt.Errorf("unknown agent mode: %s (use claude, codex, or api)", mode)
+		return nil, fmt.Errorf("unknown agent mode: %s (use claude, codex, cursor, or api)", mode)
 	}
 }
 
@@ -206,6 +210,16 @@ func createCodexAgent(model string, turns int) agent.Agent {
 	return codexagent.New(opts...)
 }
 
+func createCursorAgent(model string, turns int) agent.Agent {
+	opts := []agent.Option{
+		agent.WithModelName(model),
+	}
+	if turns > 0 {
+		opts = append(opts, agent.WithMaxTurns(turns))
+	}
+	return cursoragent.New(opts...)
+}
+
 // claudeCLIModelPrefix selects the stateless claude-cli provider in
 // api mode. Example: --agent api --model claude-cli/sonnet
 const claudeCLIModelPrefix = "claude-cli/"
@@ -213,6 +227,10 @@ const claudeCLIModelPrefix = "claude-cli/"
 // codexCLIModelPrefix selects the stateless codex-cli provider in api mode.
 // Example: --agent api --model codex-cli/gpt-5.4
 const codexCLIModelPrefix = "codex-cli/"
+
+// cursorCLIModelPrefix selects the stateless cursor-cli provider in api mode.
+// Example: --agent api --model cursor-cli/gpt-5
+const cursorCLIModelPrefix = "cursor-cli/"
 
 // openAICodexBaseURL is the ChatGPT/Codex Responses API mount. ChatGPT
 // OAuth access tokens are honored only on this backend, not on the
@@ -369,6 +387,11 @@ func createAPIAgent(model string, turns int, serverToolsSpec, providerHint strin
 		p = codexprov.New(codexprov.WithModel(model))
 		name = "codex-cli"
 		fmt.Fprintln(os.Stderr, "[provider: codex-cli via subprocess]")
+	} else if rest, ok := strings.CutPrefix(model, cursorCLIModelPrefix); ok {
+		model = rest
+		p = cursorprov.New(cursorprov.WithModel(model))
+		name = "cursor-cli"
+		fmt.Fprintln(os.Stderr, "[provider: cursor-cli via subprocess]")
 	} else {
 		detected, detectedName, err := detectProvider(providerHint)
 		if err != nil {
