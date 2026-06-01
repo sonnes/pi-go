@@ -22,10 +22,12 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/agent/claude"
+	codexagent "github.com/sonnes/pi-go/pkg/agent/codex"
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claudecli"
+	codexprov "github.com/sonnes/pi-go/pkg/ai/provider/codexcli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/geminicli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
@@ -42,7 +44,7 @@ func main() {
 			&cli.StringFlag{
 				Name:  "agent",
 				Value: "claude",
-				Usage: "Agent mode: claude or api",
+				Usage: "Agent mode: claude, codex, or api",
 			},
 			&cli.StringFlag{
 				Name:  "model",
@@ -137,10 +139,12 @@ func createAgent(mode, model string, turns int, tools, serverTools, provider str
 	switch mode {
 	case "claude":
 		return createClaudeAgent(model, turns, tools), nil
+	case "codex":
+		return createCodexAgent(model, turns), nil
 	case "api":
 		return createAPIAgent(model, turns, serverTools, provider)
 	default:
-		return nil, fmt.Errorf("unknown agent mode: %s (use claude or api)", mode)
+		return nil, fmt.Errorf("unknown agent mode: %s (use claude, codex, or api)", mode)
 	}
 }
 
@@ -192,9 +196,23 @@ func createClaudeAgent(model string, turns int, tools string) agent.Agent {
 	return claude.New(opts...)
 }
 
+func createCodexAgent(model string, turns int) agent.Agent {
+	opts := []agent.Option{
+		agent.WithModelName(model),
+	}
+	if turns > 0 {
+		opts = append(opts, agent.WithMaxTurns(turns))
+	}
+	return codexagent.New(opts...)
+}
+
 // claudeCLIModelPrefix selects the stateless claude-cli provider in
 // api mode. Example: --agent api --model claude-cli/sonnet
 const claudeCLIModelPrefix = "claude-cli/"
+
+// codexCLIModelPrefix selects the stateless codex-cli provider in api mode.
+// Example: --agent api --model codex-cli/gpt-5.4
+const codexCLIModelPrefix = "codex-cli/"
 
 // openAICodexBaseURL is the ChatGPT/Codex Responses API mount. ChatGPT
 // OAuth access tokens are honored only on this backend, not on the
@@ -346,6 +364,11 @@ func createAPIAgent(model string, turns int, serverToolsSpec, providerHint strin
 		p = claudeprov.New(claudeprov.WithModel(model))
 		name = "claude-cli"
 		fmt.Fprintln(os.Stderr, "[provider: claude-cli via subprocess]")
+	} else if rest, ok := strings.CutPrefix(model, codexCLIModelPrefix); ok {
+		model = rest
+		p = codexprov.New(codexprov.WithModel(model))
+		name = "codex-cli"
+		fmt.Fprintln(os.Stderr, "[provider: codex-cli via subprocess]")
 	} else {
 		detected, detectedName, err := detectProvider(providerHint)
 		if err != nil {

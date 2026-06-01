@@ -28,20 +28,20 @@ Provider-executed results arrive on the same `ai.ToolCall` that holds the invoca
 
 ## Overview
 
-| Tool             | Anthropic  | OpenAI Chat | OpenAI Responses | Google         | OpenRouter         | Claude CLI | pi-go                                                  |
-| ---------------- | ---------- | ----------- | ---------------- | -------------- | ------------------ | ---------- | ------------------------------------------------------ |
-| Web search       | ✅         | ❌          | ✅               | ✅ (grounding) | ✅ via Responses    | ✅         | ✅ Anthropic / OpenAI Responses / Google / OpenRouter   |
-| Web fetch        | ✅         | ❌          | ❌               | ❌             | ✅ via Responses    | ✅         | ✅ OpenRouter                                           |
-| Code execution   | ✅         | ❌          | ✅               | ✅             | ❌                 | ✅         | ✅ OpenAI Responses / Google                           |
-| Computer use     | ✅ preview | ❌          | ✅ preview       | ❌             | ❌                 | ⚠️         | ❌                                                     |
-| Bash / shell     | ✅         | ❌          | ✅ hosted shell  | ❌             | ❌                 | ✅         | ❌                                                     |
-| Text editor      | ✅         | ❌          | ❌               | ❌             | ❌                 | ✅         | ❌                                                     |
-| File search      | ❌         | ❌          | ✅               | ⚠️ via Files   | ❌                 | ❌         | ❌                                                     |
-| Apply patch      | ❌         | ❌          | ✅ V4A           | ❌             | ❌                 | ❌         | ❌                                                     |
-| Image generation | ❌         | ❌          | ✅ inline        | ❌             | ✅ via Responses    | ❌         | ❌ deferred (overlaps `ai.ImageProvider`)              |
-| Datetime         | ❌         | ❌          | ❌               | ❌             | ✅                 | ❌         | ✅ OpenRouter                                           |
-| Tool search      | ✅         | ❌          | ✅               | ❌             | ❌                 | ✅         | ❌                                                     |
-| MCP connector    | ✅         | ❌          | ✅               | ⚠️ via ACP     | ❌                 | ✅         | ❌                                                     |
+| Tool             | Anthropic  | OpenAI Chat | OpenAI Responses | Google         | OpenRouter         | Claude CLI | Codex CLI | pi-go                                                  |
+| ---------------- | ---------- | ----------- | ---------------- | -------------- | ------------------ | ---------- | --------- | ------------------------------------------------------ |
+| Web search       | ✅         | ❌          | ✅               | ✅ (grounding) | ✅ via Responses    | ✅         | ✅        | ✅ Anthropic / OpenAI Responses / Google / OpenRouter   |
+| Web fetch        | ✅         | ❌          | ❌               | ❌             | ✅ via Responses    | ✅         | ⚠️        | ✅ OpenRouter                                           |
+| Code execution   | ✅         | ❌          | ✅               | ✅             | ❌                 | ✅         | ✅        | ✅ OpenAI Responses / Google                           |
+| Computer use     | ✅ preview | ❌          | ✅ preview       | ❌             | ❌                 | ⚠️         | ❌        | ❌                                                     |
+| Bash / shell     | ✅         | ❌          | ✅ hosted shell  | ❌             | ❌                 | ✅         | ✅        | ✅ Codex CLI surfaces command executions                |
+| Text editor      | ✅         | ❌          | ❌               | ❌             | ❌                 | ✅         | ✅        | ❌                                                     |
+| File search      | ❌         | ❌          | ✅               | ⚠️ via Files   | ❌                 | ❌         | ❌        | ❌                                                     |
+| Apply patch      | ❌         | ❌          | ✅ V4A           | ❌             | ❌                 | ❌         | ✅        | ❌                                                     |
+| Image generation | ❌         | ❌          | ✅ inline        | ❌             | ✅ via Responses    | ❌         | ❌        | ❌ deferred (overlaps `ai.ImageProvider`)              |
+| Datetime         | ❌         | ❌          | ❌               | ❌             | ✅                 | ❌         | ❌        | ✅ OpenRouter                                           |
+| Tool search      | ✅         | ❌          | ✅               | ❌             | ❌                 | ✅         | ✅        | ❌                                                     |
+| MCP connector    | ✅         | ❌          | ✅               | ⚠️ via ACP     | ❌                 | ✅         | ✅        | ❌                                                     |
 
 ## Web Search
 
@@ -82,6 +82,7 @@ Sandboxed bash environment.
 - **Anthropic** — `bash_20250124` (recommended), `bash_20241022`. [Docs](https://docs.anthropic.com/en/docs/build-with-claude/tool-use/bash-tool)
 - **OpenAI Responses** — hosted shell preview.
 - **Claude CLI** — local sandboxed bash; pi-go only forwards `--allowedTools Bash` ([Sandboxing docs](https://docs.claude.com/en/docs/claude-code/sandboxing)).
+- **Codex CLI** — local sandboxed command execution; pi-go surfaces `command_execution` JSONL items as `bash` tool events.
 - **Gemini CLI** — `run_shell_command`.
 
 ## Text Editor
@@ -123,6 +124,7 @@ The core abstraction lives in [`pkg/ai/tool.go`](../../pkg/ai/tool.go) and [`pkg
 - **OpenAI Responses** ([`pkg/ai/provider/openairesponses/convert.go`](../../pkg/ai/provider/openairesponses/convert.go)) — `web_search` (`OfWebSearchPreview`) and `code_execution` (`OfCodeInterpreter`). Streaming uses `response.output_item.added` / `.done` for these item types and emits `EventToolStart` / `EventToolEnd` with `Server == true`.
 - **Google Gemini** ([`pkg/ai/provider/google/google.go`](../../pkg/ai/provider/google/google.go)) — `web_search` toggles `Tool.GoogleSearch`; `code_execution` toggles `Tool.CodeExecution`. Function declarations and server tools are emitted as separate `Tool` entries because Gemini disallows mixing them. Decoding handles `ExecutableCode` / `CodeExecutionResult` parts inline and synthesizes a single trailing `ai.ToolCall` for `web_search` from the candidate's `GroundingMetadata`.
 - **OpenRouter** — same package as OpenAI Responses, switched on via [`openairesponses.NewForOpenRouter`](../../pkg/ai/provider/openairesponses/openairesponses.go). The dialect translates server-tool kinds to the `openrouter:*` namespace (`openrouter:web_search`, `openrouter:web_fetch`, `openrouter:datetime`) and is injected into the request body via [`option.WithJSONSet`](https://pkg.go.dev/github.com/openai/openai-go/option#WithJSONSet). The SSE switch additionally handles `response.content_part.delta` (OpenRouter's text-delta event) and `response.output_item.added/.done` for items whose type starts with `openrouter:`. Server tools OpenRouter doesn't expose (code execution, file search, computer, MCP, bash, text editor) are dropped silently.
+- **Codex CLI** ([`pkg/ai/provider/codexcli`](../../pkg/ai/provider/codexcli)) — `command_execution` items from `codex exec --json` are normalized to `ai.ToolCall` blocks with `Server == true`, `ServerType == bash`, and `Output` populated from `aggregated_output`.
 
 ## Remaining Gaps
 

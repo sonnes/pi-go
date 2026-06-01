@@ -19,6 +19,7 @@ pi-go exposes structured output through the optional [`ObjectProvider`](../../pk
 | OpenAI Responses | ✅ `text.format: json_schema` strict                  | ❌    | not implemented                                                                                                                                                          |
 | Google Gemini    | ✅ `responseSchema` (subset of JSON Schema)           | ❌    | not implemented                                                                                                                                                          |
 | Claude CLI       | ✅ `--json-schema` flag                               | ✅    | ([claude.go:194-250](../../pkg/ai/provider/claudecli/claude.go#L194))                                                                                                    |
+| Codex CLI        | ✅ `--output-schema` flag                             | ✅    | writes the JSON Schema to a temp file and passes it to `codex exec --output-schema` ([codex.go](../../pkg/ai/provider/codexcli/codex.go))                                |
 | Gemini CLI       | ✅ via `responseSchema`                               | ❌    |                                                                                                                                                                          |
 
 ## Provider Documentation
