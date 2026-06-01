@@ -19,6 +19,7 @@ Status as of April 2026. Providers covered:
 - **OpenRouter** — Responses-API dialect of the same package ([openrouter-dialect](../concepts/ai/openrouter-dialect.md))
 - **Google** — Gemini API ([pkg/ai/provider/google](../../pkg/ai/provider/google))
 - **Claude CLI** — `claude` subprocess ([pkg/ai/provider/claudecli](../../pkg/ai/provider/claudecli))
+- **Codex CLI** — `codex` subprocess ([pkg/ai/provider/codexcli](../../pkg/ai/provider/codexcli))
 - **Gemini CLI** — Cloud Code Assist HTTP ([pkg/ai/provider/geminicli](../../pkg/ai/provider/geminicli))
 
 ## Pages

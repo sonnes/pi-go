@@ -19,6 +19,7 @@ See also [docs/concepts/auth/oauth.md](../concepts/auth/oauth.md) for the design
 | OpenAI Responses | ✅ | ✅ | |
 | Google Gemini | ✅ | ✅ | `WithAPIKey` ([google.go:39-41](../../pkg/ai/provider/google/google.go#L39)) |
 | Claude CLI | ✅ via `ANTHROPIC_API_KEY` env | ✅ | inherits process env |
+| Codex CLI | ✅ via Codex CLI auth | ✅ | delegated to the `codex` subprocess |
 | Gemini CLI | ❌ (OAuth only) | ❌ | |
 
 ## OAuth
@@ -30,6 +31,7 @@ See also [docs/concepts/auth/oauth.md](../concepts/auth/oauth.md) for the design
 | OpenAI Responses | ⚠️ via the same OAuth as Chat | ❌ | not implemented in this provider |
 | Google Gemini | ✅ Vertex OAuth (gcloud) | ❌ | `pkg/ai/provider/google` is API-key only |
 | Claude CLI | ✅ delegated to CLI's own login | ✅ | |
+| Codex CLI | ✅ delegated to CLI's own login | ✅ | |
 | Gemini CLI | ✅ Bearer token from Cloud Code Assist OAuth | ✅ | `Credentials{Token, ProjectID}` ([geminicli.go:29-32](../../pkg/ai/provider/geminicli/geminicli.go#L29)) |
 
 ## Service Account / Cloud Endpoints

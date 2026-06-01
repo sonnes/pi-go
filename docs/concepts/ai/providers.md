@@ -38,12 +38,13 @@ A model's `API` field is looked up in the registry. If no provider is registered
 | `pkg/ai/provider/google`            | `"google-generative"`    | Google AI (Gemini)         |
 | `pkg/ai/provider/geminicli`         | `"google-gemini-cli"`    | Cloud Code Assist (Gemini) |
 | `pkg/ai/provider/claudecli`         | `"claude-cli"`           | Claude CLI subprocess      |
+| `pkg/ai/provider/codexcli`          | `"codex-cli"`            | Codex CLI subprocess       |
 
 Each provider handles request/response conversion between the SDK's types and the provider's native API format.
 
 ## Prompt caching
 
-Built-in providers participate in prompt caching at different levels. Anthropic receives explicit `cache_control` markers on the system prompt and the last message's final block. OpenAI Chat and OpenAI Responses receive a `prompt_cache_key` derived from `StreamOptions.SessionID` and rely on automatic server-side prefix matching. Google caches implicitly and reports hits via `CacheRead`. The Claude CLI and Gemini CLI providers inherit whatever caching the underlying subprocess does. See [Prompt Caching](/concepts/ai/caching) for the placement rule and per-provider details.
+Built-in providers participate in prompt caching at different levels. Anthropic receives explicit `cache_control` markers on the system prompt and the last message's final block. OpenAI Chat and OpenAI Responses receive a `prompt_cache_key` derived from `StreamOptions.SessionID` and rely on automatic server-side prefix matching. Google caches implicitly and reports hits via `CacheRead`. The Claude CLI, Codex CLI, and Gemini CLI providers inherit whatever caching the underlying CLI or backend does. See [Prompt Caching](/concepts/ai/caching) for the placement rule and per-provider details.
 
 ## Authentication
 
@@ -57,7 +58,7 @@ All SDK-based providers authenticate via API keys passed at construction time (`
 
 See [OAuth](/concepts/auth/oauth) for details on the transport layer and token refresh design.
 
-The Claude CLI provider delegates authentication entirely to the subprocess — it inherits whatever credentials the CLI has configured (OAuth session, API key, or credential helper).
+The Claude CLI and Codex CLI providers delegate authentication entirely to their subprocesses. They inherit whatever credentials those CLIs have configured.
 
 ## Related
 
