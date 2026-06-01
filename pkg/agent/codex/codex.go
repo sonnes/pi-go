@@ -302,11 +302,11 @@ func (a *Agent) readTurn(stdout io.Reader) turnResult {
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	var (
-		result       turnResult
-		agentStarted bool
-		turnOpen     bool
-		lastMessage  *ai.Message
-		toolResults  []ai.Message
+		result           turnResult
+		agentStarted     bool
+		turnOpen         bool
+		lastMessageIndex = -1
+		toolResults      []ai.Message
 	)
 
 	for scanner.Scan() {
@@ -334,17 +334,27 @@ func (a *Agent) readTurn(stdout io.Reader) turnResult {
 			turnOpen = true
 
 		case "item.started":
-			if line.Item.Type != "command_execution" {
-				continue
+			switch line.Item.Type {
+			case "command_execution":
+				a.broker.Publish(agent.Event{
+					Type:       agent.EventToolExecutionStart,
+					ToolCallID: line.Item.ID,
+					ToolName:   "bash",
+					Args: map[string]any{
+						"command": line.Item.Command,
+					},
+				})
+
+			case "todo_list":
+				msg := ai.AssistantMessage(ai.ToolCall{
+					ID:        line.Item.ID,
+					Name:      "TodoWrite",
+					Arguments: line.Item.todoArguments(),
+				})
+				msg.API = "codex-cli"
+				msg.Model = a.cfg.model
+				a.appendMessage(&result, msg)
 			}
-			a.broker.Publish(agent.Event{
-				Type:       agent.EventToolExecutionStart,
-				ToolCallID: line.Item.ID,
-				ToolName:   "bash",
-				Args: map[string]any{
-					"command": line.Item.Command,
-				},
-			})
 
 		case "item.completed":
 			switch line.Item.Type {
@@ -369,24 +379,25 @@ func (a *Agent) readTurn(stdout io.Reader) turnResult {
 				msg.API = "codex-cli"
 				msg.Model = a.cfg.model
 				msg.StopReason = ai.StopReasonStop
-				result.messages = append(result.messages, msg)
-				lastMessage = &result.messages[len(result.messages)-1]
-				a.broker.Publish(agent.Event{
-					Type:    agent.EventMessageStart,
-					Message: lastMessage,
-				})
-				a.broker.Publish(agent.Event{
-					Type:    agent.EventMessageEnd,
-					Message: lastMessage,
-				})
+				lastMessageIndex = a.appendMessage(&result, msg)
+
+			case "todo_list":
+				msg := ai.ToolResultMessage(
+					line.Item.ID,
+					"TodoWrite",
+					ai.Text{Text: "Todos updated."},
+				)
+				a.appendMessage(&result, msg)
 			}
 
 		case "turn.completed":
 			if line.Usage != nil {
 				result.usage = usageFromCodex(*line.Usage)
 			}
-			if lastMessage != nil {
-				lastMessage.Usage = result.usage
+			var lastMessage *ai.Message
+			if lastMessageIndex >= 0 {
+				result.messages[lastMessageIndex].Usage = result.usage
+				lastMessage = &result.messages[lastMessageIndex]
 			}
 			if turnOpen {
 				a.broker.Publish(agent.Event{
@@ -408,6 +419,21 @@ func (a *Agent) readTurn(stdout io.Reader) turnResult {
 	}
 
 	return result
+}
+
+func (a *Agent) appendMessage(result *turnResult, msg ai.Message) int {
+	result.messages = append(result.messages, msg)
+	index := len(result.messages) - 1
+	message := &result.messages[index]
+	a.broker.Publish(agent.Event{
+		Type:    agent.EventMessageStart,
+		Message: message,
+	})
+	a.broker.Publish(agent.Event{
+		Type:    agent.EventMessageEnd,
+		Message: message,
+	})
+	return index
 }
 
 func promptText(system, user string) string {
