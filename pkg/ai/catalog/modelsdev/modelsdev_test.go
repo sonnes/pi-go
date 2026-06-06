@@ -97,3 +97,39 @@ func TestProviderFetchConvertsModelsDevRows(t *testing.T) {
 		ai.ThinkingXHigh,
 	}, model.ThinkingLevels)
 }
+
+func TestProviderFetchConvertsSingularLimitRows(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api.json", r.URL.Path)
+		_, _ = w.Write([]byte(`{
+			"anthropic": {
+				"name": "Anthropic",
+				"api": "anthropic-messages",
+				"models": {
+					"claude-sonnet-4-6": {
+						"id": "claude-sonnet-4-6",
+						"name": "Claude Sonnet 4.6",
+						"limit": {
+							"context": 200000,
+							"output": 64000
+						}
+					}
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	provider := modelsdev.New(
+		modelsdev.WithURL(server.URL+"/api.json"),
+		modelsdev.WithHTTPClient(server.Client()),
+	)
+
+	cat, err := provider.Fetch(context.Background(), nil)
+	require.NoError(t, err)
+	require.Len(t, cat.Models, 1)
+
+	model := cat.Models[0]
+	assert.Equal(t, 200_000, model.Limits.Context)
+	assert.Equal(t, 64_000, model.Limits.Output)
+}
