@@ -142,6 +142,7 @@ type modelRow struct {
 	StructuredOutput bool          `json:"structured_output"`
 	Temperature      bool          `json:"temperature"`
 	Modalities       modalitiesRow `json:"modalities"`
+	Limit            limitsRow     `json:"limit"`
 	Limits           limitsRow     `json:"limits"`
 	Cost             costRow       `json:"cost"`
 	Knowledge        string        `json:"knowledge"`
@@ -175,6 +176,7 @@ type costRow struct {
 func convertModel(providerID string, providerAPI string, modelID string, row modelRow) ai.Model {
 	id := firstNonEmpty(row.ID, modelID)
 	api := firstNonEmpty(row.API, providerAPI)
+	limits := firstLimits(row.Limit, row.Limits)
 	return ai.Model{
 		ID:               id,
 		Name:             firstNonEmpty(row.Name, id),
@@ -188,9 +190,9 @@ func convertModel(providerID string, providerAPI string, modelID string, row mod
 		Input:            convertModalities(row.Modalities.Input),
 		Output:           convertModalities(row.Modalities.Output),
 		Limits: ai.Limits{
-			Context: row.Limits.Context,
-			Input:   row.Limits.Input,
-			Output:  row.Limits.Output,
+			Context: limits.Context,
+			Input:   limits.Input,
+			Output:  limits.Output,
 		},
 		Cost: ai.Cost{
 			Input:       row.Cost.Input,
@@ -207,6 +209,15 @@ func convertModel(providerID string, providerAPI string, modelID string, row mod
 		OpenWeights: row.OpenWeights,
 		Status:      row.Status,
 	}
+}
+
+func firstLimits(values ...limitsRow) limitsRow {
+	for _, value := range values {
+		if value.Context != 0 || value.Input != 0 || value.Output != 0 {
+			return value
+		}
+	}
+	return limitsRow{}
 }
 
 func convertModalities(values []string) []ai.Modality {
