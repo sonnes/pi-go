@@ -126,7 +126,9 @@ func (p *Provider) API() string {
 // The Cursor CLI emits assistant text deltas and provider-executed tool calls.
 // Only the last user message in [ai.Prompt.Messages] is sent; [ai.Prompt.System]
 // is prefixed into the prompt because the CLI has no dedicated system prompt
-// flag.
+// flag. [ai.StreamOptions.ThinkingLevel] is ignored: the Cursor CLI has no
+// reasoning-effort flag and binds reasoning to the model name (for example
+// "sonnet-4.5-thinking") instead.
 func (p *Provider) StreamText(
 	ctx context.Context,
 	model ai.Model,

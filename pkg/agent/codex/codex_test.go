@@ -329,6 +329,7 @@ func TestFactory_ComposesAgentAndCodexOptions(t *testing.T) {
 		WithCLIPath("/bin/codex"),
 		WithSessionID("thread-xyz"),
 		WithSandbox("workspace-write"),
+		WithThinkingLevel(ai.ThinkingHigh),
 	)
 
 	ca, ok := a.(*Agent)
@@ -338,6 +339,49 @@ func TestFactory_ComposesAgentAndCodexOptions(t *testing.T) {
 	assert.Equal(t, "/bin/codex", ca.cfg.cliPath)
 	assert.Equal(t, "thread-xyz", ca.sessionID)
 	assert.Equal(t, "workspace-write", ca.cfg.sandbox)
+	assert.Equal(t, ai.ThinkingHigh, ca.cfg.thinkingLevel)
+}
+
+func TestBuildArgs_ThinkingLevelMapsToReasoningEffort(t *testing.T) {
+	got := buildArgs(
+		config{
+			cliPath:       "codex",
+			model:         "gpt-5.4",
+			thinkingLevel: ai.ThinkingHigh,
+		},
+		runArgs{prompt: "go"},
+	)
+
+	assert.Equal(t, []string{
+		"--model", "gpt-5.4",
+		"-c", "model_reasoning_effort=high",
+		"exec",
+		"--json",
+		"--color", "never",
+		"go",
+	}, got)
+}
+
+func TestReasoningEffortForThinkingLevel(t *testing.T) {
+	tests := []struct {
+		level ai.ThinkingLevel
+		want  string
+	}{
+		{level: "", want: ""},
+		{level: ai.ThinkingOff, want: ""},
+		{level: ai.ThinkingMinimal, want: "minimal"},
+		{level: ai.ThinkingLow, want: "low"},
+		{level: ai.ThinkingMedium, want: "medium"},
+		{level: ai.ThinkingHigh, want: "high"},
+		{level: ai.ThinkingXHigh, want: "xhigh"},
+		{level: "bogus", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.level), func(t *testing.T) {
+			assert.Equal(t, tt.want, reasoningEffortForThinkingLevel(tt.level))
+		})
+	}
 }
 
 func TestBuildArgs_ResumeOmitsExecOnlyColorFlag(t *testing.T) {

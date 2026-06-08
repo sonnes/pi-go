@@ -3,6 +3,7 @@ package claude
 import (
 	"testing"
 
+	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,6 +29,21 @@ func TestBuildArgs(t *testing.T) {
 			name: "with model",
 			cfg:  config{cliPath: "claude", model: "opus"},
 			want: append(append([]string{}, base...), "--model", "opus"),
+		},
+		{
+			name: "thinking level maps to effort",
+			cfg:  config{cliPath: "claude", thinkingLevel: ai.ThinkingHigh},
+			want: append(append([]string{}, base...), "--effort", "high"),
+		},
+		{
+			name: "minimal thinking floors to low effort",
+			cfg:  config{cliPath: "claude", thinkingLevel: ai.ThinkingMinimal},
+			want: append(append([]string{}, base...), "--effort", "low"),
+		},
+		{
+			name: "off thinking omits effort",
+			cfg:  config{cliPath: "claude", thinkingLevel: ai.ThinkingOff},
+			want: base,
 		},
 		{
 			name: "with allowed tools",
@@ -99,6 +115,7 @@ func TestBuildArgs(t *testing.T) {
 			cfg: config{
 				cliPath:            "claude",
 				model:              "sonnet",
+				thinkingLevel:      ai.ThinkingXHigh,
 				allowedTools:       []string{"Read"},
 				tools:              []string{"Bash", "Edit"},
 				disallowedTools:    []string{"Write"},
@@ -113,6 +130,7 @@ func TestBuildArgs(t *testing.T) {
 			},
 			want: append(append([]string{}, base...),
 				"--model", "sonnet",
+				"--effort", "xhigh",
 				"--allowedTools", "Read",
 				"--tools", "Bash,Edit",
 				"--disallowedTools", "Write",
@@ -132,6 +150,28 @@ func TestBuildArgs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := buildArgs(tt.cfg)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestEffortForThinkingLevel(t *testing.T) {
+	tests := []struct {
+		level ai.ThinkingLevel
+		want  string
+	}{
+		{level: "", want: ""},
+		{level: ai.ThinkingOff, want: ""},
+		{level: ai.ThinkingMinimal, want: "low"},
+		{level: ai.ThinkingLow, want: "low"},
+		{level: ai.ThinkingMedium, want: "medium"},
+		{level: ai.ThinkingHigh, want: "high"},
+		{level: ai.ThinkingXHigh, want: "xhigh"},
+		{level: "bogus", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.level), func(t *testing.T) {
+			assert.Equal(t, tt.want, effortForThinkingLevel(tt.level))
 		})
 	}
 }

@@ -290,6 +290,21 @@ func TestBuildArgs(t *testing.T) {
 			},
 		},
 		{
+			name: "thinking level maps to reasoning effort",
+			cfg:  config{cliPath: "codex", approvalPolicy: "never", model: "gpt-5.4"},
+			args: sendArgs{prompt: "go", reasoningEffort: "xhigh", ephemeral: true},
+			want: []string{
+				"--ask-for-approval", "never",
+				"-c", "model_reasoning_effort=xhigh",
+				"exec",
+				"--json",
+				"--color", "never",
+				"--ephemeral",
+				"--model", "gpt-5.4",
+				"go",
+			},
+		},
+		{
 			name: "with model workdir sandbox and schema",
 			cfg: config{
 				cliPath:          "codex",
@@ -330,6 +345,43 @@ func TestBuildArgs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := buildArgs(tt.cfg, tt.args)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestStreamText_ForwardsThinkingEffort(t *testing.T) {
+	p := New()
+	lastArgs, _, restore := stubSend(p, simpleTextJSONL, nil)
+	defer restore()
+
+	_, _ = p.StreamText(
+		context.Background(),
+		ai.Model{},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{ThinkingLevel: ai.ThinkingXHigh},
+	).Result()
+
+	assert.Equal(t, "xhigh", lastArgs().reasoningEffort)
+}
+
+func TestReasoningEffortForThinkingLevel(t *testing.T) {
+	tests := []struct {
+		level ai.ThinkingLevel
+		want  string
+	}{
+		{level: "", want: ""},
+		{level: ai.ThinkingOff, want: ""},
+		{level: ai.ThinkingMinimal, want: "minimal"},
+		{level: ai.ThinkingLow, want: "low"},
+		{level: ai.ThinkingMedium, want: "medium"},
+		{level: ai.ThinkingHigh, want: "high"},
+		{level: ai.ThinkingXHigh, want: "xhigh"},
+		{level: "bogus", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.level), func(t *testing.T) {
+			assert.Equal(t, tt.want, reasoningEffortForThinkingLevel(tt.level))
 		})
 	}
 }

@@ -88,6 +88,9 @@ func buildArgs(cfg config, args runArgs) []string {
 	if cfg.model != "" {
 		a = append(a, "--model", cfg.model)
 	}
+	if effort := reasoningEffortForThinkingLevel(cfg.thinkingLevel); effort != "" {
+		a = append(a, "-c", "model_reasoning_effort="+effort)
+	}
 	if cfg.workDir != "" {
 		a = append(a, "--cd", cfg.workDir)
 	}

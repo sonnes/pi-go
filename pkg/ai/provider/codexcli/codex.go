@@ -103,6 +103,25 @@ func WithIgnoreRules() Option {
 	return func(c *config) { c.ignoreRules = true }
 }
 
+// reasoningEffortForThinkingLevel maps a per-call
+// [ai.StreamOptions.ThinkingLevel] onto Codex's model_reasoning_effort
+// scale (minimal/low/medium/high/xhigh). Codex has no "off":
+// "off"/unknown return "" (omit the override); every other level maps
+// through unchanged. "xhigh" is model-dependent, so Codex applies its
+// own fallback when the active model does not support it.
+func reasoningEffortForThinkingLevel(level ai.ThinkingLevel) string {
+	switch level {
+	case ai.ThinkingMinimal,
+		ai.ThinkingLow,
+		ai.ThinkingMedium,
+		ai.ThinkingHigh,
+		ai.ThinkingXHigh:
+		return string(level)
+	default:
+		return ""
+	}
+}
+
 // New creates a stateless Codex CLI provider.
 func New(opts ...Option) *Provider {
 	cfg := config{
@@ -135,7 +154,7 @@ func (p *Provider) StreamText(
 	ctx context.Context,
 	model ai.Model,
 	prompt ai.Prompt,
-	_ ai.StreamOptions,
+	opts ai.StreamOptions,
 ) *ai.EventStream {
 	return ai.NewEventStream(func(push func(ai.Event)) {
 		cfg := p.cfg
@@ -153,8 +172,9 @@ func (p *Provider) StreamText(
 		}
 
 		args := sendArgs{
-			prompt:    promptText(prompt.System, userText),
-			ephemeral: true,
+			prompt:          promptText(prompt.System, userText),
+			reasoningEffort: reasoningEffortForThinkingLevel(opts.ThinkingLevel),
+			ephemeral:       true,
 		}
 
 		stdout, cleanup, err := p.sendFn(ctx, cfg, args)
@@ -206,7 +226,7 @@ func (p *Provider) GenerateObject(
 	model ai.Model,
 	prompt ai.Prompt,
 	schema *jsonschema.Schema,
-	_ ai.StreamOptions,
+	opts ai.StreamOptions,
 ) (*ai.ObjectResponse, error) {
 	cfg := p.cfg
 	if model.ID != "" {
@@ -243,6 +263,7 @@ func (p *Provider) GenerateObject(
 
 	args := sendArgs{
 		prompt:           promptText(prompt.System, userText),
+		reasoningEffort:  reasoningEffortForThinkingLevel(opts.ThinkingLevel),
 		ephemeral:        true,
 		outputSchemaPath: schemaPath,
 	}

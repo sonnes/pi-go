@@ -1,6 +1,9 @@
 package codex
 
-import "github.com/sonnes/pi-go/pkg/agent"
+import (
+	"github.com/sonnes/pi-go/pkg/agent"
+	"github.com/sonnes/pi-go/pkg/ai"
+)
 
 const extensionKey = "codex"
 
@@ -11,6 +14,7 @@ type config struct {
 	env              []string
 	sessionID        string
 	model            string
+	thinkingLevel    ai.ThinkingLevel
 	sandbox          string
 	approvalPolicy   string
 	skipGitRepoCheck bool
@@ -63,6 +67,31 @@ func WithSessionID(id string) agent.Option {
 // "workspace-write", or "danger-full-access".
 func WithSandbox(mode string) agent.Option {
 	return mutate(func(c *config) { c.sandbox = mode })
+}
+
+// WithThinkingLevel sets the requested reasoning level. Codex expresses
+// reasoning as `model_reasoning_effort`, so the level is mapped onto a
+// `-c model_reasoning_effort=…` override by [reasoningEffortForThinkingLevel].
+func WithThinkingLevel(level ai.ThinkingLevel) agent.Option {
+	return mutate(func(c *config) { c.thinkingLevel = level })
+}
+
+// reasoningEffortForThinkingLevel maps a thinking level onto Codex's
+// model_reasoning_effort scale (minimal/low/medium/high/xhigh). Codex
+// has no "off": "off"/unknown return "" (omit the override); every other
+// level maps through unchanged. "xhigh" is model-dependent, so Codex
+// applies its own fallback when the active model does not support it.
+func reasoningEffortForThinkingLevel(level ai.ThinkingLevel) string {
+	switch level {
+	case ai.ThinkingMinimal,
+		ai.ThinkingLow,
+		ai.ThinkingMedium,
+		ai.ThinkingHigh,
+		ai.ThinkingXHigh:
+		return string(level)
+	default:
+		return ""
+	}
 }
 
 // WithApprovalPolicy sets the Codex approval policy. Defaults to "never"

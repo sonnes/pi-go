@@ -19,6 +19,7 @@ type sendArgs struct {
 	prompt        string
 	systemPrompt  string
 	jsonSchema    string
+	effort        string
 	noPersistence bool
 }
 
@@ -100,6 +101,9 @@ func buildArgs(cfg config, args sendArgs) []string {
 	}
 	if cfg.model != "" {
 		a = append(a, "--model", cfg.model)
+	}
+	if args.effort != "" {
+		a = append(a, "--effort", args.effort)
 	}
 	if len(cfg.allowedTools) > 0 {
 		a = append(a, "--allowedTools", strings.Join(cfg.allowedTools, ","))
