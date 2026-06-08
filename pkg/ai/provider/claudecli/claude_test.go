@@ -571,6 +571,20 @@ func TestBuildArgs(t *testing.T) {
 			},
 		},
 		{
+			name: "thinking level maps to effort",
+			cfg:  config{cliPath: "claude", model: "opus"},
+			args: sendArgs{prompt: "go", effort: "xhigh", noPersistence: true},
+			want: []string{
+				"--print",
+				"--output-format", "stream-json",
+				"--verbose",
+				"--no-session-persistence",
+				"--model", "opus",
+				"--effort", "xhigh",
+				"go",
+			},
+		},
+		{
 			name: "with add-dirs and allowed tools",
 			cfg: config{
 				cliPath:      "claude",
@@ -596,6 +610,43 @@ func TestBuildArgs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := buildArgs(tt.cfg, tt.args)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestStreamText_ForwardsThinkingEffort(t *testing.T) {
+	p := New()
+	lastArgs, _, restore := stubSend(p, simpleTextNDJSON, nil)
+	defer restore()
+
+	_, _ = p.StreamText(
+		context.Background(),
+		ai.Model{},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{ThinkingLevel: ai.ThinkingHigh},
+	).Result()
+
+	assert.Equal(t, "high", lastArgs().effort)
+}
+
+func TestEffortForThinkingLevel(t *testing.T) {
+	tests := []struct {
+		level ai.ThinkingLevel
+		want  string
+	}{
+		{level: "", want: ""},
+		{level: ai.ThinkingOff, want: ""},
+		{level: ai.ThinkingMinimal, want: "low"},
+		{level: ai.ThinkingLow, want: "low"},
+		{level: ai.ThinkingMedium, want: "medium"},
+		{level: ai.ThinkingHigh, want: "high"},
+		{level: ai.ThinkingXHigh, want: "xhigh"},
+		{level: "bogus", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(string(tt.level), func(t *testing.T) {
+			assert.Equal(t, tt.want, effortForThinkingLevel(tt.level))
 		})
 	}
 }

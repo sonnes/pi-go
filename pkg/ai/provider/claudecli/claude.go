@@ -92,6 +92,25 @@ func WithModel(model string) Option {
 	return func(c *config) { c.model = model }
 }
 
+// effortForThinkingLevel maps a per-call [ai.StreamOptions.ThinkingLevel]
+// onto the Claude CLI's --effort scale (low/medium/high/xhigh/max). The
+// CLI has no "off" or "minimal" effort: "off"/unknown return "" (omit the
+// flag) and "minimal" floors to "low". No thinking level maps to "max".
+func effortForThinkingLevel(level ai.ThinkingLevel) string {
+	switch level {
+	case ai.ThinkingMinimal, ai.ThinkingLow:
+		return string(ai.ThinkingLow)
+	case ai.ThinkingMedium:
+		return string(ai.ThinkingMedium)
+	case ai.ThinkingHigh:
+		return string(ai.ThinkingHigh)
+	case ai.ThinkingXHigh:
+		return string(ai.ThinkingXHigh)
+	default:
+		return ""
+	}
+}
+
 // New creates a stateless Claude CLI provider.
 func New(opts ...Option) *Provider {
 	cfg := config{cliPath: "claude"}
@@ -125,7 +144,7 @@ func (p *Provider) StreamText(
 	ctx context.Context,
 	model ai.Model,
 	prompt ai.Prompt,
-	_ ai.StreamOptions,
+	opts ai.StreamOptions,
 ) *ai.EventStream {
 	return ai.NewEventStream(func(push func(ai.Event)) {
 		cfg := p.cfg
@@ -145,6 +164,7 @@ func (p *Provider) StreamText(
 		args := sendArgs{
 			prompt:        userText,
 			systemPrompt:  prompt.System,
+			effort:        effortForThinkingLevel(opts.ThinkingLevel),
 			noPersistence: true,
 		}
 
@@ -204,7 +224,7 @@ func (p *Provider) GenerateObject(
 	model ai.Model,
 	prompt ai.Prompt,
 	schema *jsonschema.Schema,
-	_ ai.StreamOptions,
+	opts ai.StreamOptions,
 ) (*ai.ObjectResponse, error) {
 	cfg := p.cfg
 	if model.ID != "" {
@@ -227,6 +247,7 @@ func (p *Provider) GenerateObject(
 	args := sendArgs{
 		prompt:        userText,
 		systemPrompt:  prompt.System,
+		effort:        effortForThinkingLevel(opts.ThinkingLevel),
 		noPersistence: true,
 		jsonSchema:    string(schemaJSON),
 	}

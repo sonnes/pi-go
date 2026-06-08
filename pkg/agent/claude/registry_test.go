@@ -54,11 +54,13 @@ func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
 		WithCLIPath("/usr/local/bin/claude"),
 		WithAllowedTools("Read", "Edit"),
 		WithSessionID("sess-xyz"),
+		WithThinkingLevel(ai.ThinkingHigh),
 		WithMCPConfig(`{"mcpServers":{"lw":{"type":"http","url":"http://127.0.0.1:0/mcp"}}}`),
 	)
 	ca := a.(*Agent)
 
 	assert.Equal(t, "sonnet", ca.cfg.model)
+	assert.Equal(t, ai.ThinkingHigh, ca.cfg.thinkingLevel)
 	assert.Equal(t, 7, ca.cfg.maxTurns)
 	assert.Equal(t, "/usr/local/bin/claude", ca.cfg.cliPath)
 	assert.Equal(t, []string{"Read", "Edit"}, ca.cfg.allowedTools)

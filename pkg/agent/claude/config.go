@@ -2,6 +2,7 @@ package claude
 
 import (
 	"github.com/sonnes/pi-go/pkg/agent"
+	"github.com/sonnes/pi-go/pkg/ai"
 )
 
 // extensionKey is the [agent.Config.Extensions] slot used by the claude
@@ -21,6 +22,7 @@ type config struct {
 	disallowedTools    []string
 	maxTurns           int
 	model              string
+	thinkingLevel      ai.ThinkingLevel
 	agent              string
 	agents             map[string]AgentDef
 	systemPrompt       string
@@ -52,6 +54,33 @@ func WithCLIPath(path string) agent.Option {
 // WithWorkDir sets the working directory for the subprocess.
 func WithWorkDir(dir string) agent.Option {
 	return mutate(func(c *config) { c.workDir = dir })
+}
+
+// WithThinkingLevel sets the requested reasoning level. The Claude CLI
+// expresses reasoning as a session effort, so the level is mapped onto
+// --effort by [effortForThinkingLevel]; "off" and unknown levels omit
+// the flag so the CLI applies its own default.
+func WithThinkingLevel(level ai.ThinkingLevel) agent.Option {
+	return mutate(func(c *config) { c.thinkingLevel = level })
+}
+
+// effortForThinkingLevel maps a thinking level onto the Claude CLI's
+// --effort scale (low/medium/high/xhigh/max). The CLI has no "off" or
+// "minimal" effort: "off"/unknown return "" (omit the flag) and
+// "minimal" floors to "low". No thinking level maps to "max".
+func effortForThinkingLevel(level ai.ThinkingLevel) string {
+	switch level {
+	case ai.ThinkingMinimal, ai.ThinkingLow:
+		return string(ai.ThinkingLow)
+	case ai.ThinkingMedium:
+		return string(ai.ThinkingMedium)
+	case ai.ThinkingHigh:
+		return string(ai.ThinkingHigh)
+	case ai.ThinkingXHigh:
+		return string(ai.ThinkingXHigh)
+	default:
+		return ""
+	}
 }
 
 // WithAddDirs adds additional working directories via --add-dir flags.

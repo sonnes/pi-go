@@ -182,6 +182,9 @@ func buildArgs(cfg config) []string {
 	if cfg.model != "" {
 		a = append(a, "--model", cfg.model)
 	}
+	if effort := effortForThinkingLevel(cfg.thinkingLevel); effort != "" {
+		a = append(a, "--effort", effort)
+	}
 	if len(cfg.allowedTools) > 0 {
 		a = append(a, "--allowedTools", strings.Join(cfg.allowedTools, ","))
 	}

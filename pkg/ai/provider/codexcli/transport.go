@@ -14,6 +14,7 @@ import (
 
 type sendArgs struct {
 	prompt           string
+	reasoningEffort  string
 	ephemeral        bool
 	outputSchemaPath string
 }
@@ -84,6 +85,9 @@ func buildArgs(cfg config, args sendArgs) []string {
 
 	if cfg.approvalPolicy != "" {
 		a = append(a, "--ask-for-approval", cfg.approvalPolicy)
+	}
+	if args.reasoningEffort != "" {
+		a = append(a, "-c", "model_reasoning_effort="+args.reasoningEffort)
 	}
 
 	a = append(a,
