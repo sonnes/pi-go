@@ -78,8 +78,8 @@ func New(opts ...Option) *Provider {
 	return p
 }
 
-// API returns the provider API identifier.
-func (p *Provider) API() string {
+// Provider returns the provider identifier.
+func (p *Provider) Provider() string {
 	return "google-gemini-cli"
 }
 

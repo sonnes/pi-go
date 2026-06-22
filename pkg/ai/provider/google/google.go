@@ -76,8 +76,8 @@ func New(opts ...Option) (*Provider, error) {
 	return p, nil
 }
 
-// API returns the provider API identifier.
-func (p *Provider) API() string {
+// Provider returns the provider identifier.
+func (p *Provider) Provider() string {
 	return "google-generative"
 }
 
@@ -430,6 +430,9 @@ func (p *Provider) StreamText(
 		finalMessage := &ai.Message{
 			Role:       ai.RoleAssistant,
 			Content:    finalContent,
+			API:        model.Provider,
+			Provider:   model.Provider,
+			Model:      model.ID,
 			Usage:      usage,
 			StopReason: stopReason,
 		}
@@ -783,17 +786,20 @@ func (p *Provider) GenerateObject(
 func (p *Provider) GenerateImage(
 	ctx context.Context,
 	model ai.Model,
-	req *ai.ImageRequest,
+	prompt ai.Prompt,
+	opts ai.StreamOptions,
 ) (*ai.ImageResponse, error) {
+	text := prompt.Text()
+
 	log.Debug(
 		"[GOOGLE] generating image",
 		"model", model.ID,
-		"prompt", req.Prompt,
+		"prompt", text,
 	)
 
 	modelID := cmp.Or(model.ID, "imagen-3.0-generate-002")
 
-	n := req.N
+	n := opts.ImageCount
 	if n <= 0 {
 		n = 1
 	}
@@ -802,14 +808,14 @@ func (p *Provider) GenerateImage(
 		NumberOfImages: int32(n),
 	}
 
-	if req.Size != "" {
-		config.AspectRatio = sizeToAspectRatio(req.Size)
+	if opts.ImageSize != "" {
+		config.AspectRatio = sizeToAspectRatio(opts.ImageSize)
 	}
 
 	response, err := p.client.Models.GenerateImages(
 		ctx,
 		modelID,
-		req.Prompt,
+		text,
 		config,
 	)
 	if err != nil {

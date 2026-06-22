@@ -11,7 +11,7 @@
 // Basic usage:
 //
 //	a := claude.New(
-//	    agent.WithModelName("opus"),
+//	    ai.Model{ID: "opus", Name: "opus"},
 //	    claude.WithAllowedTools("Read", "Edit", "Bash"),
 //	)
 //	defer a.Close()
@@ -22,7 +22,8 @@
 //	    // handle pe.Payload() events...
 //	}
 //
-// All options — both [agent.Option] (e.g. [agent.WithModelName],
+// The model is passed as New's first argument; all options — both
+// [agent.Option] (e.g.
 // [agent.WithMaxTurns], [agent.WithHistory], [agent.WithSystemPrompt])
 // and claude-specific options (e.g. [WithCLIPath], [WithAllowedTools],
 // [WithSessionID]) — satisfy the [agent.Option] type and pass through the
@@ -30,13 +31,13 @@
 // to the subprocess as `--system-prompt`; use [WithAppendSystemPrompt] to
 // append to the default system prompt instead.
 //
-// Factory registration:
+// Agent registration:
 //
 //	// Register once at startup, then construct by name.
-//	agent.RegisterFactory("claude", claude.Factory)
+//	agent.RegisterAgent("claude", claude.New)
 //
-//	f, _ := agent.GetFactory("claude")
-//	a := f(agent.WithModelName("sonnet"))
+//	f, _ := agent.GetAgent("claude")
+//	a := f(ai.Model{ID: "sonnet", Name: "sonnet"})
 //
 // Rich content (images, multi-block messages) is supported by
 // [Agent.SendMessages] — the last user message in the batch is

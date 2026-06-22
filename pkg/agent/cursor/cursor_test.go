@@ -71,7 +71,7 @@ func stubRunner(
 }
 
 func TestAgent_Send_SimpleText(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5", Name: "gpt-5"})
 	_, restore := stubRunner(a, simpleTurnJSONL)
 	defer restore()
 	defer a.Close()
@@ -101,7 +101,7 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 
 func TestAgent_Send_ForwardsPromptAndOptions(t *testing.T) {
 	a := New(
-		agent.WithModelName("gpt-5"),
+		ai.Model{ID: "gpt-5", Name: "gpt-5"},
 		agent.WithSystemPrompt("Be terse."),
 		WithCLIPath("/usr/local/bin/cursor-agent"),
 		WithWorkDir("/repo"),
@@ -135,7 +135,7 @@ func TestAgent_Send_ForwardsPromptAndOptions(t *testing.T) {
 }
 
 func TestAgent_Send_SecondTurnResumesSession(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5", Name: "gpt-5"})
 	calls, restore := stubRunner(a, simpleTurnJSONL, secondTurnJSONL)
 	defer restore()
 	defer a.Close()
@@ -160,7 +160,7 @@ func TestAgent_Send_SecondTurnResumesSession(t *testing.T) {
 }
 
 func TestAgent_Send_ToolCallEvents(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5", Name: "gpt-5"})
 	_, restore := stubRunner(a, toolTurnJSONL)
 	defer restore()
 	defer a.Close()
@@ -206,7 +206,7 @@ func TestAgent_Send_ToolCallEvents(t *testing.T) {
 }
 
 func TestAgent_ConcurrentSendRejected(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5", Name: "gpt-5"})
 	reader, writer := io.Pipe()
 	a.runFn = func(_ context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error) {
 		return reader, func() error { return nil }, nil
@@ -228,7 +228,7 @@ func TestAgent_ConcurrentSendRejected(t *testing.T) {
 }
 
 func TestAgent_Send_StartError(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5", Name: "gpt-5"})
 	a.runFn = func(_ context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error) {
 		return nil, nil, errors.New("cli not found")
 	}
@@ -249,21 +249,21 @@ func TestAgent_Send_StartError(t *testing.T) {
 }
 
 func TestAgent_ContinueReturnsError(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5", Name: "gpt-5"})
 	err := a.Continue(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not supported")
 }
 
 func TestFactory_ComposesAgentAndCursorOptions(t *testing.T) {
-	agent.RegisterFactory("cursor", Factory)
-	t.Cleanup(func() { agent.UnregisterFactory("cursor") })
+	agent.RegisterAgent("cursor", New)
+	t.Cleanup(func() { agent.UnregisterAgent("cursor") })
 
-	f, ok := agent.GetFactory("cursor")
+	f, ok := agent.GetAgent("cursor")
 	require.True(t, ok)
 
 	a := f(
-		agent.WithModelName("gpt-5"),
+		ai.Model{ID: "gpt-5", Name: "gpt-5"},
 		agent.WithMaxTurns(3),
 		WithCLIPath("/bin/cursor-agent"),
 		WithSessionID("session-xyz"),

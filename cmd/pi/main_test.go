@@ -83,7 +83,7 @@ func TestAuthProviderOrder_OpenAIUsesResponsesAPI(t *testing.T) {
 
 	p, err := create(sc)
 	require.NoError(t, err)
-	assert.Equal(t, "openai-responses", p.API())
+	assert.Equal(t, "openai-responses", p.Provider())
 }
 
 func TestParseServerTools_Empty(t *testing.T) {
@@ -142,7 +142,7 @@ func TestParseServerTools_AllRecognizedTypes(t *testing.T) {
 }
 
 func TestCreateAgent_CodexMode(t *testing.T) {
-	a, err := createAgent("codex", "gpt-5.4", 0, "", "", "")
+	a, err := createAgent("codex/gpt-5.4", 0, "", "", "")
 	require.NoError(t, err)
 	defer a.Close()
 
@@ -151,7 +151,7 @@ func TestCreateAgent_CodexMode(t *testing.T) {
 }
 
 func TestCreateAgent_CursorMode(t *testing.T) {
-	a, err := createAgent("cursor", "gpt-5", 0, "", "", "")
+	a, err := createAgent("cursor/gpt-5", 0, "", "", "")
 	require.NoError(t, err)
 	defer a.Close()
 
@@ -167,7 +167,7 @@ func TestCreateAPIAgent_CodexCLIPrefix(t *testing.T) {
 
 	p, ok := ai.GetProvider("codex-cli")
 	require.True(t, ok)
-	assert.Equal(t, "codex-cli", p.API())
+	assert.Equal(t, "codex-cli", p.Provider())
 }
 
 func TestCreateAPIAgent_CursorCLIPrefix(t *testing.T) {
@@ -178,5 +178,25 @@ func TestCreateAPIAgent_CursorCLIPrefix(t *testing.T) {
 
 	p, ok := ai.GetProvider("cursor-cli")
 	require.True(t, ok)
-	assert.Equal(t, "cursor-cli", p.API())
+	assert.Equal(t, "cursor-cli", p.Provider())
+}
+
+func TestSelectProvider_CLIPrefixes(t *testing.T) {
+	cases := []struct {
+		spec         string
+		wantProvider string
+		wantModelID  string
+	}{
+		{"claude-cli/sonnet", "claude-cli", "sonnet"},
+		{"codex-cli/gpt-5.4", "codex-cli", "gpt-5.4"},
+		{"cursor-cli/gpt-5", "cursor-cli", "gpt-5"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.spec, func(t *testing.T) {
+			p, modelID, err := selectProvider(tc.spec, "")
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantProvider, p.Provider())
+			assert.Equal(t, tc.wantModelID, modelID)
+		})
+	}
 }

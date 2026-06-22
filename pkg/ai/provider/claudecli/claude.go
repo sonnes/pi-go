@@ -123,8 +123,8 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// API returns the provider identifier used by [ai.RegisterProvider].
-func (p *Provider) API() string {
+// Provider returns the provider identifier used by [ai.RegisterProvider].
+func (p *Provider) Provider() string {
 	return "claude-cli"
 }
 
@@ -197,7 +197,10 @@ func (p *Provider) StreamText(
 			final.Usage = usage
 		}
 		if final.API == "" {
-			final.API = p.API()
+			final.API = p.Provider()
+		}
+		if final.Provider == "" {
+			final.Provider = p.Provider()
 		}
 		if final.Model == "" {
 			final.Model = cfg.model

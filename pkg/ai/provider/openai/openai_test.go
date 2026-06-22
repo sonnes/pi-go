@@ -100,8 +100,7 @@ func testModel() ai.Model {
 	return ai.Model{
 		ID:       testModelID,
 		Name:     testModelID,
-		API:      "openai-completions",
-		Provider: "openai",
+		Provider: "openai-completions",
 		Compat: aiopenai.Compat{
 			MaxTokensField:           "max_tokens",
 			SupportsTemperature:      true,

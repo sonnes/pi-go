@@ -25,10 +25,10 @@ type Agent interface {
 	Err() error
 }
 
-// Factory creates an [Agent] from options. Model and any sub-package
-// configuration flow through the [Option] stream; see [WithModel],
-// [WithModelName], and [WithExtensionMutator].
-type Factory func(opts ...Option) Agent
+// CreateFunc creates an [Agent] from a required model and options.
+// Register one under a provider/kind name with [RegisterAgent]; [Create]
+// looks it up by the spec's provider prefix.
+type CreateFunc func(model ai.Model, opts ...Option) Agent
 
 // config holds all configuration for the agent loop.
 type config struct {
@@ -46,30 +46,13 @@ type config struct {
 // Option configures an [Agent].
 type Option func(*config)
 
-// WithModel sets the full [ai.Model]. Used by [Default], which needs
-// [ai.Model.API] to route to a provider.
-func WithModel(m ai.Model) Option {
-	return func(c *config) { c.model = m }
-}
-
 // WithProvider sets the [ai.Provider] instance the agent uses for
 // inference. When set, [Default] calls the provider directly and skips
-// the global [ai.GetProvider] lookup keyed by [ai.Model.API]. This lets
+// the global [ai.GetProvider] lookup keyed by [ai.Model.Provider]. This lets
 // callers wire a provider per-agent without registering it in the
 // process-wide registry.
 func WithProvider(p ai.Provider) Option {
 	return func(c *config) { c.provider = p }
-}
-
-// WithModelName sets the model identifier as a string. Used by agents
-// that manage their own model catalog (e.g. the Claude CLI), which only
-// need a name to pass through. Sets both [ai.Model.ID] and [ai.Model.Name];
-// other fields on any previously-set [ai.Model] are preserved.
-func WithModelName(name string) Option {
-	return func(c *config) {
-		c.model.ID = name
-		c.model.Name = name
-	}
 }
 
 // WithExtension stores a sub-package configuration value under key.

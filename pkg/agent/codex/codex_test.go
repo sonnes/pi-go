@@ -80,7 +80,7 @@ func stubRunner(
 }
 
 func TestAgent_Send_SimpleText(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	_, restore := stubRunner(a, simpleTurnJSONL)
 	defer restore()
 	defer a.Close()
@@ -114,7 +114,7 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 
 func TestAgent_Send_ForwardsPromptAndOptions(t *testing.T) {
 	a := New(
-		agent.WithModelName("gpt-5.4"),
+		ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"},
 		agent.WithSystemPrompt("Be terse."),
 		WithCLIPath("/usr/local/bin/codex"),
 		WithWorkDir("/repo"),
@@ -148,7 +148,7 @@ func TestAgent_Send_ForwardsPromptAndOptions(t *testing.T) {
 }
 
 func TestAgent_Send_SecondTurnResumesSession(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	calls, restore := stubRunner(a, simpleTurnJSONL, secondTurnJSONL)
 	defer restore()
 	defer a.Close()
@@ -173,7 +173,7 @@ func TestAgent_Send_SecondTurnResumesSession(t *testing.T) {
 }
 
 func TestAgent_Send_CommandExecutionEvents(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	_, restore := stubRunner(a, commandTurnJSONL)
 	defer restore()
 	defer a.Close()
@@ -219,7 +219,7 @@ func TestAgent_Send_CommandExecutionEvents(t *testing.T) {
 }
 
 func TestAgent_Send_TodoListMessages(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	_, restore := stubRunner(a, todoTurnJSONL)
 	defer restore()
 	defer a.Close()
@@ -267,7 +267,7 @@ func TestAgent_Send_TodoListMessages(t *testing.T) {
 }
 
 func TestAgent_ConcurrentSendRejected(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	reader, writer := io.Pipe()
 	a.runFn = func(_ context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error) {
 		return reader, func() error { return nil }, nil
@@ -289,7 +289,7 @@ func TestAgent_ConcurrentSendRejected(t *testing.T) {
 }
 
 func TestAgent_Send_StartError(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	a.runFn = func(_ context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error) {
 		return nil, nil, errors.New("cli not found")
 	}
@@ -310,21 +310,21 @@ func TestAgent_Send_StartError(t *testing.T) {
 }
 
 func TestAgent_ContinueReturnsError(t *testing.T) {
-	a := New()
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	err := a.Continue(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not supported")
 }
 
 func TestFactory_ComposesAgentAndCodexOptions(t *testing.T) {
-	agent.RegisterFactory("codex", Factory)
-	t.Cleanup(func() { agent.UnregisterFactory("codex") })
+	agent.RegisterAgent("codex", New)
+	t.Cleanup(func() { agent.UnregisterAgent("codex") })
 
-	f, ok := agent.GetFactory("codex")
+	f, ok := agent.GetAgent("codex")
 	require.True(t, ok)
 
 	a := f(
-		agent.WithModelName("gpt-5.4"),
+		ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"},
 		agent.WithMaxTurns(3),
 		WithCLIPath("/bin/codex"),
 		WithSessionID("thread-xyz"),

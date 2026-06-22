@@ -8,15 +8,7 @@ import (
 // ImageProvider is an optional interface for providers that support
 // image generation.
 type ImageProvider interface {
-	GenerateImage(ctx context.Context, model Model, req *ImageRequest) (*ImageResponse, error)
-}
-
-// ImageRequest holds inputs for image generation.
-type ImageRequest struct {
-	Prompt  string
-	Size    string // e.g. "1024x1024"
-	N       int    // number of images to generate
-	Options StreamOptions
+	GenerateImage(ctx context.Context, model Model, p Prompt, opts StreamOptions) (*ImageResponse, error)
 }
 
 // ImageResponse contains the generated images.
@@ -31,20 +23,18 @@ type GeneratedImage struct {
 	URL       string
 }
 
-// GenerateImage generates images from a text prompt.
-func GenerateImage(ctx context.Context, model Model, prompt string, opts ...Option) (*ImageResponse, error) {
-	p, ok := GetProvider(model.API)
+// generateImage generates images from a resolved model. The exported,
+// spec-based entry point is [GenerateImage].
+func generateImage(ctx context.Context, model Model, p Prompt, opts ...Option) (*ImageResponse, error) {
+	prov, ok := GetProvider(model.Provider)
 	if !ok {
-		return nil, fmt.Errorf("ai: no provider registered for API %q", model.API)
+		return nil, fmt.Errorf("ai: no provider registered for %q", model.Provider)
 	}
-	ip, ok := p.(ImageProvider)
+	ip, ok := prov.(ImageProvider)
 	if !ok {
-		return nil, fmt.Errorf("ai: provider for API %q does not support image generation", model.API)
+		return nil, fmt.Errorf("ai: provider %q does not support image generation", model.Provider)
 	}
 
 	o := ApplyOptions(opts)
-	return ip.GenerateImage(ctx, model, &ImageRequest{
-		Prompt:  prompt,
-		Options: o,
-	})
+	return ip.GenerateImage(ctx, model, p, o)
 }

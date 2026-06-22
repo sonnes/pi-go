@@ -96,7 +96,7 @@ func TestProvider_ImplementsInterfaces(t *testing.T) {
 
 func TestProvider_API(t *testing.T) {
 	p := New()
-	assert.Equal(t, "claude-cli", p.API())
+	assert.Equal(t, "claude-cli", p.Provider())
 }
 
 // --- StreamText ---
@@ -136,6 +136,7 @@ func TestStreamText_SimpleText(t *testing.T) {
 	assert.Equal(t, "Hello!", last.Message.Text())
 	assert.Equal(t, 10, last.Message.Usage.Input)
 	assert.Equal(t, 5, last.Message.Usage.Output)
+	assert.Equal(t, "claude-cli", last.Message.Provider, "assistant message is tagged with its provider")
 }
 
 func TestStreamText_ResultPath(t *testing.T) {
@@ -414,10 +415,12 @@ func TestGenerateObject_ViaGenericHelper(t *testing.T) {
 
 	ai.RegisterProvider("claude-cli-test", p)
 	defer ai.UnregisterProvider("claude-cli-test")
+	ai.RegisterModel(ai.Model{Provider: "claude-cli-test", ID: "obj"})
+	defer ai.UnregisterModel("claude-cli-test/obj")
 
 	result, err := ai.GenerateObject[user](
 		context.Background(),
-		ai.Model{API: "claude-cli-test"},
+		"claude-cli-test/obj",
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("give me a user")}},
 	)
 	require.NoError(t, err)

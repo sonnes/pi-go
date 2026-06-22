@@ -50,7 +50,7 @@ const codexDefaultInstructions = "You are a helpful coding assistant."
 
 // Provider implements [ai.Provider] for OpenAI's Responses API.
 //
-// Two providers may share the same [Provider.API] identifier
+// Two providers may share the same [Provider.Provider] identifier
 // ("openai-responses") when one targets OpenAI and another targets
 // OpenRouter via [DialectOpenRouter]. Callers must bind a specific provider
 // per agent (e.g. `agent.WithProvider(p)`) rather than relying on
@@ -98,10 +98,10 @@ func NewForCodex(opts ...option.RequestOption) *Provider {
 	return p
 }
 
-// API returns the provider API identifier. Both dialects share the same ID;
+// Provider returns the provider API identifier. Both dialects share the same ID;
 // callers bind a specific provider per agent rather than via global registry
 // lookup.
-func (p *Provider) API() string {
+func (p *Provider) Provider() string {
 	return "openai-responses"
 }
 

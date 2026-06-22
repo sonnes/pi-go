@@ -81,7 +81,7 @@ func TestStreamText_UnregisteredProvider(t *testing.T) {
 	ai.ClearProviders()
 	defer ai.ClearProviders()
 
-	model := ai.Model{API: "nonexistent"}
+	model := ai.Model{Provider: "nonexistent"}
 	_, err := ai.StreamText(
 		context.Background(),
 		model,
@@ -109,7 +109,7 @@ func TestGenerateText_WithFakeProvider(t *testing.T) {
 
 	msg, err := ai.GenerateText(
 		context.Background(),
-		ai.Model{API: "fake"},
+		ai.Model{Provider: "fake"},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 	)
 	require.NoError(t, err)

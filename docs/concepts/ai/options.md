@@ -34,9 +34,13 @@ For models that support extended reasoning, `WithThinking` sets the thinking dep
 
 See [Prompt Caching](/concepts/ai/caching) for the placement strategy and per-provider behavior.
 
+## Image options
+
+`WithImageSize` (e.g. `"1024x1024"`) and `WithImageCount` configure `ai.GenerateImage`. They ride on the same `StreamOptions` as every other option and are ignored by text and object calls. Providers map them to their own image APIs — OpenAI Images uses `size` and `n` directly; Imagen translates the size to an aspect ratio and uses the count as the number of images. An unsupported size falls back to a provider default.
+
 ## Available options
 
-`WithTemperature`, `WithMaxTokens`, `WithThinking`, `WithToolChoice`, `WithCacheRetention`, `WithSessionID`, `WithHeaders`, `WithMetadata`. See GoDoc for signatures.
+`WithTemperature`, `WithMaxTokens`, `WithThinking`, `WithToolChoice`, `WithCacheRetention`, `WithSessionID`, `WithHeaders`, `WithMetadata`, `WithImageSize`, `WithImageCount`. See GoDoc for signatures.
 
 ## Related
 

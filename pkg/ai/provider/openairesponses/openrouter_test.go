@@ -85,8 +85,7 @@ func openRouterModel(id string) ai.Model {
 	return ai.Model{
 		ID:       id,
 		Name:     id,
-		API:      "openai-responses",
-		Provider: "openrouter",
+		Provider: "openai-responses",
 	}
 }
 

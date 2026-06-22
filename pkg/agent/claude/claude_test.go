@@ -114,7 +114,7 @@ func newTestAgent(
 ) (*Agent, *fakeTransport) {
 	t.Helper()
 	ft := newFakeTransport()
-	a := New()
+	a := New(ai.Model{})
 	a.newTransport = func(ctx context.Context, cfg config) (transportIface, error) {
 		if startErr != nil {
 			return nil, startErr
@@ -320,7 +320,7 @@ func TestAgent_Send_StartError(t *testing.T) {
 }
 
 func TestAgent_Continue_ReturnsError(t *testing.T) {
-	a := New()
+	a := New(ai.Model{})
 	err := a.Continue(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not supported")
@@ -424,7 +424,7 @@ func TestAgent_Send_TwoTurnsReuseTransport(t *testing.T) {
 `
 	ft := newFakeTransport()
 	var factoryCalls int
-	a := New()
+	a := New(ai.Model{})
 	a.newTransport = func(ctx context.Context, cfg config) (transportIface, error) {
 		factoryCalls++
 		return ft, nil
@@ -498,7 +498,7 @@ func TestSessionLifecycle_TwoSendsThenClose(t *testing.T) {
 {"type":"result","subtype":"success","result":"ok"}
 `
 	ft := newFakeTransport()
-	a := New()
+	a := New(ai.Model{})
 	a.newTransport = func(ctx context.Context, cfg config) (transportIface, error) {
 		return ft, nil
 	}

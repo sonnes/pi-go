@@ -34,22 +34,23 @@ type ObjectResult[T any] struct {
 	Usage  Usage
 }
 
-// GenerateObject generates a typed object. T must be JSON-deserializable.
-func GenerateObject[T any](
+// generateObject generates a typed object from a resolved model. T must be
+// JSON-deserializable. The exported, spec-based entry point is [GenerateObject].
+func generateObject[T any](
 	ctx context.Context,
 	model Model,
 	p Prompt,
 	opts ...Option,
 ) (*ObjectResult[T], error) {
-	prov, ok := GetProvider(model.API)
+	prov, ok := GetProvider(model.Provider)
 	if !ok {
-		return nil, fmt.Errorf("ai: no provider registered for API %q", model.API)
+		return nil, fmt.Errorf("ai: no provider registered for %q", model.Provider)
 	}
 	op, ok := prov.(ObjectProvider)
 	if !ok {
 		return nil, fmt.Errorf(
-			"ai: provider for API %q does not support object generation",
-			model.API,
+			"ai: provider %q does not support object generation",
+			model.Provider,
 		)
 	}
 

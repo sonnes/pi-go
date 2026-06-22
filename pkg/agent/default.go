@@ -53,10 +53,9 @@ type Default struct {
 
 var _ Agent = (*Default)(nil)
 
-// New creates a new [Default] agent. Configure it via options — at
-// minimum [WithModel] must be supplied before the first [Default.Send].
-func New(opts ...Option) *Default {
-	c := config{}
+// New creates a new [Default] agent for model, configured via options.
+func New(model ai.Model, opts ...Option) *Default {
+	c := config{model: model}
 	for _, opt := range opts {
 		opt(&c)
 	}
@@ -195,8 +194,8 @@ func (a *Default) Err() error {
 // runs and set up initial state, then launches the loop in a goroutine
 // that publishes events to the agent's broker.
 func (a *Default) run(ctx context.Context, newMsgs []Message) error {
-	if a.config.provider == nil && a.config.model.API == "" {
-		return errors.New("agent: no model configured; use WithModel or WithProvider")
+	if a.config.provider == nil && a.config.model.Provider == "" {
+		return errors.New("agent: no model configured; pass a model or use WithProvider")
 	}
 
 	a.mu.Lock()
@@ -405,7 +404,7 @@ func filterFunctionCalls(calls []ai.ToolCall) []ai.ToolCall {
 
 // streamText dispatches to the provider bound with [WithProvider] when
 // set, otherwise falls back to [ai.StreamText] which looks up the
-// provider in the global registry by [ai.Model.API].
+// provider in the global registry by [ai.Model.Provider].
 func (a *Default) streamText(ctx context.Context, p ai.Prompt) *ai.EventStream {
 	if a.config.provider != nil {
 		return a.config.provider.StreamText(

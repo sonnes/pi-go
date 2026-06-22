@@ -64,7 +64,7 @@ func TestProvider_ImplementsProvider(t *testing.T) {
 
 func TestProvider_API(t *testing.T) {
 	p := New()
-	assert.Equal(t, "cursor-cli", p.API())
+	assert.Equal(t, "cursor-cli", p.Provider())
 }
 
 func TestStreamText_SimpleText(t *testing.T) {

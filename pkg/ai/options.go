@@ -105,6 +105,8 @@ type StreamOptions struct {
 	SessionID      string
 	Headers        map[string]string
 	Metadata       map[string]any
+	ImageSize      string
+	ImageCount     int
 }
 
 // ToolChoice controls tool selection behavior.
@@ -166,6 +168,18 @@ func WithHeaders(h map[string]string) Option {
 // WithMetadata sets provider-specific metadata.
 func WithMetadata(m map[string]any) Option {
 	return func(o *StreamOptions) { o.Metadata = m }
+}
+
+// WithImageSize sets the desired image dimensions (e.g. "1024x1024") for image
+// generation. Providers that don't support the value ignore it.
+func WithImageSize(size string) Option {
+	return func(o *StreamOptions) { o.ImageSize = size }
+}
+
+// WithImageCount sets the number of images to generate. A value <= 0 means the
+// provider default (one image).
+func WithImageCount(n int) Option {
+	return func(o *StreamOptions) { o.ImageCount = n }
 }
 
 // ApplyOptions builds a [StreamOptions] from the given option functions.
