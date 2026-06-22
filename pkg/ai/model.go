@@ -23,7 +23,6 @@ type Model struct {
 	ID               string            `json:"id"`
 	Name             string            `json:"name"`
 	Aliases          []string          `json:"aliases,omitempty"`
-	API              string            `json:"api"`
 	Provider         string            `json:"provider"`
 	BaseURL          string            `json:"base_url,omitempty"`
 	Reasoning        bool              `json:"reasoning,omitempty"`

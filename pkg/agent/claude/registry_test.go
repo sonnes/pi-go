@@ -14,17 +14,17 @@ import (
 // pkg/agent package stays decoupled from concrete implementations.
 func registerForTest(t *testing.T) {
 	t.Helper()
-	agent.RegisterFactory("claude", Factory)
-	t.Cleanup(func() { agent.UnregisterFactory("claude") })
+	agent.RegisterAgent("claude", New)
+	t.Cleanup(func() { agent.UnregisterAgent("claude") })
 }
 
 func TestClaudeFactory_Registered(t *testing.T) {
 	registerForTest(t)
 
-	f, ok := agent.GetFactory("claude")
+	f, ok := agent.GetAgent("claude")
 	require.True(t, ok)
 
-	a := f(agent.WithModelName("sonnet"))
+	a := f(ai.Model{ID: "sonnet", Name: "sonnet"})
 	require.NotNil(t, a)
 
 	ca, ok := a.(*Agent)
@@ -32,24 +32,24 @@ func TestClaudeFactory_Registered(t *testing.T) {
 	assert.Equal(t, "sonnet", ca.cfg.model)
 }
 
-func TestClaudeFactory_IgnoresModelID(t *testing.T) {
+func TestClaudeFactory_UsesModelID(t *testing.T) {
 	registerForTest(t)
 
-	// The factory only consumes Model.Name (set by agent.WithModelName);
-	// a Model with only ID populated is ignored so the CLI picks its default.
-	f, _ := agent.GetFactory("claude")
-	a := f(agent.WithModel(ai.Model{ID: "claude-sonnet-4-5"}))
+	// The CLI agent uses Model.Name, falling back to Model.ID when Name
+	// is empty, as the model name it forwards to the subprocess.
+	f, _ := agent.GetAgent("claude")
+	a := f(ai.Model{ID: "claude-sonnet-4-5"})
 	ca := a.(*Agent)
-	assert.Empty(t, ca.cfg.model)
+	assert.Equal(t, "claude-sonnet-4-5", ca.cfg.model)
 }
 
 func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
 	registerForTest(t)
 
 	// Agent-level and claude-specific options flow through a single slice.
-	f, _ := agent.GetFactory("claude")
+	f, _ := agent.GetAgent("claude")
 	a := f(
-		agent.WithModelName("sonnet"),
+		ai.Model{ID: "sonnet", Name: "sonnet"},
 		agent.WithMaxTurns(7),
 		WithCLIPath("/usr/local/bin/claude"),
 		WithAllowedTools("Read", "Edit"),
@@ -71,8 +71,8 @@ func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
 func TestClaudeFactory_ConsumesTopLevelSystemPrompt(t *testing.T) {
 	registerForTest(t)
 
-	f, _ := agent.GetFactory("claude")
-	a := f(agent.WithSystemPrompt("You are a helper.\n\nBe concise."))
+	f, _ := agent.GetAgent("claude")
+	a := f(ai.Model{}, agent.WithSystemPrompt("You are a helper.\n\nBe concise."))
 	ca := a.(*Agent)
 
 	assert.Equal(t, "You are a helper.\n\nBe concise.", ca.cfg.systemPrompt)

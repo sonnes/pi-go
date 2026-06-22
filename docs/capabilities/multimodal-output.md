@@ -8,7 +8,7 @@ read_when:
 
 # Multimodal Output
 
-pi-go exposes image generation through the optional [`ImageProvider`](../../pkg/ai/image.go) capability interface. There is no `AudioProvider` interface — TTS is unimplemented.
+pi-go exposes image generation through the optional [`ImageProvider`](../../pkg/ai/image.go) capability interface. The entry point [`ai.GenerateImage`](../../pkg/ai/generate.go) resolves a `"<provider>/<model>"` spec and takes a `Prompt`, mirroring [`ai.Generate`](../../pkg/ai/generate.go); set dimensions and image count with `WithImageSize` / `WithImageCount`. There is no `AudioProvider` interface — TTS is unimplemented.
 
 ## Image Generation
 
@@ -48,6 +48,6 @@ pi-go exposes image generation through the optional [`ImageProvider`](../../pkg/
 
 - **OpenAI Responses inline `image_generation`** not wired — would let one agentic call return both text and an image alongside other tool use.
 - **Imagen 4 / 5** not surfaced in the Google provider.
-- **Quality / style / response_format** options on OpenAI Images are not plumbed through `ImageRequest.Options`.
+- **Quality / style / response_format** options on OpenAI Images are not wired — only `WithImageSize` and `WithImageCount` reach the provider.
 - **No `AudioProvider` interface**, no audio output content variant, no streaming audio frame consumer.
 - Anthropic image generation depends on [MCP](server-tools.md#mcp-connectors), which is also missing.

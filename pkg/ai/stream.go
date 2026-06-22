@@ -86,9 +86,9 @@ func (s *EventStream) Result() (*Message, error) {
 
 // StreamText streams a text response from the model.
 func StreamText(ctx context.Context, model Model, p Prompt, opts ...Option) *EventStream {
-	prov, ok := GetProvider(model.API)
+	prov, ok := GetProvider(model.Provider)
 	if !ok {
-		return errStream(fmt.Errorf("ai: no provider registered for API %q", model.API))
+		return errStream(fmt.Errorf("ai: no provider registered for %q", model.Provider))
 	}
 	o := ApplyOptions(opts)
 	return prov.StreamText(ctx, model, p, o)

@@ -14,7 +14,7 @@ pi-go represents server tools as a variant of [`ai.ToolInfo`](../../pkg/ai/tool.
 
 ```go
 agent.New(
-    agent.WithModel(model),
+    model,
     agent.WithTools(
         ai.DefineServerTool(ai.ToolInfo{
             ServerType: ai.ServerToolWebSearch,

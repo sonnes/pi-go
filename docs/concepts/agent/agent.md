@@ -12,17 +12,17 @@ The agent manages an agentic conversation loop: prompt assembly → model infere
 
 ## Construction
 
-`New(opts ...Option)` applies functional options and returns `*Default`, which satisfies the `Agent` interface. Configuration is frozen at construction — the agent is immutable after creation. Runtime state is tracked separately via [Agent State](/concepts/agent/agent-state).
+`New(model ai.Model, opts ...Option)` takes the model as a required argument, applies functional options, and returns `*Default`, which satisfies the `Agent` interface. Configuration is frozen at construction — the agent is immutable after creation. Runtime state is tracked separately via [Agent State](/concepts/agent/agent-state).
 
-Model routing has two paths. `WithModel(ai.Model)` sets a full model; `Default` then looks up the provider in the global `ai` registry by `Model.API`. `WithProvider(ai.Provider)` binds a provider instance directly and skips the global lookup — useful when callers want per-agent provider wiring without mutating the process-wide registry. `WithModelName(string)` sets only the ID/Name fields; it exists for agents that manage their own model catalog (e.g. the Claude CLI subprocess agent) and don't need the full `ai.Model` metadata. At least one of model-with-API or provider must be set before the first `Send`, or the agent returns a clear error.
+`Default` resolves the provider from the global `ai` registry by `Model.Provider` at call time. `WithProvider(ai.Provider)` binds a provider instance directly and skips the global lookup — useful when callers want per-agent provider wiring without mutating the process-wide registry. CLI subprocess agents (e.g. the Claude agent) ignore most model metadata and use only `Model.Name` (falling back to `Model.ID`) as the model name they pass to their CLI. A zero model with no bound provider still errors at the first `Send`.
 
 ## Design decisions
 
-**Model flows through options.** `New` takes no positional arguments; everything — model, tools, hooks — is an option. This keeps the constructor signature stable as new configuration surfaces land, and lets a single `agent.Factory` type (`func(opts ...Option) Agent`) cover every implementation uniformly. The tradeoff is that missing-model misconfiguration is caught at first `Send` rather than at compile time. The error message points users to `WithModel` or `WithProvider`.
+**Model is required; everything else is an option.** `New` takes the model as its first positional argument and the rest — tools, hooks, system prompt — as functional options. Making the model required moves missing-model errors to compile time and matches `ai.GenerateText`, which also takes the model positionally. The uniform constructor shape is captured by `CreateFunc` (`func(model ai.Model, opts ...Option) Agent`), which every implementation satisfies.
 
 **Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, `WithHook` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...Message` — both `LLMMessage` and custom messages. See [Agent Messages](/concepts/agent/messages).
 
-**Extension mechanism for sub-packages.** `WithExtension(key, value)` and `WithExtensionMutator(key, mutate)` let sub-packages (e.g. `pkg/agent/claude`) carry their own configuration through the unified `Option` stream. Each sub-package writes to `Config.Extensions[key]` using the package name as the key, and its factory reads the same slot. This is how a single call like `f(agent.WithModelName("sonnet"), claude.WithCLIPath("/x"))` composes agent-level and sub-package options without collisions.
+**Extension mechanism for sub-packages.** `WithExtension(key, value)` and `WithExtensionMutator(key, mutate)` let sub-packages (e.g. `pkg/agent/claude`) carry their own configuration through the unified `Option` stream. Each sub-package writes to `Config.Extensions[key]` using the package name as the key, and its create func reads the same slot. This is how a single call like `f(ai.Model{Name: "sonnet"}, claude.WithCLIPath("/x"))` composes the model, agent-level options, and sub-package options without collisions.
 
 **Immutable config, mutable state.** Construction parameters never change after `New`. Runtime state (messages, running status, last error) evolves during runs and is observable via `Messages()`, `IsRunning()`, and `Err()`. This separation makes it safe to read state from any goroutine without worrying about config mutations.
 
@@ -62,15 +62,16 @@ Design:
 
 `Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. The interface embeds `pubsub.Subscriber[Event]` so consumers can subscribe to events. It includes `Wait()` for blocking completion, plus `Messages()`, `IsRunning()`, and `Err()` for state observation. `Default` is the standard implementation.
 
-## Factory registry
+## Agent registry
 
-`Factory` (`func(opts ...Option) Agent`) is the uniform constructor signature for every agent implementation. The `pkg/agent` package provides a string-keyed registry of factories — `RegisterFactory(name, Factory)`, `GetFactory(name)`, `Factories()`, `UnregisterFactory(name)` — mirroring the `ai.Provider` registry pattern. This lets callers wire agents by name (e.g. `pi chat --agent=claude`) without importing every implementation directly.
+`pkg/agent` keeps a string-keyed registry of agent constructors so callers can create an agent by name without importing every implementation. `Create` is the front door: it takes a `"<provider>/<model>"` spec, routes on the provider prefix to a registered constructor, resolves the model, and returns the agent. This is how the CLI selects an agent from a single `--model` flag (e.g. `pi --model claude/sonnet`).
 
 Design:
 
-- **Explicit registration, no init().** Concrete implementations expose their factory as a public symbol (`claude.Factory`) and callers register it at startup with `agent.RegisterFactory("claude", claude.Factory)`. No `init()` side effects — keeps `pkg/agent` decoupled from concrete implementations.
-- **Convention: registry name == extension key == sub-package name.** By using the same string for both the factory registry key and the `Config.Extensions` map key, key collisions are avoidable by construction and factories are easy to find.
-- **Unified option stream.** Because `Factory` takes `...Option`, agent-level options and sub-package options are both `agent.Option` values and pass through the same slice. Sub-packages use `WithExtensionMutator` to layer their config onto the shared `Config.Extensions` map.
+- **Register `New` directly.** `RegisterAgent` is generic over the concrete return type, so a package's constructor registers with no adapter or exported factory var: `agent.RegisterAgent("claude", claude.New)`. Lookups go through `GetAgent`/`Agents`; the stored, type-erased shape is `CreateFunc`. No `init()` side effects — `pkg/agent` stays decoupled from concrete implementations.
+- **Prefix routes the kind.** `Create("claude/sonnet")` routes to the `claude` constructor (using `sonnet` as the model name); any unregistered prefix — e.g. `Create("anthropic-messages/claude-sonnet-4-6")` — falls back to the `Default` agent and resolves the model spec through the `ai` registry.
+- **Convention: registry name == extension key == sub-package name.** The same string keys the agent registry and the `Config.Extensions` map, so collisions are avoidable by construction and create funcs are easy to find.
+- **Agent-managed models.** `RegisterModel`/`ResolveModel`/`Models` hold models that live outside the `ai` registry — the CLI kinds, keyed `"<kind>/<id>"` (e.g. `"claude/sonnet"`) — mirroring the `ai` model registry.
 
 ## System prompt
 

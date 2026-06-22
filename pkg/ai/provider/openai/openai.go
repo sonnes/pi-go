@@ -39,8 +39,8 @@ func New(opts ...option.RequestOption) *Provider {
 	return &Provider{client: &client}
 }
 
-// API returns the provider API identifier.
-func (p *Provider) API() string {
+// Provider returns the provider API identifier.
+func (p *Provider) Provider() string {
 	return "openai-completions"
 }
 
@@ -465,12 +465,15 @@ func (p *Provider) GenerateObject(
 func (p *Provider) GenerateImage(
 	ctx context.Context,
 	model ai.Model,
-	req *ai.ImageRequest,
+	prompt ai.Prompt,
+	opts ai.StreamOptions,
 ) (*ai.ImageResponse, error) {
+	text := prompt.Text()
+
 	log.Debug(
 		"[OPENAI] generating image",
 		"model", model.ID,
-		"prompt", req.Prompt,
+		"prompt", text,
 	)
 
 	modelID := model.ID
@@ -478,20 +481,20 @@ func (p *Provider) GenerateImage(
 		modelID = "dall-e-3"
 	}
 
-	n := req.N
+	n := opts.ImageCount
 	if n <= 0 {
 		n = 1
 	}
 
 	params := openai.ImageGenerateParams{
-		Prompt:         req.Prompt,
+		Prompt:         text,
 		Model:          modelID,
 		N:              param.NewOpt(int64(n)),
 		ResponseFormat: openai.ImageGenerateParamsResponseFormatB64JSON,
 	}
 
-	if req.Size != "" {
-		params.Size = openai.ImageGenerateParamsSize(req.Size)
+	if opts.ImageSize != "" {
+		params.Size = openai.ImageGenerateParamsSize(opts.ImageSize)
 	}
 
 	resp, err := p.client.Images.Generate(ctx, params)

@@ -44,14 +44,9 @@ func main() {
 		Usage: "Test-drive the pi-go agent SDK",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "agent",
-				Value: "claude",
-				Usage: "Agent mode: claude, codex, cursor, or api",
-			},
-			&cli.StringFlag{
 				Name:  "model",
-				Value: "claude-sonnet-4-20250514",
-				Usage: "Model ID",
+				Value: "claude/sonnet",
+				Usage: "Model spec. A 'claude/', 'codex/', or 'cursor/' prefix routes to that CLI subprocess agent; 'claude-cli/', 'codex-cli/', 'cursor-cli/' select the matching stateless CLI provider in api mode; anything else is sent verbatim as the model ID in api mode, with the provider auto-detected (or set via --provider)",
 			},
 			&cli.IntFlag{
 				Name:  "turns",
@@ -75,6 +70,7 @@ func main() {
 		Commands: []*cli.Command{
 			loginCommand(),
 			logoutCommand(),
+			objectCommand(),
 		},
 	}
 
@@ -85,14 +81,13 @@ func main() {
 }
 
 func run(ctx context.Context, cmd *cli.Command) error {
-	mode := cmd.String("agent")
 	model := cmd.String("model")
 	turns := int(cmd.Int("turns"))
 	tools := cmd.String("tools")
 	serverTools := cmd.String("server-tools")
 	provider := cmd.String("provider")
 
-	a, err := createAgent(mode, model, turns, tools, serverTools, provider)
+	a, err := createAgent(model, turns, tools, serverTools, provider)
 	if err != nil {
 		return err
 	}
@@ -137,18 +132,24 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	return scanner.Err()
 }
 
-func createAgent(mode, model string, turns int, tools, serverTools, provider string) (agent.Agent, error) {
-	switch mode {
-	case "claude":
-		return createClaudeAgent(model, turns, tools), nil
-	case "codex":
-		return createCodexAgent(model, turns), nil
-	case "cursor":
-		return createCursorAgent(model, turns), nil
-	case "api":
-		return createAPIAgent(model, turns, serverTools, provider)
+func createAgent(model string, turns int, tools, serverTools, provider string) (agent.Agent, error) {
+	agent.RegisterAgent("claude", claude.New)
+	agent.RegisterAgent("codex", codexagent.New)
+	agent.RegisterAgent("cursor", cursoragent.New)
+
+	kind, _, _ := strings.Cut(model, "/")
+	switch kind {
+	case "claude", "codex", "cursor":
+		opts := []agent.Option{}
+		if turns > 0 {
+			opts = append(opts, agent.WithMaxTurns(turns))
+		}
+		if kind == "claude" && tools != "" {
+			opts = append(opts, claude.WithAllowedTools(strings.Split(tools, ",")...))
+		}
+		return agent.Create(model, opts...)
 	default:
-		return nil, fmt.Errorf("unknown agent mode: %s (use claude, codex, cursor, or api)", mode)
+		return createAPIAgent(model, turns, serverTools, provider)
 	}
 }
 
@@ -187,49 +188,16 @@ func parseServerTools(spec string) ([]ai.Tool, error) {
 	return tools, nil
 }
 
-func createClaudeAgent(model string, turns int, tools string) agent.Agent {
-	opts := []agent.Option{
-		agent.WithModelName(model),
-	}
-	if turns > 0 {
-		opts = append(opts, agent.WithMaxTurns(turns))
-	}
-	if tools != "" {
-		opts = append(opts, claude.WithAllowedTools(strings.Split(tools, ",")...))
-	}
-	return claude.New(opts...)
-}
-
-func createCodexAgent(model string, turns int) agent.Agent {
-	opts := []agent.Option{
-		agent.WithModelName(model),
-	}
-	if turns > 0 {
-		opts = append(opts, agent.WithMaxTurns(turns))
-	}
-	return codexagent.New(opts...)
-}
-
-func createCursorAgent(model string, turns int) agent.Agent {
-	opts := []agent.Option{
-		agent.WithModelName(model),
-	}
-	if turns > 0 {
-		opts = append(opts, agent.WithMaxTurns(turns))
-	}
-	return cursoragent.New(opts...)
-}
-
 // claudeCLIModelPrefix selects the stateless claude-cli provider in
-// api mode. Example: --agent api --model claude-cli/sonnet
+// api mode. Example: --model claude-cli/sonnet
 const claudeCLIModelPrefix = "claude-cli/"
 
 // codexCLIModelPrefix selects the stateless codex-cli provider in api mode.
-// Example: --agent api --model codex-cli/gpt-5.4
+// Example: --model codex-cli/gpt-5.4
 const codexCLIModelPrefix = "codex-cli/"
 
 // cursorCLIModelPrefix selects the stateless cursor-cli provider in api mode.
-// Example: --agent api --model cursor-cli/gpt-5
+// Example: --model cursor-cli/gpt-5
 const cursorCLIModelPrefix = "cursor-cli/"
 
 // openAICodexBaseURL is the ChatGPT/Codex Responses API mount. ChatGPT
@@ -371,46 +339,46 @@ var providers = []providerEntry{
 	},
 }
 
-func createAPIAgent(model string, turns int, serverToolsSpec, providerHint string) (agent.Agent, error) {
-	var (
-		p    ai.Provider
-		name string
-	)
-
+// selectProvider resolves a model spec to a provider and the bare model ID.
+// A "claude-cli/", "codex-cli/", or "cursor-cli/" prefix picks the matching
+// stateless CLI provider; anything else is auto-detected from credentials
+// (or forced via providerHint), and the spec is used verbatim as the model ID.
+func selectProvider(model, providerHint string) (ai.Provider, string, error) {
 	if rest, ok := strings.CutPrefix(model, claudeCLIModelPrefix); ok {
-		model = rest
-		p = claudeprov.New(claudeprov.WithModel(model))
-		name = "claude-cli"
 		fmt.Fprintln(os.Stderr, "[provider: claude-cli via subprocess]")
-	} else if rest, ok := strings.CutPrefix(model, codexCLIModelPrefix); ok {
-		model = rest
-		p = codexprov.New(codexprov.WithModel(model))
-		name = "codex-cli"
+		return claudeprov.New(claudeprov.WithModel(rest)), rest, nil
+	}
+	if rest, ok := strings.CutPrefix(model, codexCLIModelPrefix); ok {
 		fmt.Fprintln(os.Stderr, "[provider: codex-cli via subprocess]")
-	} else if rest, ok := strings.CutPrefix(model, cursorCLIModelPrefix); ok {
-		model = rest
-		p = cursorprov.New(cursorprov.WithModel(model))
-		name = "cursor-cli"
+		return codexprov.New(codexprov.WithModel(rest)), rest, nil
+	}
+	if rest, ok := strings.CutPrefix(model, cursorCLIModelPrefix); ok {
 		fmt.Fprintln(os.Stderr, "[provider: cursor-cli via subprocess]")
-	} else {
-		detected, detectedName, err := detectProvider(providerHint)
-		if err != nil {
-			return nil, err
-		}
-		p = detected
-		name = detectedName
+		return cursorprov.New(cursorprov.WithModel(rest)), rest, nil
 	}
 
-	ai.RegisterProvider(p.API(), p)
+	p, _, err := detectProvider(providerHint)
+	if err != nil {
+		return nil, "", err
+	}
+	return p, model, nil
+}
+
+func createAPIAgent(model string, turns int, serverToolsSpec, providerHint string) (agent.Agent, error) {
+	p, modelID, err := selectProvider(model, providerHint)
+	if err != nil {
+		return nil, err
+	}
+
+	ai.RegisterProvider(p.Provider(), p)
 
 	m := ai.Model{
-		ID:       model,
-		Name:     model,
-		API:      p.API(),
-		Provider: name,
+		ID:       modelID,
+		Name:     modelID,
+		Provider: p.Provider(),
 	}
 
-	opts := []agent.Option{agent.WithModel(m)}
+	var opts []agent.Option
 	if turns > 0 {
 		opts = append(opts, agent.WithMaxTurns(turns))
 	}
@@ -424,7 +392,7 @@ func createAPIAgent(model string, turns int, serverToolsSpec, providerHint strin
 		fmt.Fprintf(os.Stderr, "[server tools: %s]\n", serverToolsSpec)
 	}
 
-	return agent.New(opts...), nil
+	return agent.New(m, opts...), nil
 }
 
 // isAnthropicOAuthToken reports whether token is an Anthropic OAuth

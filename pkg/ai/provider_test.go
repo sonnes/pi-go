@@ -23,7 +23,7 @@ func TestProviderRegistry(t *testing.T) {
 
 	got, ok := ai.GetProvider("test-api")
 	require.True(t, ok)
-	assert.Equal(t, "test-api", got.API())
+	assert.Equal(t, "test-api", got.Provider())
 
 	all := ai.Providers()
 	assert.Len(t, all, 1)
@@ -39,7 +39,7 @@ type fakeProvider struct {
 	message *ai.Message
 }
 
-func (f *fakeProvider) API() string { return f.api }
+func (f *fakeProvider) Provider() string { return f.api }
 
 func (f *fakeProvider) StreamText(
 	_ context.Context,

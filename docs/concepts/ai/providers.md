@@ -12,9 +12,9 @@ A `Provider` implements the transport layer between the SDK and an AI service.
 
 ## Design: registry + small interface
 
-Providers register themselves by API identifier (e.g. `"anthropic"`, `"openai"`). A model's `API` field determines which provider handles it at call time. This decouples model definitions from provider implementations — you can define models in config files without importing provider packages.
+Providers register themselves by provider id (e.g. `"anthropic-messages"`, `"openai-completions"`). A model's `Provider` field determines which provider handles it at call time. This decouples model definitions from provider implementations — you can define models without importing provider packages.
 
-The core interface is intentionally small: `API()` for identification and `StreamText()` for execution. Everything goes through streaming — `GenerateText` is built on top by collecting the stream.
+The core interface is intentionally small: `Provider()` for identification and `StreamText()` for execution. Everything goes through streaming — `GenerateText` is built on top by collecting the stream.
 
 ## Optional capabilities
 
@@ -22,15 +22,15 @@ Providers can optionally implement `ImageProvider` (image generation) or `Object
 
 ## Registry
 
-The registry is global, thread-safe, and typically populated at init time via `RegisterProvider`. `ClearProviders()` is available for test isolation.
+`Registry` holds both providers (keyed by the id from `Provider.Provider()`) and models (keyed by their `"<provider>/<id>"` spec — see [Models](/concepts/ai/models)). A package-level default registry backs the top-level `RegisterProvider`/`GetProvider`/`RegisterModel`/`ResolveModel` functions and is typically populated at init time; `NewRegistry()` creates isolated instances for tests. `ClearProviders()` and `ClearModels()` reset the default registry.
 
 ## How models find providers
 
-A model's `API` field is looked up in the registry. If no provider is registered for that API, an error is returned immediately — no fallback or guessing.
+A model's `Provider` field is looked up in the registry. If no provider is registered for that id, an error is returned immediately — no fallback or guessing.
 
 ## Built-in providers
 
-| Package                              | API                      | Service                    |
+| Package                              | Provider ID              | Service                    |
 | ------------------------------------ | ------------------------ | -------------------------- |
 | `pkg/ai/provider/anthropic`         | `"anthropic-messages"`   | Anthropic Messages API     |
 | `pkg/ai/provider/openai`            | `"openai-completions"`   | OpenAI Chat Completions    |

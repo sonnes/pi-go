@@ -69,30 +69,19 @@ type turnResult struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// Factory is the [agent.Factory] for the Claude CLI agent. Register it
-// once at startup with [agent.RegisterFactory]:
-//
-//	agent.RegisterFactory("claude", claude.Factory)
-//
-// Callers then construct a Claude agent via [agent.GetFactory]. The
-// factory consumes [agent.WithModelName] (string only — the CLI owns
-// its model catalog) and any claude-specific options such as
-// [WithCLIPath], [WithAllowedTools], or [WithSessionID].
-var Factory agent.Factory = func(opts ...agent.Option) agent.Agent {
-	return newFromConfig(agent.ApplyOptions(opts...))
-}
-
-// New creates a new Claude CLI subprocess [Agent] from [agent.Option]
-// values. Prefer constructing via [Factory] when using the registry.
-func New(opts ...agent.Option) *Agent {
-	return newFromConfig(agent.ApplyOptions(opts...))
+// New creates a new Claude CLI subprocess [Agent] for model. Register it for
+// string-based creation with agent.RegisterAgent("claude", claude.New). The CLI
+// owns its model catalog, so it uses the model's name/ID plus any claude-specific
+// options such as [WithCLIPath], [WithAllowedTools], or [WithSessionID].
+func New(model ai.Model, opts ...agent.Option) *Agent {
+	return newFromConfig(model, agent.ApplyOptions(opts...))
 }
 
 // newFromConfig builds an *Agent from a resolved [agent.Config]. Agent-level
 // fields ([agent.Config.Model.Name], [agent.Config.MaxTurns],
 // [agent.Config.History]) are mapped onto the claude-local [config], which
 // is otherwise populated from [agent.Config.Extensions] under [extensionKey].
-func newFromConfig(ac agent.Config) *Agent {
+func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	cfg := config{cliPath: "claude"}
 	if ext, ok := ac.Extensions[extensionKey].(*config); ok && ext != nil {
 		cfg = *ext
@@ -100,8 +89,10 @@ func newFromConfig(ac agent.Config) *Agent {
 			cfg.cliPath = "claude"
 		}
 	}
-	if ac.Model.Name != "" {
-		cfg.model = ac.Model.Name
+	if model.Name != "" {
+		cfg.model = model.Name
+	} else if model.ID != "" {
+		cfg.model = model.ID
 	}
 	if ac.MaxTurns > 0 {
 		cfg.maxTurns = ac.MaxTurns

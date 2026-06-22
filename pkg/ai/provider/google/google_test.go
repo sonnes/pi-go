@@ -102,13 +102,13 @@ func TestGenerateText(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	ctx := context.Background()
 	model := ai.Model{
-		ID:  testModel,
-		API: p.API(),
+		ID:       testModel,
+		Provider: p.Provider(),
 	}
 
 	msg, err := ai.GenerateText(
@@ -124,6 +124,7 @@ func TestGenerateText(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, msg.Content, "expected at least one content block")
+	assert.Equal(t, "google-generative", msg.Provider, "assistant message is tagged with its provider")
 
 	var text string
 	for _, c := range msg.Content {
@@ -152,12 +153,12 @@ func TestStreamText(t *testing.T) {
 
 	ctx := context.Background()
 	model := ai.Model{
-		ID:  testModel,
-		API: p.API(),
+		ID:       testModel,
+		Provider: p.Provider(),
 	}
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	stream := ai.StreamText(
 		ctx,
@@ -209,15 +210,15 @@ func TestGenerateObject(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	schema, err := jsonschema.For[testPerson](nil)
 	require.NoError(t, err)
 
 	model := ai.Model{
-		ID:  testModel,
-		API: p.API(),
+		ID:       testModel,
+		Provider: p.Provider(),
 	}
 
 	maxTokens := 4000
@@ -250,8 +251,8 @@ func TestGenerateObject(t *testing.T) {
 
 func testModelDef() ai.Model {
 	return ai.Model{
-		ID:  testModel,
-		API: "google-generative",
+		ID:       testModel,
+		Provider: "google-generative",
 	}
 }
 
@@ -259,8 +260,8 @@ func TestToolCall(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	stream := p.StreamText(
@@ -325,8 +326,8 @@ func TestToolCallMultiTurn(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	tools := []ai.ToolInfo{
@@ -397,8 +398,8 @@ func TestToolChoiceRequired(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	msg, err := p.StreamText(
@@ -438,8 +439,8 @@ func TestStreamEventSequence(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	stream := p.StreamText(
@@ -486,8 +487,8 @@ func TestUsageTokens(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	msg, err := p.StreamText(
@@ -512,12 +513,12 @@ func TestThinking(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	model := ai.Model{
-		ID:  "gemini-2.5-flash-thinking",
-		API: "google-generative",
+		ID:       "gemini-2.5-flash-thinking",
+		Provider: "google-generative",
 	}
 
 	stream := p.StreamText(
@@ -579,8 +580,8 @@ func TestContextCancellation(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.API(), p)
-	defer ai.UnregisterProvider(p.API())
+	ai.RegisterProvider(p.Provider(), p)
+	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	ctx, cancel := context.WithCancel(context.Background())

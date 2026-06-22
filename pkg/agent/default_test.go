@@ -25,7 +25,7 @@ type mockProvider struct {
 	prompts   []ai.Prompt
 }
 
-func (m *mockProvider) API() string { return mockAPI }
+func (m *mockProvider) Provider() string { return mockAPI }
 
 func (m *mockProvider) StreamText(
 	_ context.Context,
@@ -53,7 +53,7 @@ func (m *mockProvider) StreamText(
 }
 
 func testModel() ai.Model {
-	return ai.Model{ID: "test-model", API: mockAPI}
+	return ai.Model{ID: "test-model", Provider: mockAPI}
 }
 
 func registerMock(t *testing.T, responses ...*ai.EventStream) *mockProvider {
@@ -242,7 +242,7 @@ func TestWithProvider_BypassesGlobalRegistry(t *testing.T) {
 
 	m := &mockProvider{responses: []*ai.EventStream{textStream("hi", ai.Usage{})}}
 	a := New(
-		WithModel(ai.Model{ID: "test-model"}), // no API set — provider is bound directly
+		ai.Model{ID: "test-model"}, // no API set — provider is bound directly
 		WithProvider(m),
 	)
 
@@ -254,7 +254,7 @@ func TestWithProvider_BypassesGlobalRegistry(t *testing.T) {
 }
 
 func TestRun_NoModelOrProvider(t *testing.T) {
-	a := New()
+	a := New(ai.Model{})
 	err := a.Send(t.Context(), "hi")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no model configured")
@@ -262,7 +262,7 @@ func TestRun_NoModelOrProvider(t *testing.T) {
 
 func TestNewDefault_Defaults(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	a := New(WithModel(model))
+	a := New(model)
 
 	assert.False(t, a.IsRunning())
 	assert.NoError(t, a.Err())
@@ -282,7 +282,7 @@ func TestNewDefault_WithTools(t *testing.T) {
 		},
 	)
 
-	a := New(WithModel(model), WithTools(tool))
+	a := New(model, WithTools(tool))
 
 	assert.Len(t, a.config.tools, 1)
 }
@@ -293,7 +293,7 @@ func TestNewDefault_WithServerTool_NotInToolMap(t *testing.T) {
 		ServerType: ai.ServerToolWebSearch,
 	})
 
-	a := New(WithModel(model), WithTools(srv))
+	a := New(model, WithTools(srv))
 
 	// ToolInfo is advertised to the model so it shows up in c.tools and
 	// in the toolInfo slice.
@@ -329,7 +329,7 @@ func TestNewDefault_WithHistory(t *testing.T) {
 		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "hi"})),
 	}
 
-	a := New(WithModel(model), WithHistory(msgs...))
+	a := New(model, WithHistory(msgs...))
 
 	assert.Equal(t, msgs, a.Messages())
 }
@@ -338,7 +338,7 @@ func TestNewDefault_WithHistory_IsCopied(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 	msgs := []Message{NewLLMMessage(ai.UserMessage("hello"))}
 
-	a := New(WithModel(model), WithHistory(msgs...))
+	a := New(model, WithHistory(msgs...))
 
 	// Mutate original — should not affect agent state.
 	msgs[0] = NewLLMMessage(ai.UserMessage("modified"))
@@ -351,7 +351,7 @@ func TestNewDefault_WithHistory_IsCopied(t *testing.T) {
 
 func TestNewDefault_WithMaxTurns(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	a := New(WithModel(model), WithMaxTurns(5))
+	a := New(model, WithMaxTurns(5))
 
 	assert.Equal(t, 5, a.config.maxTurns)
 }
@@ -359,7 +359,7 @@ func TestNewDefault_WithMaxTurns(t *testing.T) {
 func TestNewDefault_WithSystemPrompt(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 
-	a := New(WithModel(model), WithSystemPrompt("be helpful"))
+	a := New(model, WithSystemPrompt("be helpful"))
 
 	assert.Equal(t, "be helpful", a.config.systemPrompt)
 }
@@ -368,7 +368,7 @@ func TestNewDefault_WithStreamOpts(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 	opts := []ai.Option{ai.WithMaxTokens(100)}
 
-	a := New(WithModel(model), WithStreamOpts(opts...))
+	a := New(model, WithStreamOpts(opts...))
 
 	assert.Len(t, a.config.streamOpts, 1)
 }
@@ -385,7 +385,7 @@ func TestNewDefault_MultipleOptions(t *testing.T) {
 	msgs := []Message{NewLLMMessage(ai.UserMessage("hello"))}
 
 	a := New(
-		WithModel(model),
+		model,
 		WithTools(tool),
 		WithHistory(msgs...),
 		WithMaxTurns(10),
@@ -403,7 +403,7 @@ func TestSend_SimpleTextResponse(t *testing.T) {
 	usage := ai.Usage{Input: 10, Output: 20, Total: 30}
 	registerMock(t, textStream("Hello!", usage))
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	msgs, err := sendAndWait(t, a, "hi")
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
@@ -427,7 +427,7 @@ func TestSend_SingleToolCall(t *testing.T) {
 		textStream("Done!", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 	msgs, err := sendAndWait(t, a, "call echo")
 	require.NoError(t, err)
 	// assistant (tool call) + tool result + assistant (final)
@@ -447,7 +447,7 @@ func TestSend_MultiTurnToolCalls(t *testing.T) {
 		textStream("All done", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 	msgs, err := sendAndWait(t, a, "do two things")
 	require.NoError(t, err)
 	// turn 1: assistant (tool call) + tool result
@@ -468,7 +468,7 @@ func TestSend_ParallelToolExecution(t *testing.T) {
 	)
 
 	a := New(
-		WithModel(testModel()),
+		testModel(),
 		WithTools(parallelEchoTool("par_a"), parallelEchoTool("par_b")),
 	)
 	msgs, err := sendAndWait(t, a, "parallel")
@@ -500,7 +500,7 @@ func TestSend_MixedParallelSequential(t *testing.T) {
 
 	// par_a is parallel, echo is not — should fall back to sequential.
 	a := New(
-		WithModel(testModel()),
+		testModel(),
 		WithTools(parallelEchoTool("par_a"), echoTool()),
 	)
 
@@ -536,7 +536,7 @@ func TestSend_MaxTurnsReached(t *testing.T) {
 		textStream("unreachable", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()), WithMaxTurns(1))
+	a := New(testModel(), WithTools(echoTool()), WithMaxTurns(1))
 	msgs, err := sendAndWait(t, a, "loop")
 	require.NoError(t, err)
 	// Only 1 turn: assistant (tool call) + tool result. No second turn.
@@ -552,7 +552,7 @@ func TestSend_MaxTurnsZero_Unlimited(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool())) // maxTurns=0 by default
+	a := New(testModel(), WithTools(echoTool())) // maxTurns=0 by default
 	msgs, err := sendAndWait(t, a, "go")
 	require.NoError(t, err)
 	// 3 turns: tool+result, tool+result, final text
@@ -566,7 +566,7 @@ func TestSend_ContextCanceledBeforeFirstTurn(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // Cancel immediately.
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	err := a.Send(ctx, "hi")
 	require.NoError(t, err)
 
@@ -585,7 +585,7 @@ func TestSend_ContextCanceledMidStream(t *testing.T) {
 	ai.RegisterProvider(mockAPI, mock)
 	t.Cleanup(ai.ClearProviders)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	err := a.Send(ctx, "hi")
 	require.NoError(t, err)
 
@@ -607,7 +607,7 @@ func TestSend_AlreadyStreaming(t *testing.T) {
 	ai.RegisterProvider(mockAPI, mock)
 	t.Cleanup(ai.ClearProviders)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	err := a.Send(ctx, "first")
 	require.NoError(t, err)
 
@@ -623,7 +623,7 @@ func TestSend_NoProviderRegistered(t *testing.T) {
 	// Don't register any provider.
 	ai.ClearProviders()
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	err := a.Send(t.Context(), "hi")
 	require.NoError(t, err)
 
@@ -636,7 +636,7 @@ func TestSend_NoProviderRegistered(t *testing.T) {
 func TestSend_ProviderError(t *testing.T) {
 	registerMock(t, errorStream(errors.New("rate limit exceeded")))
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	err := a.Send(t.Context(), "hi")
 	require.NoError(t, err)
 
@@ -653,7 +653,7 @@ func TestSend_NilMessageFromProvider(t *testing.T) {
 	})
 	registerMock(t, nilMsgStream)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	err := a.Send(t.Context(), "hi")
 	require.NoError(t, err)
 
@@ -673,7 +673,7 @@ func TestSend_UnknownTool(t *testing.T) {
 		textStream("ok", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 	msgs, err := sendAndWait(t, a, "call unknown")
 	require.NoError(t, err)
 
@@ -694,7 +694,7 @@ func TestSend_ToolReturnsError(t *testing.T) {
 		textStream("handled", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(errorTool()))
+	a := New(testModel(), WithTools(errorTool()))
 	msgs, err := sendAndWait(t, a, "do it")
 	require.NoError(t, err) // Agent should NOT error — tool error is non-fatal.
 
@@ -714,7 +714,7 @@ func TestSend_ToolPanics(t *testing.T) {
 		textStream("recovered", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(panicTool()))
+	a := New(testModel(), WithTools(panicTool()))
 	msgs, err := sendAndWait(t, a, "panic")
 	require.NoError(t, err) // Should recover, not crash.
 
@@ -727,7 +727,7 @@ func TestSend_SystemPromptRendering(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
 	a := New(
-		WithModel(testModel()),
+		testModel(),
 		WithSystemPrompt("You are a helper.\n\nBe concise."),
 	)
 	_, err := sendAndWait(t, a, "hi")
@@ -741,7 +741,7 @@ func TestSend_SystemPromptRendering(t *testing.T) {
 func TestSend_EmptySystemPrompt(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	a := New(WithModel(testModel())) // No system prompt.
+	a := New(testModel()) // No system prompt.
 	_, err := sendAndWait(t, a, "hi")
 	require.NoError(t, err)
 
@@ -761,7 +761,7 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 
 	events := collectEvents(t, a, func() {
 		require.NoError(t, a.Send(t.Context(), "go"))
@@ -818,7 +818,7 @@ func TestSend_MessageEventsForAllTypes(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 
 	events := collectEvents(t, a, func() {
 		require.NoError(t, a.Send(t.Context(), "go"))
@@ -865,7 +865,7 @@ func TestSend_StateSnapshots(t *testing.T) {
 	ai.RegisterProvider(mockAPI, mock)
 	t.Cleanup(ai.ClearProviders)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	err := a.Send(t.Context(), "hi")
 	require.NoError(t, err)
 
@@ -886,7 +886,7 @@ func TestSend_ResultReturnsNewMessages(t *testing.T) {
 		NewLLMMessage(ai.UserMessage("old")),
 		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "old reply"})),
 	}
-	a := New(WithModel(testModel()), WithHistory(history...))
+	a := New(testModel(), WithHistory(history...))
 	msgs, err := sendAndWait(t, a, "new")
 	require.NoError(t, err)
 
@@ -916,7 +916,7 @@ func TestSend_UsageAccumulation(t *testing.T) {
 		),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 
 	events := collectEvents(t, a, func() {
 		require.NoError(t, a.Send(t.Context(), "go"))
@@ -944,7 +944,7 @@ func TestContinue_WithExistingHistory(t *testing.T) {
 		NewLLMMessage(ai.UserMessage("hello")),
 		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "hi, what next?"})),
 	}
-	a := New(WithModel(testModel()), WithHistory(history...))
+	a := New(testModel(), WithHistory(history...))
 	err := a.Continue(t.Context())
 	require.NoError(t, err)
 
@@ -963,7 +963,7 @@ func TestSend_AfterPreviousError(t *testing.T) {
 		textStream("recovered", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	// First call errors.
 	err := a.Send(t.Context(), "first")
@@ -990,7 +990,7 @@ func TestSend_ContextCanceledMidToolExecution(t *testing.T) {
 		textStream("unreachable", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(blockingTool("blocker")))
+	a := New(testModel(), WithTools(blockingTool("blocker")))
 	err := a.Send(ctx, "block")
 	require.NoError(t, err)
 
@@ -1024,7 +1024,7 @@ func TestSend_ContextCanceledMidToolExecution(t *testing.T) {
 func TestSendMessages(t *testing.T) {
 	registerMock(t, textStream("reply", ai.Usage{}))
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 	msg := NewLLMMessage(ai.UserMessage("hello"))
 	err := a.SendMessages(t.Context(), msg)
 	require.NoError(t, err)
@@ -1041,7 +1041,7 @@ func TestSendMessages(t *testing.T) {
 func TestSend_ToolInfoPassedToProvider(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 	_, err := sendAndWait(t, a, "hi")
 	require.NoError(t, err)
 
@@ -1062,7 +1062,7 @@ func TestSend_ToolResultContent(t *testing.T) {
 		textStream("done", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()), WithTools(echoTool()))
+	a := New(testModel(), WithTools(echoTool()))
 	msgs, err := sendAndWait(t, a, "echo")
 	require.NoError(t, err)
 
@@ -1083,7 +1083,7 @@ func TestSend_ToolResultContent(t *testing.T) {
 func TestSend_StreamMessageUpdates(t *testing.T) {
 	registerMock(t, textStream("hello", ai.Usage{}))
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	var updateMsgSeen bool
 	events := collectEvents(t, a, func() {
@@ -1106,7 +1106,7 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 		textStream("second reply", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -1152,7 +1152,7 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 
 // Test: Wait on a fresh agent returns (nil, nil).
 func TestWait_FreshAgent(t *testing.T) {
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	msgs, err := a.Wait(t.Context())
 	assert.NoError(t, err)
@@ -1179,7 +1179,7 @@ func TestSend_IncrementalStreamingEvents(t *testing.T) {
 	})
 	registerMock(t, stream)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	events := collectEvents(t, a, func() {
 		require.NoError(t, a.Send(t.Context(), "hi"))
@@ -1254,7 +1254,7 @@ func TestSend_MultiBlockStreaming(t *testing.T) {
 	})
 	registerMock(t, stream)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	events := collectEvents(t, a, func() {
 		require.NoError(t, a.Send(t.Context(), "think"))
@@ -1299,7 +1299,7 @@ func TestSend_SnapshotIndependence(t *testing.T) {
 	})
 	registerMock(t, stream)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	events := collectEvents(t, a, func() {
 		require.NoError(t, a.Send(t.Context(), "hi"))
@@ -1333,7 +1333,7 @@ func TestSessionLifecycle_SendThenClose(t *testing.T) {
 		textStream("second reply", ai.Usage{}),
 	)
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -1380,7 +1380,7 @@ func TestSessionLifecycle_SendThenClose(t *testing.T) {
 // TestSessionLifecycle_CloseWithoutSend verifies that closing a never-used
 // agent emits no session events at all.
 func TestSessionLifecycle_CloseWithoutSend(t *testing.T) {
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -1403,7 +1403,7 @@ func TestSessionLifecycle_CloseWithoutSend(t *testing.T) {
 func TestSessionLifecycle_CloseWithoutWait(t *testing.T) {
 	registerMock(t, textStream("hi", ai.Usage{}))
 
-	a := New(WithModel(testModel()))
+	a := New(testModel())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

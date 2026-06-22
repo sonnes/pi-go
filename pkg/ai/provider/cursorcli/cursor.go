@@ -115,8 +115,8 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// API returns the provider identifier used by [ai.RegisterProvider].
-func (p *Provider) API() string {
+// Provider returns the provider identifier used by [ai.RegisterProvider].
+func (p *Provider) Provider() string {
 	return "cursor-cli"
 }
 
@@ -162,7 +162,7 @@ func (p *Provider) StreamText(
 
 		push(ai.Event{Type: ai.EventStart})
 
-		final, pumpErr := pumpAIEvents(push, stdout, model, p.API(), cfg.model)
+		final, pumpErr := pumpAIEvents(push, stdout, model, p.Provider(), cfg.model)
 
 		cleanupErr := cleanup()
 		if pumpErr == nil {
@@ -178,7 +178,10 @@ func (p *Provider) StreamText(
 			return
 		}
 		if final.API == "" {
-			final.API = p.API()
+			final.API = p.Provider()
+		}
+		if final.Provider == "" {
+			final.Provider = p.Provider()
 		}
 		if final.Model == "" {
 			final.Model = cfg.model

@@ -98,8 +98,7 @@ func testModel() ai.Model {
 	return ai.Model{
 		ID:       testModelID,
 		Name:     testModelID,
-		API:      "openai-responses",
-		Provider: "openai",
+		Provider: "openai-responses",
 	}
 }
 

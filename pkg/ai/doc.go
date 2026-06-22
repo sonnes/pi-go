@@ -8,10 +8,10 @@
 // The package uses a registry of [Provider] implementations. Register a provider
 // before making any calls:
 //
-//	import "github.com/sonnes/pi-go/pkg/ai/anthropic"
+//	import "github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 //
 //	p := anthropic.New(anthropic.WithAPIKey("sk-..."))
-//	ai.RegisterProvider(p.API(), p)
+//	ai.RegisterProvider(p.Provider(), p)
 //
 // # Text Generation
 //

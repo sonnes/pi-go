@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"github.com/sonnes/pi-go/pkg/ai"
@@ -10,134 +9,104 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeFactory returns a Factory that yields a fakeAgent carrying the marker.
-// It lets registry tests exercise register/lookup without depending on Default
-// construction or a real model.
-func fakeFactory(marker string) Factory {
-	return func(opts ...Option) Agent {
-		return &fakeAgent{marker: marker}
+// fakeCreate returns a CreateFunc yielding a fakeAgent carrying the marker and
+// the model it was built with — enough to exercise register/lookup/Create
+// without Default construction.
+func fakeCreate(marker string) func(model ai.Model, opts ...Option) *fakeAgent {
+	return func(model ai.Model, opts ...Option) *fakeAgent {
+		return &fakeAgent{marker: marker, model: model}
 	}
 }
 
 type fakeAgent struct {
 	Agent
 	marker string
+	model  ai.Model
 }
 
-func TestRegistry_RegisterAndGet(t *testing.T) {
-	const key = "reg-test-register-and-get"
-	t.Cleanup(func() { UnregisterFactory(key) })
+func TestRegisterAgent_AndGet(t *testing.T) {
+	const key = "reg-test-get"
+	t.Cleanup(func() { UnregisterAgent(key) })
 
-	RegisterFactory(key, fakeFactory("a"))
+	RegisterAgent(key, fakeCreate("a"))
 
-	got, ok := GetFactory(key)
+	got, ok := GetAgent(key)
 	require.True(t, ok)
-
-	fa := got().(*fakeAgent)
-	assert.Equal(t, "a", fa.marker)
+	assert.Equal(t, "a", got(ai.Model{}).(*fakeAgent).marker)
 }
 
-func TestRegistry_GetMissing(t *testing.T) {
-	_, ok := GetFactory("reg-test-missing-definitely-not-registered")
+func TestGetAgent_Missing(t *testing.T) {
+	_, ok := GetAgent("definitely-not-registered")
 	assert.False(t, ok)
 }
 
-func TestRegistry_Overwrite(t *testing.T) {
+func TestRegisterAgent_Overwrite(t *testing.T) {
 	const key = "reg-test-overwrite"
-	t.Cleanup(func() { UnregisterFactory(key) })
+	t.Cleanup(func() { UnregisterAgent(key) })
 
-	RegisterFactory(key, fakeFactory("first"))
-	RegisterFactory(key, fakeFactory("second"))
+	RegisterAgent(key, fakeCreate("first"))
+	RegisterAgent(key, fakeCreate("second"))
 
-	f, _ := GetFactory(key)
-	fa := f().(*fakeAgent)
-	assert.Equal(t, "second", fa.marker)
+	f, _ := GetAgent(key)
+	assert.Equal(t, "second", f(ai.Model{}).(*fakeAgent).marker)
 }
 
-func TestRegistry_Unregister(t *testing.T) {
-	const key = "reg-test-unregister"
-
-	RegisterFactory(key, fakeFactory("a"))
-	UnregisterFactory(key)
-
-	_, ok := GetFactory(key)
-	assert.False(t, ok)
-}
-
-func TestRegistry_FactoriesReturnsCopy(t *testing.T) {
+func TestAgents_ReturnsCopy(t *testing.T) {
 	const key = "reg-test-copy"
-	t.Cleanup(func() { UnregisterFactory(key) })
+	t.Cleanup(func() { UnregisterAgent(key) })
 
-	RegisterFactory(key, fakeFactory("a"))
-
-	snapshot := Factories()
-
-	// Mutating the snapshot must not affect the registry.
+	RegisterAgent(key, fakeCreate("a"))
+	snapshot := Agents()
 	delete(snapshot, key)
-	_, ok := GetFactory(key)
-	assert.True(t, ok, "registry must not be affected by mutations to Factories() result")
+
+	_, ok := GetAgent(key)
+	assert.True(t, ok, "registry must not be affected by mutating Agents() result")
 }
 
-func TestRegistry_ConcurrentAccess(t *testing.T) {
-	const key = "reg-test-concurrent"
-	t.Cleanup(func() { UnregisterFactory(key) })
+func TestCreate_RoutesByPrefix(t *testing.T) {
+	t.Cleanup(func() { UnregisterAgent("claude"); ClearModels() })
 
-	var wg sync.WaitGroup
-	const n = 50
-	for i := 0; i < n; i++ {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			RegisterFactory(key, fakeFactory("m"))
-		}()
-		go func() {
-			defer wg.Done()
-			_, _ = GetFactory(key)
-		}()
-	}
-	wg.Wait()
+	RegisterAgent("claude", fakeCreate("cli"))
 
-	_, ok := GetFactory(key)
-	assert.True(t, ok)
+	a, err := Create("claude/sonnet")
+	require.NoError(t, err)
+	fa := a.(*fakeAgent)
+	assert.Equal(t, "cli", fa.marker)
+	assert.Equal(t, "claude", fa.model.Provider)
+	assert.Equal(t, "sonnet", fa.model.ID) // bare model from the spec
 }
 
-func TestWithModel_SetsModel(t *testing.T) {
-	model := ai.Model{ID: "test-model", API: "test-api"}
+func TestCreate_FallsBackToDefault(t *testing.T) {
+	ai.ClearProviders()
+	ai.ClearModels()
+	t.Cleanup(func() { ai.ClearProviders(); ai.ClearModels() })
 
-	cfg := ApplyOptions(WithModel(model))
+	ai.RegisterModel(ai.Model{Provider: "anthropic-messages", ID: "claude-sonnet-4-6"})
 
-	assert.Equal(t, model, cfg.Model)
+	a, err := Create("anthropic-messages/claude-sonnet-4-6")
+	require.NoError(t, err)
+	defer a.Close()
+	_, isDefault := a.(*Default)
+	assert.True(t, isDefault)
 }
 
-func TestApplyOptions_CapturesFields(t *testing.T) {
-	model := ai.Model{ID: "m"}
-	cfg := ApplyOptions(
-		WithModel(model),
-		WithMaxTurns(5),
-	)
-
-	assert.Equal(t, model, cfg.Model)
-	assert.Equal(t, 5, cfg.MaxTurns)
+func TestCreate_UnknownModelErrors(t *testing.T) {
+	ai.ClearModels()
+	_, err := Create("anthropic-messages/nope")
+	assert.ErrorContains(t, err, "unknown model")
 }
 
-func TestWithModelName_SetsIDAndName(t *testing.T) {
-	cfg := ApplyOptions(WithModelName("gpt-5"))
-	assert.Equal(t, "gpt-5", cfg.Model.ID)
-	assert.Equal(t, "gpt-5", cfg.Model.Name)
-}
+func TestRegisterModel_ResolveModel(t *testing.T) {
+	t.Cleanup(ClearModels)
 
-func TestWithModelName_PreservesOtherFieldsWhenFollowingWithModel(t *testing.T) {
-	base := ai.Model{ID: "m", Name: "M", API: "some-api", Provider: "p"}
-	cfg := ApplyOptions(WithModel(base), WithModelName("new-name"))
-
-	assert.Equal(t, "new-name", cfg.Model.ID)
-	assert.Equal(t, "new-name", cfg.Model.Name)
-	assert.Equal(t, "some-api", cfg.Model.API, "non-identity fields must be preserved")
-	assert.Equal(t, "p", cfg.Model.Provider)
+	RegisterModel(ai.Model{Provider: "claude", ID: "sonnet"})
+	m, ok := ResolveModel("claude/sonnet")
+	require.True(t, ok)
+	assert.Equal(t, "sonnet", m.ID)
 }
 
 func TestDefaultRun_ErrorsWhenModelMissing(t *testing.T) {
-	a := New()
+	a := New(ai.Model{})
 	defer a.Close()
 
 	err := a.Send(context.Background(), "hi")

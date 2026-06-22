@@ -12,13 +12,19 @@ A `Model` describes an AI model and its capabilities. Models are plain structs �
 
 ## Design: data, not behavior
 
-Models are value types with no methods. This keeps them serializable, comparable, and free from provider dependencies. The `API` field is the bridge — it selects which registered provider handles requests for the model at call time.
+Models are value types with no methods. This keeps them serializable, comparable, and free from provider dependencies. The `Provider` field is the bridge — it names the registered provider that handles the model and namespaces the model in the registry.
 
 ## Identification
 
-- `ID` is the canonical identifier sent to the provider API (e.g. `"claude-sonnet-4-20250514"`).
-- `API` selects which registered [Provider](/concepts/ai/providers) handles requests.
-- `Aliases` allow alternative names for model lookup.
+- `ID` is the canonical identifier sent to the provider (e.g. `"claude-sonnet-4-6"`).
+- `Provider` names the registered [Provider](/concepts/ai/providers) that handles requests (e.g. `"anthropic-messages"`) and forms the model's registry spec, `"<Provider>/<ID>"`.
+- `Aliases` register extra lookup specs, `"<Provider>/<alias>"`.
+
+## Registry and lookup
+
+Models live in `Registry` alongside providers, keyed by their `"<Provider>/<ID>"` spec (plus one per alias). Register with `RegisterModel`, look up with `ResolveModel`, list with `Models` — a package-level default backs these, and `NewRegistry()` gives isolated instances. Callers populate the registry; pi-go ships no built-in model table.
+
+`ai.Generate(ctx, "anthropic-messages/claude-sonnet-4-6", prompt)` resolves the spec to a `Model` and runs it, so callers can name a model by string instead of constructing one. `ai.Stream`, `ai.GenerateObject[T]`, and `ai.GenerateImage` share the same spec-first form, so every modality is reached the same way.
 
 ## Modalities
 

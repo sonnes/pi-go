@@ -88,7 +88,7 @@ func TestProvider_ImplementsInterfaces(t *testing.T) {
 
 func TestProvider_API(t *testing.T) {
 	p := New()
-	assert.Equal(t, "codex-cli", p.API())
+	assert.Equal(t, "codex-cli", p.Provider())
 }
 
 func TestStreamText_SimpleText(t *testing.T) {

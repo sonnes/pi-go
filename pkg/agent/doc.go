@@ -4,15 +4,15 @@
 // management. The [Agent] interface is the main entry point, with
 // [Default] as the standard implementation.
 //
-// Configuration flows entirely through [Option] values applied at [New].
-// Model routing uses [WithModel] (full [ai.Model], resolved via the global
-// provider registry) or [WithProvider] (bind an [ai.Provider] instance
-// directly). [WithModelName] sets a string identifier for agents that
-// manage their own model catalog.
+// [New] takes the model as its first argument; the rest of the
+// configuration flows through [Option] values. [Default] resolves the
+// provider from the global [ai] registry by [ai.Model.Provider], or
+// [WithProvider] binds an [ai.Provider] instance directly and skips the
+// lookup.
 //
 // Alternative [Agent] implementations register under string names via
-// [RegisterFactory]. Callers resolve factories by name with [GetFactory]
-// and construct agents through the same [Option] stream used by [New].
+// [RegisterAgent]. Callers look one up by name with [GetAgent], or
+// build an agent from a "<provider>/<model>" spec with [Create].
 // Sub-packages (e.g. pkg/agent/claude) attach their own configuration
 // via [WithExtension] and [WithExtensionMutator]; see [Config.Extensions]
 // for the key convention.

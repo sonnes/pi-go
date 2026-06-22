@@ -76,8 +76,8 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// API returns the provider API identifier.
-func (p *Provider) API() string {
+// Provider returns the provider API identifier.
+func (p *Provider) Provider() string {
 	return "anthropic-messages"
 }
 
@@ -413,7 +413,7 @@ func buildMessage(model ai.Model, acc *anthropic.Message) *ai.Message {
 	return &ai.Message{
 		Role:       ai.RoleAssistant,
 		Content:    content,
-		API:        model.API,
+		API:        model.Provider,
 		Provider:   model.Provider,
 		Model:      model.ID,
 		Usage:      usage,

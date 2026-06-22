@@ -38,17 +38,13 @@ type Agent struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// Factory is the [agent.Factory] for the Codex CLI agent.
-var Factory agent.Factory = func(opts ...agent.Option) agent.Agent {
-	return newFromConfig(agent.ApplyOptions(opts...))
+// New creates a new Codex CLI [Agent] for model. Register it for string-based
+// creation with agent.RegisterAgent("codex", codex.New).
+func New(model ai.Model, opts ...agent.Option) *Agent {
+	return newFromConfig(model, agent.ApplyOptions(opts...))
 }
 
-// New creates a new Codex CLI [Agent] from [agent.Option] values.
-func New(opts ...agent.Option) *Agent {
-	return newFromConfig(agent.ApplyOptions(opts...))
-}
-
-func newFromConfig(ac agent.Config) *Agent {
+func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	cfg := config{
 		cliPath:        "codex",
 		approvalPolicy: "never",
@@ -62,8 +58,10 @@ func newFromConfig(ac agent.Config) *Agent {
 			cfg.approvalPolicy = "never"
 		}
 	}
-	if ac.Model.Name != "" {
-		cfg.model = ac.Model.Name
+	if model.Name != "" {
+		cfg.model = model.Name
+	} else if model.ID != "" {
+		cfg.model = model.ID
 	}
 	if ac.MaxTurns > 0 {
 		cfg.maxTurns = ac.MaxTurns

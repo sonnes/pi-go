@@ -48,8 +48,7 @@ const testModelID = "claude-sonnet-4-20250514"
 var testModel = ai.Model{
 	ID:       testModelID,
 	Name:     "Claude Sonnet",
-	API:      "anthropic-messages",
-	Provider: "anthropic",
+	Provider: "anthropic-messages",
 }
 
 //go:generate go test -httprecord=Test
@@ -499,8 +498,7 @@ func TestThinking(t *testing.T) {
 	thinkingModel := ai.Model{
 		ID:       testModelID,
 		Name:     "Claude Sonnet",
-		API:      "anthropic-messages",
-		Provider: "anthropic",
+		Provider: "anthropic-messages",
 	}
 
 	stream := p.StreamText(
