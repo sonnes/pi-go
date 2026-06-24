@@ -19,6 +19,10 @@ type Agent interface {
 	SendMessages(ctx context.Context, msgs ...Message) error
 	Continue(ctx context.Context) error
 	Wait(ctx context.Context) ([]ai.Message, error)
+	// Abort cancels the in-flight run, if one is active, leaving the agent
+	// reusable for the next Send. It is a no-op when the agent is idle.
+	// Mirrors pi-mono's agent.abort().
+	Abort()
 	Close()
 	Messages() []Message
 	IsRunning() bool

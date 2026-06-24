@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -21,6 +22,9 @@ import (
 type transportIface interface {
 	// writeUserMessage writes a single SDKUserMessage NDJSON line to stdin.
 	writeUserMessage(line []byte) error
+	// interrupt asks the CLI to abort the in-flight turn without killing the
+	// subprocess, by writing a stream-json control_request line to stdin.
+	interrupt() error
 	// stdout returns the reader for subprocess stdout.
 	stdout() io.Reader
 	// exited returns a channel that closes after the subprocess terminates.
@@ -41,6 +45,8 @@ type transport struct {
 	stdoutR   io.ReadCloser
 	stderrBuf *bytes.Buffer
 	writeMu   sync.Mutex
+	// interruptSeq generates monotonic control_request IDs for interrupt().
+	interruptSeq atomic.Uint64
 
 	// exitedCh is closed by [transport.waitLoop] after the subprocess terminates.
 	exitedCh chan struct{}
@@ -52,7 +58,14 @@ type transport struct {
 // newTransport starts the Claude CLI subprocess and begins waiting on it.
 // The caller owns reading from [transport.stdout] and must call
 // [transport.close] when done.
-func newTransport(ctx context.Context, cfg config) (transportIface, error) {
+//
+// The subprocess is persistent and serves many turns, so its lifetime is
+// owned by [transport.close] (invoked from [Agent.Close]) — NOT by any single
+// turn's context. A turn is aborted with [transport.interrupt], which leaves
+// the subprocess running for the next turn. The ctx is accepted for signature
+// symmetry with the injectable factory but is intentionally not wired to
+// subprocess teardown.
+func newTransport(_ context.Context, cfg config) (transportIface, error) {
 	cliArgs := buildArgs(cfg)
 	cmd := exec.Command(cfg.cliPath, cliArgs...)
 
@@ -89,15 +102,6 @@ func newTransport(ctx context.Context, cfg config) (transportIface, error) {
 	}
 
 	go t.waitLoop()
-
-	// If the parent context is cancelled, tear down the subprocess.
-	go func() {
-		select {
-		case <-ctx.Done():
-			t.shutdown()
-		case <-t.exitedCh:
-		}
-	}()
 
 	return t, nil
 }
@@ -144,6 +148,57 @@ func (t *transport) writeUserMessage(line []byte) error {
 
 	_, err := t.stdinPipe.Write(line)
 	return err
+}
+
+// interrupt writes a stream-json control_request asking the CLI to abort the
+// in-flight turn. The subprocess keeps running, so the next [Agent.Send]
+// reuses the same session. The CLI responds by ending the current turn with a
+// result line, which the reader turns into the turn's [agent.EventAgentEnd].
+func (t *transport) interrupt() error {
+	id := "req_" + strconv.FormatUint(t.interruptSeq.Add(1), 10)
+	line, err := buildInterruptControl(id)
+	if err != nil {
+		return err
+	}
+
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	select {
+	case <-t.exitedCh:
+		// Already exited — nothing to interrupt.
+		return nil
+	default:
+	}
+
+	_, err = t.stdinPipe.Write(line)
+	return err
+}
+
+// controlRequest is the stream-json control envelope the Claude CLI accepts on
+// stdin (mirrors the Agent SDK's interrupt request).
+type controlRequest struct {
+	Type      string             `json:"type"`
+	RequestID string             `json:"request_id"`
+	Request   controlRequestBody `json:"request"`
+}
+
+type controlRequestBody struct {
+	Subtype string `json:"subtype"`
+}
+
+// buildInterruptControl encodes a single newline-terminated interrupt
+// control_request line for the given request id.
+func buildInterruptControl(requestID string) ([]byte, error) {
+	b, err := json.Marshal(controlRequest{
+		Type:      "control_request",
+		RequestID: requestID,
+		Request:   controlRequestBody{Subtype: "interrupt"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }
 
 // close shuts down the subprocess. Closing stdin gives the CLI a chance to

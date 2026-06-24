@@ -235,6 +235,20 @@ func (a *Agent) Close() {
 	a.broker.Shutdown()
 }
 
+// Abort asks the CLI to abort the in-flight turn while leaving the persistent
+// subprocess running, so the next Send continues the same session. It is a
+// no-op when the agent is idle. The aborted turn ends via the CLI's result
+// line → [agent.EventAgentEnd]. Mirrors pi-mono's agent.abort().
+func (a *Agent) Abort() {
+	a.mu.Lock()
+	t := a.transport
+	running := a.running
+	a.mu.Unlock()
+	if running && t != nil {
+		_ = t.interrupt()
+	}
+}
+
 // fireSessionInit emits [agent.EventSessionInit] on the very first
 // `system/init` line and is a no-op on subsequent calls.
 func (a *Agent) fireSessionInit(sid string) {

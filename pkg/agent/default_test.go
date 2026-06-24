@@ -596,6 +596,68 @@ func TestSend_ContextCanceledMidStream(t *testing.T) {
 	assert.False(t, a.IsRunning())
 }
 
+// ctxBlockingProvider blocks each StreamText call on the context the agent
+// passes in (the run's own ctx), so a test can prove [Default.Abort] cancels
+// that ctx. It signals startedCh once the first call begins streaming.
+type ctxBlockingProvider struct {
+	startOnce sync.Once
+	startedCh chan struct{}
+}
+
+func (p *ctxBlockingProvider) Provider() string { return mockAPI }
+
+func (p *ctxBlockingProvider) StreamText(
+	ctx context.Context,
+	_ ai.Model,
+	_ ai.Prompt,
+	_ ai.StreamOptions,
+) *ai.EventStream {
+	return ai.NewEventStream(func(push func(ai.Event)) {
+		p.startOnce.Do(func() { close(p.startedCh) })
+		<-ctx.Done()
+		push(ai.Event{Type: ai.EventError, Err: ctx.Err()})
+	})
+}
+
+// Abort cancels the in-flight run via the agent-owned cancel, mirroring
+// pi-mono's agent.abort(); the run ends with context.Canceled.
+func TestAbort_CancelsRunningRun(t *testing.T) {
+	prov := &ctxBlockingProvider{startedCh: make(chan struct{})}
+	a := New(testModel(), WithProvider(prov))
+
+	require.NoError(t, a.Send(t.Context(), "hi"))
+
+	select {
+	case <-prov.startedCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream never started")
+	}
+	require.True(t, a.IsRunning())
+
+	a.Abort()
+
+	_, err := a.Wait(t.Context())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.False(t, a.IsRunning())
+}
+
+// Abort is a no-op when no run is active (before any Send and after one
+// completes), matching pi-mono's optional-chaining semantics.
+func TestAbort_NoActiveRun_NoOp(t *testing.T) {
+	a := New(testModel(), WithProvider(&mockProvider{
+		responses: []*ai.EventStream{textStream("hi", ai.Usage{})},
+	}))
+
+	a.Abort() // before any run — must not panic
+
+	_, err := sendAndWait(t, a, "hi")
+	require.NoError(t, err)
+
+	a.Abort() // after the run finished — must not panic
+	assert.False(t, a.IsRunning())
+}
+
 // Test 10: Already streaming guard
 func TestSend_AlreadyStreaming(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
