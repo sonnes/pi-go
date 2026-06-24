@@ -46,15 +46,36 @@ type fakeTransport struct {
 	exitedCh   chan struct{}
 	exitedOnce sync.Once
 	exitErrVal error
+
+	interruptedCh   chan struct{}
+	interruptedOnce sync.Once
 }
 
 func newFakeTransport() *fakeTransport {
 	r, w := io.Pipe()
 	return &fakeTransport{
-		pendingWrite: make(chan struct{}, 16),
-		stdoutR:      r,
-		stdoutW:      w,
-		exitedCh:     make(chan struct{}),
+		pendingWrite:  make(chan struct{}, 16),
+		stdoutR:       r,
+		stdoutW:       w,
+		exitedCh:      make(chan struct{}),
+		interruptedCh: make(chan struct{}),
+	}
+}
+
+// interrupt records the abort request and unblocks anyone waiting on
+// interruptedCh, without terminating the subprocess.
+func (f *fakeTransport) interrupt() error {
+	f.interruptedOnce.Do(func() { close(f.interruptedCh) })
+	return nil
+}
+
+// interrupted reports whether interrupt() was called.
+func (f *fakeTransport) interrupted() bool {
+	select {
+	case <-f.interruptedCh:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -226,6 +247,60 @@ func TestAgent_Send_MultiTurn(t *testing.T) {
 	require.Len(t, last.Messages, 2)
 	assert.Equal(t, ai.StopReasonToolUse, last.Messages[0].StopReason)
 	assert.Equal(t, "The file says hello.", last.Messages[1].Text())
+}
+
+// Abort interrupts the in-flight turn (writes the control request via the
+// transport) and lets the CLI's result line end the turn — the persistent
+// subprocess stays alive for the next Send.
+func TestAgent_Abort_InterruptsTurnKeepsSubprocess(t *testing.T) {
+	ft := newFakeTransport()
+	a := New(ai.Model{})
+	a.newTransport = func(_ context.Context, _ config) (transportIface, error) { return ft, nil }
+	defer a.Close()
+
+	go func() {
+		select {
+		case <-ft.pendingWrite:
+		case <-ft.exitedCh:
+			return
+		}
+		ft.emit(`{"type":"system","subtype":"init","session_id":"sess-i"}` + "\n")
+		// Stay mid-turn until the agent asks for an interrupt, then emit a
+		// result line so the turn closes — as the real CLI does on interrupt.
+		select {
+		case <-ft.interruptedCh:
+		case <-ft.exitedCh:
+			return
+		}
+		ft.emit(`{"type":"result","subtype":"error_during_execution","result":"Interrupted","session_id":"sess-i"}` + "\n")
+	}()
+
+	ctx := context.Background()
+	ch := a.Subscribe(ctx)
+	require.NoError(t, a.Send(ctx, "hi"))
+	require.Eventually(t, a.IsRunning, time.Second, 5*time.Millisecond)
+
+	a.Abort()
+
+	events := collectUntilAgentEnd(t, ch)
+	assert.Equal(t, agent.EventAgentEnd, events[len(events)-1].Type)
+	assert.False(t, a.IsRunning())
+	assert.True(t, ft.interrupted(), "Abort must request a transport interrupt")
+
+	select {
+	case <-ft.exited():
+		t.Fatal("Abort terminated the persistent subprocess")
+	default:
+	}
+}
+
+// Abort is a no-op when the agent is idle (no transport, not running).
+func TestAgent_Abort_IdleNoOp(t *testing.T) {
+	a, _ := newTestAgent(t, nil, nil)
+	defer a.Close()
+
+	a.Abort() // must not panic
+	assert.False(t, a.IsRunning())
 }
 
 func TestAgent_SessionID(t *testing.T) {

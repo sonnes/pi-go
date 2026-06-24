@@ -21,13 +21,14 @@ type Agent struct {
 
 	broker *pubsub.Broker[agent.Event]
 
-	mu        sync.Mutex
-	running   bool
-	done      chan struct{}
-	lastMsgs  []ai.Message
-	messages  []agent.Message
-	err       error
-	sessionID string
+	mu         sync.Mutex
+	running    bool
+	done       chan struct{}
+	turnCancel context.CancelFunc
+	lastMsgs   []ai.Message
+	messages   []agent.Message
+	err        error
+	sessionID  string
 
 	sessionInitOnce  sync.Once
 	sessionEndOnce   sync.Once
@@ -113,10 +114,16 @@ func (a *Agent) SendMessages(ctx context.Context, msgs ...agent.Message) error {
 		return errors.New("cursor: already running")
 	}
 
+	// Own a turn-scoped context so [Agent.Abort] can cancel the in-flight
+	// turn (the transport kills the child on ctx.Done) without the caller
+	// holding the handle — mirroring pi-mono's per-run AbortController.
+	turnCtx, turnCancel := context.WithCancel(ctx)
+
 	a.running = true
 	a.err = nil
 	a.lastMsgs = nil
 	a.done = make(chan struct{})
+	a.turnCancel = turnCancel
 	a.messages = append(a.messages, msgs...)
 
 	sessionID := a.sessionID
@@ -127,9 +134,21 @@ func (a *Agent) SendMessages(ctx context.Context, msgs ...agent.Message) error {
 	}
 	a.mu.Unlock()
 
-	go a.runTurn(ctx, args)
+	go a.runTurn(turnCtx, args)
 
 	return nil
+}
+
+// Abort cancels the in-flight turn, if one is active, terminating the Cursor
+// child subprocess. It is a no-op when the agent is idle. The next Send starts
+// a fresh turn (resuming the captured chat). Mirrors pi-mono's agent.abort().
+func (a *Agent) Abort() {
+	a.mu.Lock()
+	cancel := a.turnCancel
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // Continue is not supported by the Cursor CLI agent. Use Send with a prompt
@@ -248,8 +267,13 @@ func (a *Agent) finishTurn(result turnResult) {
 	a.lastMsgs = result.messages
 	a.err = result.err
 	a.running = false
+	cancel := a.turnCancel
+	a.turnCancel = nil
 	done := a.done
 	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 
 	a.broker.Publish(agent.Event{
 		Type:     agent.EventAgentEnd,

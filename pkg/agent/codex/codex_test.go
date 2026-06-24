@@ -288,6 +288,47 @@ func TestAgent_ConcurrentSendRejected(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Abort cancels the in-flight turn's context, which terminates the Codex
+// child; the turn ends and the agent returns to idle.
+func TestAgent_Abort_CancelsTurn(t *testing.T) {
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
+	reader, writer := io.Pipe()
+	ctxCh := make(chan context.Context, 1)
+	a.runFn = func(ctx context.Context, _ config, _ runArgs) (io.ReadCloser, func() error, error) {
+		ctxCh <- ctx
+		// Mirror the real transport: when the turn ctx is cancelled, the child
+		// dies and stdout closes.
+		go func() {
+			<-ctx.Done()
+			_ = writer.CloseWithError(ctx.Err())
+		}()
+		return reader, func() error { return nil }, nil
+	}
+	defer a.Close()
+
+	ctx := context.Background()
+	require.NoError(t, a.Send(ctx, "hi"))
+	require.Eventually(t, a.IsRunning, time.Second, 5*time.Millisecond)
+
+	a.Abort()
+
+	_, err := a.Wait(ctx)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.False(t, a.IsRunning())
+
+	turnCtx := <-ctxCh
+	assert.ErrorIs(t, turnCtx.Err(), context.Canceled)
+}
+
+// Abort is a no-op when the agent is idle.
+func TestAgent_Abort_IdleNoOp(t *testing.T) {
+	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
+	defer a.Close()
+	a.Abort() // must not panic
+	assert.False(t, a.IsRunning())
+}
+
 func TestAgent_Send_StartError(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	a.runFn = func(_ context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error) {

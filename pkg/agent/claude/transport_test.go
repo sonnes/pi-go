@@ -5,7 +5,19 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// Pin the exact stream-json interrupt control_request wire format the Claude
+// CLI accepts on stdin (mirrors the Agent SDK). A drift here breaks Abort.
+func TestBuildInterruptControl(t *testing.T) {
+	line, err := buildInterruptControl("req_1")
+	require.NoError(t, err)
+	assert.Equal(t,
+		`{"type":"control_request","request_id":"req_1","request":{"subtype":"interrupt"}}`+"\n",
+		string(line),
+	)
+}
 
 func TestBuildArgs(t *testing.T) {
 	base := []string{

@@ -37,12 +37,13 @@ type Default struct {
 	toolInfo []ai.ToolInfo
 	broker   *pubsub.Broker[Event]
 
-	mu       sync.Mutex
-	running  bool
-	done     chan struct{}
-	lastMsgs []ai.Message
-	messages []Message
-	err      error
+	mu        sync.Mutex
+	running   bool
+	done      chan struct{}
+	runCancel context.CancelFunc
+	lastMsgs  []ai.Message
+	messages  []Message
+	err       error
 
 	// session lifecycle tracking — session_init fires once on first run,
 	// session_end fires once on Close (and only if session_init fired).
@@ -205,10 +206,16 @@ func (a *Default) run(ctx context.Context, newMsgs []Message) error {
 		return errors.New("agent: already streaming")
 	}
 
+	// Derive a run-scoped context the agent owns, so [Default.Abort] can
+	// cancel the in-flight run without the caller holding the handle —
+	// mirroring pi-mono's per-run AbortController.
+	runCtx, runCancel := context.WithCancel(ctx)
+
 	a.running = true
 	a.err = nil
 	a.lastMsgs = nil
 	a.done = make(chan struct{})
+	a.runCancel = runCancel
 	a.messages = append(a.messages, newMsgs...)
 	a.mu.Unlock()
 
@@ -216,18 +223,39 @@ func (a *Default) run(ctx context.Context, newMsgs []Message) error {
 	// message_start/message_end events — the caller already has them.
 	go func() {
 		defer a.stop()
-		a.loop(ctx, a.broker.Publish)
+		a.loop(runCtx, a.broker.Publish)
 	}()
 
 	return nil
 }
 
-// stop marks the agent as no longer running and signals [Wait].
+// Abort cancels the in-flight run, if one is active. It is a no-op when the
+// agent is idle. The run terminates promptly — the LLM stream and any
+// ctx-honoring tools observe the cancellation — and ends with
+// [EventAgentEnd] carrying [context.Canceled]. The agent stays reusable for
+// the next Send. Mirrors pi-mono's agent.abort().
+func (a *Default) Abort() {
+	a.mu.Lock()
+	cancel := a.runCancel
+	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// stop marks the agent as no longer running and signals [Wait]. It also
+// releases the run-scoped cancel so the derived context is not leaked and a
+// post-completion [Default.Abort] is a no-op.
 func (a *Default) stop() {
 	a.mu.Lock()
 	a.running = false
 	done := a.done
+	cancel := a.runCancel
+	a.runCancel = nil
 	a.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	if done != nil {
 		close(done)
 	}
