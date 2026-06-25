@@ -15,7 +15,6 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
-	"github.com/sonnes/pi-go/pkg/ai/provider/geminicli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 )
 
@@ -40,14 +39,6 @@ var oauthProviders = []oauthProvider{
 		envClientID: "OPENAI_OAUTH_CLIENT_ID",
 		loginConfig: func(id, _ string) oauth.LoginConfig {
 			return openai.LoginConfig(id)
-		},
-	},
-	{
-		name:            "google",
-		envClientID:     "GOOGLE_OAUTH_CLIENT_ID",
-		envClientSecret: "GOOGLE_OAUTH_CLIENT_SECRET",
-		loginConfig: func(id, secret string) oauth.LoginConfig {
-			return geminicli.LoginConfig(id, secret)
 		},
 	},
 }
