@@ -205,6 +205,19 @@ func convertToolResultMessage(
 	}
 }
 
+// filterFunctionTools returns only function-kind tools, dropping server tools.
+// Used for the Codex dialect whose backend rejects server tool types such as
+// web_search_preview.
+func filterFunctionTools(tools []ai.ToolInfo) []ai.ToolInfo {
+	out := make([]ai.ToolInfo, 0, len(tools))
+	for _, t := range tools {
+		if t.Kind == ai.ToolKindFunction {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // convertTools converts ai.ToolInfo to Responses API tool params.
 // Function tools become OfFunction; server tools route through convertServerTool
 // and are silently skipped if the type is unsupported.
