@@ -533,7 +533,15 @@ func buildParams(
 		// In the OpenRouter dialect the tools array is injected via
 		// option.WithJSONSet at the StreamText callsite, so leave
 		// params.Tools empty here.
-		if dialect != DialectOpenRouter {
+		//
+		// In the Codex dialect, server tools (e.g. web_search_preview) are
+		// not supported by the backend and must be stripped before sending.
+		switch dialect {
+		case DialectOpenRouter:
+			// handled via WithJSONSet below
+		case DialectCodex:
+			params.Tools = convertTools(filterFunctionTools(prompt.Tools))
+		default:
 			params.Tools = convertTools(prompt.Tools)
 		}
 		if opts.ToolChoice != "" {
