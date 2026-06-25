@@ -30,7 +30,6 @@ import (
 	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claudecli"
 	codexprov "github.com/sonnes/pi-go/pkg/ai/provider/codexcli"
 	cursorprov "github.com/sonnes/pi-go/pkg/ai/provider/cursorcli"
-	"github.com/sonnes/pi-go/pkg/ai/provider/geminicli"
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openairesponses"
@@ -319,18 +318,6 @@ var providers = []providerEntry{
 		},
 	},
 	{
-		envKey: "GOOGLE_OAUTH_TOKEN",
-		name:   "Gemini CLI",
-		create: func(token string) (ai.Provider, error) {
-			clientID := os.Getenv("GOOGLE_OAUTH_CLIENT_ID")
-			clientSecret := os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-			creds := oauth.Credentials{AccessToken: token}
-			return geminicli.New(
-				geminicli.WithOAuth(clientID, clientSecret, creds),
-			), nil
-		},
-	},
-	{
 		envKey: "GOOGLE_API_KEY",
 		name:   "Google",
 		create: func(apiKey string) (ai.Provider, error) {
@@ -458,17 +445,6 @@ var authProviderOrder = []struct {
 			creds := sc.ToOAuthCredentials()
 			return newOpenAIOAuthProvider(
 				sc.ClientID, "", creds, persistRefresh(sc),
-			), nil
-		},
-	},
-	{
-		name: "google",
-		create: func(sc StoredCredential) (ai.Provider, error) {
-			creds := sc.ToOAuthCredentials()
-			return geminicli.New(
-				geminicli.WithOAuth(
-					sc.ClientID, sc.ClientSecret, creds, persistRefresh(sc),
-				),
 			), nil
 		},
 	},

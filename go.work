@@ -10,7 +10,6 @@ use (
 	./pkg/ai/provider/claudecli
 	./pkg/ai/provider/codexcli
 	./pkg/ai/provider/cursorcli
-	./pkg/ai/provider/geminicli
 	./pkg/ai/provider/google
 	./pkg/ai/provider/openai
 	./pkg/ai/provider/openairesponses

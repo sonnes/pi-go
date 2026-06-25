@@ -161,7 +161,7 @@ func startCallbackServer(cfg LoginConfig, state string, codeCh chan<- callbackRe
 		codeCh <- callbackResult{code: code}
 	})
 
-	addr := fmt.Sprintf("127.0.0.1:%d", cfg.RedirectPort)
+	addr := fmt.Sprintf("localhost:%d", cfg.RedirectPort)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("oauth: listen on %s: %w", addr, err)
