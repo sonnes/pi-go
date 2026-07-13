@@ -324,9 +324,9 @@ func TestFilterFunctionCalls(t *testing.T) {
 
 func TestNewDefault_WithHistory(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	msgs := []Message{
-		NewLLMMessage(ai.UserMessage("hello")),
-		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "hi"})),
+	msgs := []ai.Message{
+		ai.UserMessage("hello"),
+		ai.AssistantMessage(ai.Text{Text: "hi"}),
 	}
 
 	a := New(model, WithHistory(msgs...))
@@ -336,17 +336,15 @@ func TestNewDefault_WithHistory(t *testing.T) {
 
 func TestNewDefault_WithHistory_IsCopied(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	msgs := []Message{NewLLMMessage(ai.UserMessage("hello"))}
+	msgs := []ai.Message{ai.UserMessage("hello")}
 
 	a := New(model, WithHistory(msgs...))
 
 	// Mutate original — should not affect agent state.
-	msgs[0] = NewLLMMessage(ai.UserMessage("modified"))
+	msgs[0] = ai.UserMessage("modified")
 
 	got := a.Messages()
-	lm, ok := AsLLMMessage(got[0])
-	assert.True(t, ok)
-	assert.Equal(t, "hello", lm.Content[0].(ai.Text).Text)
+	assert.Equal(t, "hello", got[0].Content[0].(ai.Text).Text)
 }
 
 func TestNewDefault_WithMaxTurns(t *testing.T) {
@@ -382,7 +380,7 @@ func TestNewDefault_MultipleOptions(t *testing.T) {
 			return in, nil
 		},
 	)
-	msgs := []Message{NewLLMMessage(ai.UserMessage("hello"))}
+	msgs := []ai.Message{ai.UserMessage("hello")}
 
 	a := New(
 		model,
@@ -944,9 +942,9 @@ func TestSend_StateSnapshots(t *testing.T) {
 func TestSend_ResultReturnsNewMessages(t *testing.T) {
 	registerMock(t, textStream("response", ai.Usage{}))
 
-	history := []Message{
-		NewLLMMessage(ai.UserMessage("old")),
-		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "old reply"})),
+	history := []ai.Message{
+		ai.UserMessage("old"),
+		ai.AssistantMessage(ai.Text{Text: "old reply"}),
 	}
 	a := New(testModel(), WithHistory(history...))
 	msgs, err := sendAndWait(t, a, "new")
@@ -1002,9 +1000,9 @@ func TestSend_UsageAccumulation(t *testing.T) {
 func TestContinue_WithExistingHistory(t *testing.T) {
 	registerMock(t, textStream("continued", ai.Usage{}))
 
-	history := []Message{
-		NewLLMMessage(ai.UserMessage("hello")),
-		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "hi, what next?"})),
+	history := []ai.Message{
+		ai.UserMessage("hello"),
+		ai.AssistantMessage(ai.Text{Text: "hi, what next?"}),
 	}
 	a := New(testModel(), WithHistory(history...))
 	err := a.Continue(t.Context())
@@ -1087,7 +1085,7 @@ func TestSendMessages(t *testing.T) {
 	registerMock(t, textStream("reply", ai.Usage{}))
 
 	a := New(testModel())
-	msg := NewLLMMessage(ai.UserMessage("hello"))
+	msg := ai.UserMessage("hello")
 	err := a.SendMessages(t.Context(), msg)
 	require.NoError(t, err)
 

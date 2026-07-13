@@ -155,7 +155,7 @@ func Create(model string, opts ...Option) (Agent, error) {
 type Config struct {
 	Provider     ai.Provider
 	Tools        []ai.Tool
-	History      []Message
+	History      []ai.Message
 	SystemPrompt string
 	StreamOpts   []ai.Option
 	MaxTurns     int

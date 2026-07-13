@@ -42,7 +42,7 @@ type Default struct {
 	done      chan struct{}
 	runCancel context.CancelFunc
 	lastMsgs  []ai.Message
-	messages  []Message
+	messages  []ai.Message
 	err       error
 
 	// session lifecycle tracking — session_init fires once on first run,
@@ -75,7 +75,7 @@ func New(model ai.Model, opts ...Option) *Default {
 		toolMap[info.Name] = t
 	}
 
-	msgs := make([]Message, len(c.history))
+	msgs := make([]ai.Message, len(c.history))
 	copy(msgs, c.history)
 
 	return &Default{
@@ -89,11 +89,11 @@ func New(model ai.Model, opts ...Option) *Default {
 
 // Send adds a user message and runs the agent loop.
 func (a *Default) Send(ctx context.Context, input string) error {
-	return a.SendMessages(ctx, NewLLMMessage(ai.UserMessage(input)))
+	return a.SendMessages(ctx, ai.UserMessage(input))
 }
 
 // SendMessages adds messages and runs the agent loop.
-func (a *Default) SendMessages(ctx context.Context, msgs ...Message) error {
+func (a *Default) SendMessages(ctx context.Context, msgs ...ai.Message) error {
 	return a.run(ctx, msgs)
 }
 
@@ -166,13 +166,13 @@ func (a *Default) fireSessionInit() {
 }
 
 // Messages returns a copy of the current conversation history.
-func (a *Default) Messages() []Message {
+func (a *Default) Messages() []ai.Message {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.messages) == 0 {
 		return nil
 	}
-	out := make([]Message, len(a.messages))
+	out := make([]ai.Message, len(a.messages))
 	copy(out, a.messages)
 	return out
 }
@@ -194,7 +194,7 @@ func (a *Default) Err() error {
 // run starts the agent loop. It acquires the mutex to check for concurrent
 // runs and set up initial state, then launches the loop in a goroutine
 // that publishes events to the agent's broker.
-func (a *Default) run(ctx context.Context, newMsgs []Message) error {
+func (a *Default) run(ctx context.Context, newMsgs []ai.Message) error {
 	if a.config.provider == nil && a.config.model.Provider == "" {
 		return errors.New("agent: no model configured; pass a model or use WithProvider")
 	}
@@ -315,11 +315,11 @@ func (a *Default) loop(
 
 		totalUsage = addUsage(totalUsage, tr.usage)
 
-		a.messages = append(a.messages, NewLLMMessage(tr.assistantMsg))
+		a.messages = append(a.messages, tr.assistantMsg)
 		newMessages = append(newMessages, tr.assistantMsg)
 
 		for _, trMsg := range tr.toolResults {
-			a.messages = append(a.messages, NewLLMMessage(trMsg))
+			a.messages = append(a.messages, trMsg)
 			newMessages = append(newMessages, trMsg)
 		}
 
@@ -357,11 +357,7 @@ func (a *Default) loop(
 			return
 		}
 		a.messages = append(a.messages, followMsgs...)
-		for _, m := range followMsgs {
-			if lm, ok := AsLLMMessage(m); ok {
-				newMessages = append(newMessages, lm.Message)
-			}
-		}
+		newMessages = append(newMessages, followMsgs...)
 		emitMessages(push, followMsgs, true)
 	}
 }
@@ -762,23 +758,19 @@ func emitToolResult(push func(Event), msg ai.Message) {
 }
 
 // emitMessages pushes message_start/message_end events for each
-// [LLMMessage]. input marks the events as Input=true on the published
+// message. input marks the events as Input=true on the published
 // [Event], so consumers persisting from the event stream can skip
 // caller-supplied messages they have already stored.
-func emitMessages(push func(Event), msgs []Message, input bool) {
-	for _, m := range msgs {
-		lm, ok := AsLLMMessage(m)
-		if !ok {
-			continue
-		}
+func emitMessages(push func(Event), msgs []ai.Message, input bool) {
+	for i := range msgs {
 		push(Event{
 			Type:    EventMessageStart,
-			Message: &lm.Message,
+			Message: &msgs[i],
 			Input:   input,
 		})
 		push(Event{
 			Type:    EventMessageEnd,
-			Message: &lm.Message,
+			Message: &msgs[i],
 			Input:   input,
 		})
 	}

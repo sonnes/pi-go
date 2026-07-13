@@ -28,7 +28,7 @@ type config struct {
 	systemPrompt       string
 	appendSystemPrompt string
 	mcpConfig          string
-	history            []agent.Message
+	history            []ai.Message
 }
 
 // mutate returns an [agent.Option] that applies fn to the claude-scoped

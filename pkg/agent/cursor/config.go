@@ -1,6 +1,9 @@
 package cursor
 
-import "github.com/sonnes/pi-go/pkg/agent"
+import (
+	"github.com/sonnes/pi-go/pkg/agent"
+	"github.com/sonnes/pi-go/pkg/ai"
+)
 
 const extensionKey = "cursor"
 
@@ -19,7 +22,7 @@ type config struct {
 	browser      bool
 	maxTurns     int
 	systemPrompt string
-	history      []agent.Message
+	history      []ai.Message
 }
 
 func mutate(fn func(*config)) agent.Option {

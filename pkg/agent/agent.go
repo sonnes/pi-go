@@ -16,7 +16,7 @@ import (
 type Agent interface {
 	pubsub.Subscriber[Event]
 	Send(ctx context.Context, input string) error
-	SendMessages(ctx context.Context, msgs ...Message) error
+	SendMessages(ctx context.Context, msgs ...ai.Message) error
 	Continue(ctx context.Context) error
 	Wait(ctx context.Context) ([]ai.Message, error)
 	// Abort cancels the in-flight run, if one is active, leaving the agent
@@ -24,7 +24,7 @@ type Agent interface {
 	// Mirrors pi-mono's agent.abort().
 	Abort()
 	Close()
-	Messages() []Message
+	Messages() []ai.Message
 	IsRunning() bool
 	Err() error
 }
@@ -39,7 +39,7 @@ type config struct {
 	model        ai.Model
 	provider     ai.Provider
 	tools        []ai.Tool
-	history      []Message
+	history      []ai.Message
 	systemPrompt string
 	streamOpts   []ai.Option
 	maxTurns     int
@@ -87,7 +87,7 @@ func WithTools(tools ...ai.Tool) Option {
 }
 
 // WithHistory sets the initial conversation messages.
-func WithHistory(msgs ...Message) Option {
+func WithHistory(msgs ...ai.Message) Option {
 	return func(c *config) { c.history = msgs }
 }
 

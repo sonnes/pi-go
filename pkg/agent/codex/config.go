@@ -22,7 +22,7 @@ type config struct {
 	ignoreRules      bool
 	maxTurns         int
 	systemPrompt     string
-	history          []agent.Message
+	history          []ai.Message
 }
 
 func mutate(fn func(*config)) agent.Option {

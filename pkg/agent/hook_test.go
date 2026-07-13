@@ -297,14 +297,14 @@ func TestAfterTool_Chains(t *testing.T) {
 
 // --- BeforeCall hook tests ---
 
-// Test: BeforeCall replaces LLM messages.
-func TestBeforeCall_ReplacesLLMMessages(t *testing.T) {
+// Test: BeforeCall replaces the messages sent to the model.
+func TestBeforeCall_ReplacesMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	var received []Message
+	var received []ai.Message
 	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
 		received = input.Messages
-		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
+		return &HookOutput{Messages: input.Messages}, nil
 	}
 
 	a := New(testModel(), WithHook(HookBeforeCall, hook))
@@ -313,7 +313,7 @@ func TestBeforeCall_ReplacesLLMMessages(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, received, 1)
-	assert.Equal(t, RoleUser, received[0].Role())
+	assert.Equal(t, ai.RoleUser, received[0].Role)
 
 	require.Len(t, mock.prompts, 1)
 	require.Len(t, mock.prompts[0].Messages, 1)
@@ -326,12 +326,12 @@ func TestBeforeCall_FiltersMessages(t *testing.T) {
 
 	// Return an empty slice (not nil) to explicitly send zero messages.
 	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
-		return &HookOutput{LLMMessages: []ai.Message{}}, nil
+		return &HookOutput{Messages: []ai.Message{}}, nil
 	}
 
-	history := []Message{
-		NewLLMMessage(ai.UserMessage("old")),
-		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "old reply"})),
+	history := []ai.Message{
+		ai.UserMessage("old"),
+		ai.AssistantMessage(ai.Text{Text: "old reply"}),
 	}
 	a := New(
 		testModel(),
@@ -344,46 +344,6 @@ func TestBeforeCall_FiltersMessages(t *testing.T) {
 
 	require.Len(t, mock.prompts, 1)
 	assert.Empty(t, mock.prompts[0].Messages)
-}
-
-// Test: BeforeCall receives custom messages.
-func TestBeforeCall_ReceivesCustomMessages(t *testing.T) {
-	mock := registerMock(t, textStream("ok", ai.Usage{}))
-
-	type artifact struct {
-		CustomMessage
-		Content string
-	}
-
-	var sawCustom bool
-	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
-		for _, m := range input.Messages {
-			if _, ok := m.(artifact); ok {
-				sawCustom = true
-			}
-		}
-		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
-	}
-
-	history := []Message{
-		artifact{
-			CustomMessage: CustomMessage{CustomRole: RoleAssistant, Kind: "artifact"},
-			Content:       "code snippet",
-		},
-	}
-	a := New(
-		testModel(),
-		WithHistory(history...),
-		WithHook(HookBeforeCall, hook),
-	)
-	require.NoError(t, a.Send(t.Context(), "hi"))
-	_, err := a.Wait(t.Context())
-	require.NoError(t, err)
-
-	assert.True(t, sawCustom, "hook should see custom messages")
-	require.Len(t, mock.prompts, 1)
-	require.Len(t, mock.prompts[0].Messages, 1)
-	assert.Equal(t, ai.RoleUser, mock.prompts[0].Messages[0].Role)
 }
 
 // Test: BeforeCall called each turn (multi-turn).
@@ -401,7 +361,7 @@ func TestBeforeCall_CalledEachTurn(t *testing.T) {
 	var callCount int
 	hook := func(_ context.Context, input *HookInput) (*HookOutput, error) {
 		callCount++
-		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
+		return &HookOutput{Messages: input.Messages}, nil
 	}
 
 	a := New(
@@ -416,7 +376,7 @@ func TestBeforeCall_CalledEachTurn(t *testing.T) {
 	assert.Equal(t, 2, callCount, "hook should be called once per turn")
 }
 
-// Test: Nil BeforeCall falls back to LLMMessages.
+// Test: No BeforeCall hooks — history is sent to the model as-is.
 func TestBeforeCall_NilFallback(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
@@ -433,21 +393,21 @@ func TestBeforeCall_NilFallback(t *testing.T) {
 func TestBeforeCall_ChainsMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	// First hook filters agent messages (keep only last one).
+	// First hook filters messages (keep only last one).
 	h1 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
 		if len(input.Messages) > 1 {
 			return &HookOutput{Messages: input.Messages[len(input.Messages)-1:]}, nil
 		}
 		return nil, nil
 	}
-	// Second hook converts to LLM messages.
+	// Second hook sees the filtered list and passes it through.
 	h2 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
-		return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
+		return &HookOutput{Messages: input.Messages}, nil
 	}
 
-	history := []Message{
-		NewLLMMessage(ai.UserMessage("old")),
-		NewLLMMessage(ai.AssistantMessage(ai.Text{Text: "old reply"})),
+	history := []ai.Message{
+		ai.UserMessage("old"),
+		ai.AssistantMessage(ai.Text{Text: "old reply"}),
 	}
 	a := New(
 		testModel(),
@@ -569,8 +529,8 @@ func TestBeforeStop_ContinuesLoop(t *testing.T) {
 		calls++
 		if calls == 1 {
 			return &HookOutput{
-				FollowUp: []Message{
-					NewLLMMessage(ai.UserMessage("now verify that")),
+				FollowUp: []ai.Message{
+					ai.UserMessage("now verify that"),
 				},
 			}, nil
 		}
@@ -614,7 +574,7 @@ func TestBeforeStop_RespectsMaxTurns(t *testing.T) {
 
 	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 		return &HookOutput{
-			FollowUp: []Message{NewLLMMessage(ai.UserMessage("continue"))},
+			FollowUp: []ai.Message{ai.UserMessage("continue")},
 		}, nil
 	}
 
@@ -675,7 +635,7 @@ func TestHooks_AllTogether(t *testing.T) {
 	a := New(testModel(),
 		WithHook(HookBeforeCall, func(_ context.Context, input *HookInput) (*HookOutput, error) {
 			beforeCallCalls++
-			return &HookOutput{LLMMessages: LLMMessages(input.Messages)}, nil
+			return &HookOutput{Messages: input.Messages}, nil
 		}),
 		WithHook(HookAfterTurn, func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 			afterTurnCalls++
@@ -684,7 +644,7 @@ func TestHooks_AllTogether(t *testing.T) {
 		WithHook(HookBeforeStop, func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 			if afterTurnCalls == 1 {
 				return &HookOutput{
-					FollowUp: []Message{NewLLMMessage(ai.UserMessage("more"))},
+					FollowUp: []ai.Message{ai.UserMessage("more")},
 				}, nil
 			}
 			return nil, nil

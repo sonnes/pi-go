@@ -30,7 +30,7 @@ type Agent struct {
 	done      chan struct{}
 	lastMsgs  []ai.Message
 	sessionID string
-	messages  []agent.Message
+	messages  []ai.Message
 	err       error
 
 	// session lifecycle tracking — session_init fires once when the
@@ -104,9 +104,9 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 		cfg.systemPrompt = ac.SystemPrompt
 	}
 
-	var msgs []agent.Message
+	var msgs []ai.Message
 	if len(cfg.history) > 0 {
-		msgs = make([]agent.Message, len(cfg.history))
+		msgs = make([]ai.Message, len(cfg.history))
 		copy(msgs, cfg.history)
 	}
 
@@ -130,20 +130,19 @@ func (a *Agent) Send(ctx context.Context, input string) error {
 // own context via --resume.
 //
 // The call is validated before any state mutation: if msgs contains no
-// [agent.LLMMessage] with role=user, an error is returned synchronously
-// and no events are published, matching the entry-point validation
-// convention shared with [agent.Default].
+// message with role=user, an error is returned synchronously and no
+// events are published, matching the entry-point validation convention
+// shared with [agent.Default].
 func (a *Agent) SendMessages(
 	ctx context.Context,
-	msgs ...agent.Message,
+	msgs ...ai.Message,
 ) error {
 	var userMsg *ai.Message
 	for i := len(msgs) - 1; i >= 0; i-- {
-		lm, ok := agent.AsLLMMessage(msgs[i])
-		if !ok || lm.Message.Role != ai.RoleUser {
+		if msgs[i].Role != ai.RoleUser {
 			continue
 		}
-		m := lm.Message
+		m := msgs[i]
 		userMsg = &m
 		break
 	}
@@ -280,13 +279,13 @@ func (a *Agent) maybePublishAgentStart() {
 }
 
 // Messages returns a copy of the current conversation history.
-func (a *Agent) Messages() []agent.Message {
+func (a *Agent) Messages() []ai.Message {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.messages) == 0 {
 		return nil
 	}
-	out := make([]agent.Message, len(a.messages))
+	out := make([]ai.Message, len(a.messages))
 	copy(out, a.messages)
 	return out
 }
@@ -315,7 +314,7 @@ func (a *Agent) SessionID() string {
 // sendUser wraps a text input into a user message and runs one turn.
 func (a *Agent) sendUser(ctx context.Context, msg ai.Message) error {
 	a.mu.Lock()
-	a.messages = append(a.messages, agent.NewLLMMessage(msg))
+	a.messages = append(a.messages, msg)
 	a.mu.Unlock()
 
 	return a.runTurn(ctx, msg)
@@ -399,9 +398,7 @@ func (a *Agent) finishTurn(result turnResult) {
 	if result.sessionID != "" {
 		a.sessionID = result.sessionID
 	}
-	for _, msg := range result.messages {
-		a.messages = append(a.messages, agent.NewLLMMessage(msg))
-	}
+	a.messages = append(a.messages, result.messages...)
 	a.lastMsgs = result.messages
 	a.err = result.err
 	a.turnDone = nil

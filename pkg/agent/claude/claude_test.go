@@ -326,8 +326,8 @@ func TestAgent_Messages_Accumulate(t *testing.T) {
 
 	msgs := a.Messages()
 	require.Len(t, msgs, 2)
-	assert.Equal(t, agent.RoleUser, msgs[0].Role())
-	assert.Equal(t, agent.RoleAssistant, msgs[1].Role())
+	assert.Equal(t, ai.RoleUser, msgs[0].Role)
+	assert.Equal(t, ai.RoleAssistant, msgs[1].Role)
 }
 
 func TestAgent_IsRunning(t *testing.T) {
@@ -542,7 +542,7 @@ func TestAgent_SendMessages_RichContent(t *testing.T) {
 	msg := ai.UserImageMessage("describe this",
 		ai.Image{Data: "AAA=", MimeType: "image/png"},
 	)
-	err := a.SendMessages(ctx, agent.NewLLMMessage(msg))
+	err := a.SendMessages(ctx, msg)
 	require.NoError(t, err)
 	_, err = a.Wait(ctx)
 	require.NoError(t, err)

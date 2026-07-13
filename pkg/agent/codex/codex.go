@@ -28,7 +28,7 @@ type Agent struct {
 	done       chan struct{}
 	turnCancel context.CancelFunc
 	lastMsgs   []ai.Message
-	messages   []agent.Message
+	messages   []ai.Message
 	err        error
 	sessionID  string
 
@@ -74,7 +74,7 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 		cfg.systemPrompt = ac.SystemPrompt
 	}
 
-	msgs := make([]agent.Message, len(cfg.history))
+	msgs := make([]ai.Message, len(cfg.history))
 	copy(msgs, cfg.history)
 
 	return &Agent{
@@ -88,20 +88,19 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 
 // Send adds a user message and runs one Codex turn.
 func (a *Agent) Send(ctx context.Context, input string) error {
-	return a.SendMessages(ctx, agent.NewLLMMessage(ai.UserMessage(input)))
+	return a.SendMessages(ctx, ai.UserMessage(input))
 }
 
 // SendMessages appends messages to history and sends the most recent user
 // message to the Codex CLI. Non-user messages are retained locally but not
 // forwarded; after the first turn the CLI owns context through its thread ID.
-func (a *Agent) SendMessages(ctx context.Context, msgs ...agent.Message) error {
+func (a *Agent) SendMessages(ctx context.Context, msgs ...ai.Message) error {
 	var userMsg *ai.Message
 	for i := len(msgs) - 1; i >= 0; i-- {
-		lm, ok := agent.AsLLMMessage(msgs[i])
-		if !ok || lm.Message.Role != ai.RoleUser {
+		if msgs[i].Role != ai.RoleUser {
 			continue
 		}
-		m := lm.Message
+		m := msgs[i]
 		userMsg = &m
 		break
 	}
@@ -212,13 +211,13 @@ func (a *Agent) Close() {
 }
 
 // Messages returns a copy of the current conversation history.
-func (a *Agent) Messages() []agent.Message {
+func (a *Agent) Messages() []ai.Message {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.messages) == 0 {
 		return nil
 	}
-	out := make([]agent.Message, len(a.messages))
+	out := make([]ai.Message, len(a.messages))
 	copy(out, a.messages)
 	return out
 }
@@ -268,9 +267,7 @@ func (a *Agent) runTurn(ctx context.Context, args runArgs) {
 
 func (a *Agent) finishTurn(result turnResult) {
 	a.mu.Lock()
-	for _, msg := range result.messages {
-		a.messages = append(a.messages, agent.NewLLMMessage(msg))
-	}
+	a.messages = append(a.messages, result.messages...)
 	a.lastMsgs = result.messages
 	a.err = result.err
 	a.running = false
