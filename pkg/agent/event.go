@@ -10,30 +10,18 @@ import (
 type EventType string
 
 const (
-	// EventSessionInit signals the agent backend (subprocess, in-process
-	// loop, …) has been initialized. Fires exactly once per agent
-	// lifetime — before the first [EventAgentStart]. For the Claude CLI
-	// agent it carries the [Event.SessionID] from the subprocess
-	// `system/init` line. If the backend fails to initialize at all
-	// (e.g. subprocess startup error), this event is not emitted.
-	EventSessionInit EventType = "session_init"
-
-	// EventSessionEnd signals the agent backend has shut down. Fires
-	// exactly once per agent lifetime, after the final [EventAgentEnd]
-	// and immediately before the broker shuts down. Only emitted if
-	// [EventSessionInit] previously fired. Carries [Event.Err] when the
-	// backend exited with an error.
-	EventSessionEnd EventType = "session_end"
-
-	// EventAgentStart brackets a single run — one [Agent.Send],
-	// [Agent.Continue], or [Agent.SendMessages] call. Fires as the first
-	// event of the run, after any [EventSessionInit]. Caller-supplied
-	// input messages are not echoed back. If the backend fails before
-	// the run begins (e.g. subprocess startup error), this event is
-	// skipped and only [EventAgentEnd] (with Err set) is emitted.
+	// EventAgentStart brackets a single run — one [Agent.Run] call.
+	// Fires as the first event of the run's [Stream]. Caller-supplied
+	// input messages are not echoed back. For CLI-backed agents it
+	// carries the backend's [Event.SessionID] once known.
 	EventAgentStart EventType = "agent_start"
 
-	EventAgentEnd            EventType = "agent_end"
+	// EventAgentEnd is the final event of a successful run, carrying
+	// the new [Event.Messages] and accumulated [Event.Usage]. When the
+	// run fails there is no agent_end — the error ends the [Stream]
+	// iteration instead.
+	EventAgentEnd EventType = "agent_end"
+
 	EventTurnStart           EventType = "turn_start"
 	EventTurnEnd             EventType = "turn_end"
 	EventMessageStart        EventType = "message_start"
@@ -55,7 +43,6 @@ type Event struct {
 	// agent_end
 	Messages []ai.Message // all new messages produced this run
 	Usage    ai.Usage     // accumulated usage across all turns
-	Err      error
 
 	// turn_end
 	ToolResults []ai.Message // tool result messages from this turn
@@ -91,28 +78,6 @@ type Event struct {
 // event type, keeping the wire format clean.
 func (e Event) MarshalJSON() ([]byte, error) {
 	switch e.Type {
-	case EventSessionInit:
-		return json.Marshal(struct {
-			Type      EventType `json:"type"`
-			SessionID string    `json:"session_id,omitempty"`
-		}{
-			Type:      e.Type,
-			SessionID: e.SessionID,
-		})
-
-	case EventSessionEnd:
-		var errStr string
-		if e.Err != nil {
-			errStr = e.Err.Error()
-		}
-		return json.Marshal(struct {
-			Type  EventType `json:"type"`
-			Error string    `json:"error,omitempty"`
-		}{
-			Type:  e.Type,
-			Error: errStr,
-		})
-
 	case EventAgentStart:
 		return json.Marshal(struct {
 			Type      EventType `json:"type"`
@@ -123,18 +88,12 @@ func (e Event) MarshalJSON() ([]byte, error) {
 		})
 
 	case EventAgentEnd:
-		var errStr string
-		if e.Err != nil {
-			errStr = e.Err.Error()
-		}
 		return json.Marshal(struct {
 			Type     EventType    `json:"type"`
 			Messages []ai.Message `json:"messages,omitempty"`
-			Error    string       `json:"error,omitempty"`
 		}{
 			Type:     e.Type,
 			Messages: e.Messages,
-			Error:    errStr,
 		})
 
 	case EventTurnStart:

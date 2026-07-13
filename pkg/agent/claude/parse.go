@@ -177,11 +177,10 @@ type parser struct {
 // agent events. The caller pushes each returned event.
 //
 // system/init lines are intercepted by [Agent.readLoop], not the
-// parser: the agent emits [agent.EventSessionInit] (once per subprocess
-// lifetime) on init. Per-run [agent.EventAgentStart] is published by
-// readLoop just before the next batch of parser events (signalled by
-// [Agent.expectAgentStart]); [agent.EventAgentEnd] is emitted by
-// [Agent.finishTurn].
+// parser: the agent records the session ID from init. Per-run
+// [agent.EventAgentStart] is published by readLoop just before the next
+// batch of parser events (signalled by [Agent.expectAgentStart]);
+// [agent.EventAgentEnd] is emitted by [Agent.awaitTurn] on success.
 func (m *parser) handleLine(line rawLine) []agent.Event {
 	switch line.Type {
 	case "assistant":

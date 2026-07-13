@@ -109,7 +109,7 @@ func TestDefaultRun_ErrorsWhenModelMissing(t *testing.T) {
 	a := New(ai.Model{})
 	defer a.Close()
 
-	err := a.Send(context.Background(), "hi")
+	_, err := a.Run(context.Background(), ai.UserMessage("hi")).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "model")
 }

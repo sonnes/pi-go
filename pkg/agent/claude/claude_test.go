@@ -12,7 +12,6 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -123,6 +122,13 @@ func (f *fakeTransport) writes() [][]byte {
 	return out
 }
 
+// writeCount returns how many stdin writes were captured.
+func (f *fakeTransport) writeCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.stdinWrites)
+}
+
 // newTestAgent builds an Agent wired to a fake transport. The emitter
 // runs in a goroutine and receives the transport so it can choose when
 // to emit lines (typically after waiting on [fakeTransport.pendingWrite]
@@ -165,20 +171,15 @@ func emitString(s string) func(*fakeTransport) {
 
 // --- tests ---
 
-func TestAgent_Send_SimpleText(t *testing.T) {
+func TestAgent_Run_SimpleText(t *testing.T) {
 	a, _ := newTestAgent(t, nil, emitString(simpleTextNDJSON))
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	err := a.Send(ctx, "hi")
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("hi")))
 	require.NoError(t, err)
-
-	events := collectUntilAgentEnd(t, ch)
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant
@@ -187,21 +188,22 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 		agent.EventAgentEnd,
 	}, types)
 
+	assert.Equal(t, "sess-1", events[0].SessionID,
+		"agent_start carries the subprocess session_id",
+	)
+
 	last := events[len(events)-1]
 	require.Len(t, last.Messages, 1)
 	assert.Equal(t, "Hello!", last.Messages[0].Text())
 	assert.Equal(t, 10, last.Usage.Input)
 	assert.Equal(t, 5, last.Usage.Output)
-	assert.NoError(t, last.Err)
 }
 
-func TestAgent_Send_WritesSDKUserMessageToStdin(t *testing.T) {
+func TestAgent_Run_WritesSDKUserMessageToStdin(t *testing.T) {
 	a, ft := newTestAgent(t, nil, emitString(simpleTextNDJSON))
 	defer a.Close()
 
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "ping"))
-	_, err := a.Wait(ctx)
+	_, err := a.Run(context.Background(), ai.UserMessage("ping")).Wait()
 	require.NoError(t, err)
 
 	writes := ft.writes()
@@ -217,19 +219,15 @@ func TestAgent_Send_WritesSDKUserMessageToStdin(t *testing.T) {
 	assert.Equal(t, "ping", content)
 }
 
-func TestAgent_Send_MultiTurn(t *testing.T) {
+func TestAgent_Run_MultiTurn(t *testing.T) {
 	a, _ := newTestAgent(t, nil, emitString(multiTurnNDJSON))
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "read /tmp/foo"))
-
-	events := collectUntilAgentEnd(t, ch)
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("read /tmp/foo")))
+	require.NoError(t, err)
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -249,10 +247,10 @@ func TestAgent_Send_MultiTurn(t *testing.T) {
 	assert.Equal(t, "The file says hello.", last.Messages[1].Text())
 }
 
-// Abort interrupts the in-flight turn (writes the control request via the
-// transport) and lets the CLI's result line end the turn — the persistent
-// subprocess stays alive for the next Send.
-func TestAgent_Abort_InterruptsTurnKeepsSubprocess(t *testing.T) {
+// Canceling the Run context interrupts the in-flight turn (writes the
+// control request via the transport) — the persistent subprocess stays
+// alive for the next Run.
+func TestAgent_Run_CancelInterruptsTurnKeepsSubprocess(t *testing.T) {
 	ft := newFakeTransport()
 	a := New(ai.Model{})
 	a.newTransport = func(_ context.Context, _ config) (transportIface, error) { return ft, nil }
@@ -275,41 +273,33 @@ func TestAgent_Abort_InterruptsTurnKeepsSubprocess(t *testing.T) {
 		ft.emit(`{"type":"result","subtype":"error_during_execution","result":"Interrupted","session_id":"sess-i"}` + "\n")
 	}()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "hi"))
-	require.Eventually(t, a.IsRunning, time.Second, 5*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	s := a.Run(ctx, ai.UserMessage("hi"))
 
-	a.Abort()
+	require.Eventually(t, func() bool { return ft.writeCount() == 1 },
+		time.Second, 5*time.Millisecond,
+		"Run should write the user line",
+	)
 
-	events := collectUntilAgentEnd(t, ch)
-	assert.Equal(t, agent.EventAgentEnd, events[len(events)-1].Type)
-	assert.False(t, a.IsRunning())
-	assert.True(t, ft.interrupted(), "Abort must request a transport interrupt")
+	cancel()
+
+	_, err := s.Wait()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, ft.interrupted(), "cancel must request a transport interrupt")
 
 	select {
 	case <-ft.exited():
-		t.Fatal("Abort terminated the persistent subprocess")
+		t.Fatal("cancel terminated the persistent subprocess")
 	default:
 	}
-}
-
-// Abort is a no-op when the agent is idle (no transport, not running).
-func TestAgent_Abort_IdleNoOp(t *testing.T) {
-	a, _ := newTestAgent(t, nil, nil)
-	defer a.Close()
-
-	a.Abort() // must not panic
-	assert.False(t, a.IsRunning())
 }
 
 func TestAgent_SessionID(t *testing.T) {
 	a, _ := newTestAgent(t, nil, emitString(simpleTextNDJSON))
 	defer a.Close()
 
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "hi"))
-	_, err := a.Wait(ctx)
+	_, err := a.Run(context.Background(), ai.UserMessage("hi")).Wait()
 	require.NoError(t, err)
 
 	assert.Equal(t, "sess-1", a.SessionID())
@@ -319,9 +309,7 @@ func TestAgent_Messages_Accumulate(t *testing.T) {
 	a, _ := newTestAgent(t, nil, emitString(simpleTextNDJSON))
 	defer a.Close()
 
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "hi"))
-	_, err := a.Wait(ctx)
+	_, err := a.Run(context.Background(), ai.UserMessage("hi")).Wait()
 	require.NoError(t, err)
 
 	msgs := a.Messages()
@@ -330,19 +318,7 @@ func TestAgent_Messages_Accumulate(t *testing.T) {
 	assert.Equal(t, ai.RoleAssistant, msgs[1].Role)
 }
 
-func TestAgent_IsRunning(t *testing.T) {
-	a, _ := newTestAgent(t, nil, emitString(simpleTextNDJSON))
-	defer a.Close()
-
-	assert.False(t, a.IsRunning())
-
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "hi"))
-	_, _ = a.Wait(ctx)
-	assert.False(t, a.IsRunning())
-}
-
-func TestAgent_ConcurrentSend_Rejected(t *testing.T) {
+func TestAgent_Run_ConcurrentRejected(t *testing.T) {
 	// Emitter never fires the result line, so the first turn stays open
 	// until we force-close.
 	a, ft := newTestAgent(t, nil, func(ft *fakeTransport) {
@@ -350,53 +326,42 @@ func TestAgent_ConcurrentSend_Rejected(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "first"))
+	first := a.Run(ctx, ai.UserMessage("first"))
 
-	require.Eventually(t, a.IsRunning, time.Second, 5*time.Millisecond,
-		"first Send should flip running=true",
+	require.Eventually(t, func() bool { return ft.writeCount() == 1 },
+		time.Second, 5*time.Millisecond,
+		"first Run should write its user line",
 	)
 
-	err := a.Send(ctx, "second")
+	_, err := a.Run(ctx, ai.UserMessage("second")).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already running")
 
 	// Close terminates the transport; awaitTurn sees exited and finishes.
 	_ = ft.close()
-	_, _ = a.Wait(ctx)
+	_, err = first.Wait()
+	require.Error(t, err)
 	a.Close()
 }
 
-func TestAgent_Send_StartError(t *testing.T) {
+func TestAgent_Run_StartError(t *testing.T) {
 	a, _ := newTestAgent(t, errors.New("cli not found"), nil)
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "hi"))
-
-	events := collectUntilAgentEnd(t, ch)
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("hi")))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cli not found")
 
 	for _, e := range events {
 		assert.NotEqual(t, agent.EventAgentStart, e.Type,
 			"agent_start must not fire when transport fails to start",
 		)
-		assert.NotEqual(t, agent.EventSessionInit, e.Type,
-			"session_init must not fire when transport fails to start",
-		)
 	}
-	last := events[len(events)-1]
-	assert.Equal(t, agent.EventAgentEnd, last.Type)
-	require.Error(t, last.Err)
-	assert.Contains(t, last.Err.Error(), "cli not found")
-
-	_, err := a.Wait(ctx)
-	require.Error(t, err)
-	assert.False(t, a.IsRunning())
 }
 
-func TestAgent_Continue_ReturnsError(t *testing.T) {
+func TestAgent_Run_NoMessages_ReturnsError(t *testing.T) {
 	a := New(ai.Model{})
-	err := a.Continue(context.Background())
+	_, err := a.Run(context.Background()).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not supported")
 }
@@ -410,9 +375,7 @@ func TestAgent_MalformedNDJSON(t *testing.T) {
 	a, _ := newTestAgent(t, nil, emitString(ndjson))
 	defer a.Close()
 
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "test"))
-	msgs, err := a.Wait(ctx)
+	msgs, err := a.Run(context.Background(), ai.UserMessage("test")).Wait()
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 	assert.Equal(t, "Still works", msgs[0].Text())
@@ -426,19 +389,15 @@ const toolLoopNDJSON = `{"type":"system","subtype":"init","session_id":"sess-3"}
 {"type":"result","subtype":"success","result":"It's a Go file.","usage":{"input_tokens":100,"output_tokens":30},"cost_usd":0.002}
 `
 
-func TestAgent_Send_FullToolLoop(t *testing.T) {
+func TestAgent_Run_FullToolLoop(t *testing.T) {
 	a, _ := newTestAgent(t, nil, emitString(toolLoopNDJSON))
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "read /tmp/foo"))
-
-	events := collectUntilAgentEnd(t, ch)
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("read /tmp/foo")))
+	require.NoError(t, err)
 
 	types := eventTypes(events)
 	assert.Equal(t, []agent.EventType{
-		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart, // assistant with tool_use
@@ -475,21 +434,19 @@ func TestAgent_Send_FullToolLoop(t *testing.T) {
 	assert.Equal(t, "t1", turnEnds[0].ToolResults[0].ToolCallID)
 }
 
-func TestAgent_Send_ErrorResult(t *testing.T) {
+func TestAgent_Run_ErrorResult(t *testing.T) {
 	ndjson := `{"type":"system","subtype":"init","session_id":"s1"}
 {"type":"result","subtype":"error","result":"Rate limited","is_error":true}
 `
 	a, _ := newTestAgent(t, nil, emitString(ndjson))
 	defer a.Close()
 
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "hi"))
-	_, err := a.Wait(ctx)
+	_, err := a.Run(context.Background(), ai.UserMessage("hi")).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Rate limited")
 }
 
-func TestAgent_Send_TwoTurnsReuseTransport(t *testing.T) {
+func TestAgent_Run_TwoTurnsReuseTransport(t *testing.T) {
 	turn1 := `{"type":"system","subtype":"init","session_id":"s1"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"one"}],"stop_reason":"end_turn"}}
 {"type":"result","subtype":"success","result":"one"}
@@ -520,31 +477,26 @@ func TestAgent_Send_TwoTurnsReuseTransport(t *testing.T) {
 
 	ctx := context.Background()
 
-	require.NoError(t, a.Send(ctx, "first"))
-	_, err := a.Wait(ctx)
+	_, err := a.Run(ctx, ai.UserMessage("first")).Wait()
 	require.NoError(t, err)
 
-	require.NoError(t, a.Send(ctx, "second"))
-	_, err = a.Wait(ctx)
+	_, err = a.Run(ctx, ai.UserMessage("second")).Wait()
 	require.NoError(t, err)
 
 	assert.Equal(t, 1, factoryCalls, "transport must be reused across turns")
 	assert.Len(t, ft.writes(), 2)
 
-	a.Close()
+	require.NoError(t, a.Close())
 }
 
-func TestAgent_SendMessages_RichContent(t *testing.T) {
+func TestAgent_Run_RichContent(t *testing.T) {
 	a, ft := newTestAgent(t, nil, emitString(simpleTextNDJSON))
 	defer a.Close()
 
-	ctx := context.Background()
 	msg := ai.UserImageMessage("describe this",
 		ai.Image{Data: "AAA=", MimeType: "image/png"},
 	)
-	err := a.SendMessages(ctx, msg)
-	require.NoError(t, err)
-	_, err = a.Wait(ctx)
+	_, err := a.Run(context.Background(), msg).Wait()
 	require.NoError(t, err)
 
 	writes := ft.writes()
@@ -560,79 +512,6 @@ func TestAgent_SendMessages_RichContent(t *testing.T) {
 	assert.Equal(t, "image", blocks[1]["type"])
 }
 
-// TestSessionLifecycle_TwoSendsThenClose verifies session_init fires
-// once with the SessionID from the first turn's init line, session_end
-// fires once on Close, and per-Send agent_start/agent_end pairs sit
-// between.
-func TestSessionLifecycle_TwoSendsThenClose(t *testing.T) {
-	turn1 := `{"type":"system","subtype":"init","session_id":"sess-life"}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}}
-{"type":"result","subtype":"success","result":"ok"}
-`
-	turn2 := `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}}
-{"type":"result","subtype":"success","result":"ok"}
-`
-	ft := newFakeTransport()
-	a := New(ai.Model{})
-	a.newTransport = func(ctx context.Context, cfg config) (transportIface, error) {
-		return ft, nil
-	}
-
-	go func() {
-		for _, body := range []string{turn1, turn2} {
-			select {
-			case <-ft.pendingWrite:
-			case <-ft.exitedCh:
-				return
-			}
-			ft.emit(body)
-		}
-	}()
-
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-
-	require.NoError(t, a.Send(ctx, "one"))
-	_, err := a.Wait(ctx)
-	require.NoError(t, err)
-
-	require.NoError(t, a.Send(ctx, "two"))
-	_, err = a.Wait(ctx)
-	require.NoError(t, err)
-
-	a.Close()
-
-	var events []agent.Event
-	for pe := range ch {
-		events = append(events, pe.Payload())
-	}
-
-	var inits, ends, agentStarts, agentEnds int
-	var initSID string
-	for _, e := range events {
-		switch e.Type {
-		case agent.EventSessionInit:
-			inits++
-			initSID = e.SessionID
-		case agent.EventSessionEnd:
-			ends++
-		case agent.EventAgentStart:
-			agentStarts++
-		case agent.EventAgentEnd:
-			agentEnds++
-		}
-	}
-	assert.Equal(t, 1, inits, "session_init fires once")
-	assert.Equal(t, 1, ends, "session_end fires once")
-	assert.Equal(t, 2, agentStarts, "agent_start fires once per Send")
-	assert.Equal(t, 2, agentEnds, "agent_end fires once per Send")
-	assert.Equal(t, "sess-life", initSID, "session_init carries the subprocess session_id")
-
-	require.GreaterOrEqual(t, len(events), 1)
-	assert.Equal(t, agent.EventSessionInit, events[0].Type)
-	assert.Equal(t, agent.EventSessionEnd, events[len(events)-1].Type)
-}
-
 // --- helpers ---
 
 func eventTypes(events []agent.Event) []agent.EventType {
@@ -643,23 +522,34 @@ func eventTypes(events []agent.Event) []agent.EventType {
 	return types
 }
 
-func collectUntilAgentEnd(t *testing.T, ch <-chan pubsub.Event[agent.Event]) []agent.Event {
+// collectRun drains a run's stream with a watchdog timeout, returning
+// its events and terminal error.
+func collectRun(t *testing.T, s *agent.Stream) ([]agent.Event, error) {
 	t.Helper()
-	var events []agent.Event
-	timeout := time.After(5 * time.Second)
-	for {
-		select {
-		case pe, ok := <-ch:
-			if !ok {
-				t.Fatalf("subscription channel closed before agent_end")
+
+	type outcome struct {
+		events []agent.Event
+		err    error
+	}
+	done := make(chan outcome, 1)
+
+	go func() {
+		var events []agent.Event
+		for e, err := range s.Events() {
+			if err != nil {
+				done <- outcome{events, err}
+				return
 			}
-			evt := pe.Payload()
-			events = append(events, evt)
-			if evt.Type == agent.EventAgentEnd {
-				return events
-			}
-		case <-timeout:
-			t.Fatalf("timed out waiting for agent_end; saw %d events: %v", len(events), eventTypes(events))
+			events = append(events, e)
 		}
+		done <- outcome{events, nil}
+	}()
+
+	select {
+	case o := <-done:
+		return o.events, o.err
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the run to finish")
+		return nil, nil
 	}
 }

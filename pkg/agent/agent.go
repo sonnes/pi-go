@@ -2,31 +2,45 @@ package agent
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/pubsub"
 )
 
 // Agent is the interface for an agentic conversation loop.
-//
-// Agent embeds [pubsub.Subscriber] so consumers can subscribe to
-// the agent's event stream. Events from all [Agent.Send] calls flow
-// through a single broker per agent. Use [pubsub.After] to replay
-// buffered events.
 type Agent interface {
-	pubsub.Subscriber[Event]
-	Send(ctx context.Context, input string) error
-	SendMessages(ctx context.Context, msgs ...ai.Message) error
-	Continue(ctx context.Context) error
-	Wait(ctx context.Context) ([]ai.Message, error)
-	// Abort cancels the in-flight run, if one is active, leaving the agent
-	// reusable for the next Send. It is a no-op when the agent is idle.
-	// Mirrors pi-mono's agent.abort().
-	Abort()
-	Close()
+	// Run appends msgs to the conversation history and executes the
+	// loop, returning the run's event stream. Zero msgs continues from
+	// the current state. Cancel ctx to abort the run — the run ends
+	// with ctx's error on the stream.
+	//
+	// Runs are sequential: calling Run while another run is active
+	// fails the returned stream. Errors — including pre-flight ones —
+	// surface on the stream, never as a panic or a lost run.
+	Run(ctx context.Context, msgs ...ai.Message) *Stream
+
+	// Messages returns a copy of the current conversation history.
 	Messages() []ai.Message
-	IsRunning() bool
-	Err() error
+
+	// Close releases backend resources (e.g. a CLI subprocess). For
+	// purely in-process agents it is a no-op.
+	Close() error
+}
+
+// Prompt sends a user message, blocks until the run completes, and
+// returns the run's final assistant message. Convenience for
+// Run + [Stream.Wait].
+func Prompt(ctx context.Context, a Agent, input string) (*ai.Message, error) {
+	msgs, err := a.Run(ctx, ai.UserMessage(input)).Wait()
+	if err != nil {
+		return nil, err
+	}
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == ai.RoleAssistant {
+			return &msgs[i], nil
+		}
+	}
+	return nil, errors.New("agent: run produced no assistant message")
 }
 
 // CreateFunc creates an [Agent] from a required model and options.

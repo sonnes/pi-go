@@ -8,15 +8,13 @@ import (
 	"sync"
 
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/pubsub"
 )
 
 // Default is the standard [Agent] implementation that manages an
 // agentic conversation loop.
 //
-// Loop flow:
+// Loop flow, per [Default.Run]:
 //
-//	session_init  ← once, before the first run
 //	agent_start
 //	  turn_start
 //	    buildPrompt → streamText → streamTurn
@@ -25,31 +23,18 @@ import (
 //	     message_start/end (tool result)]
 //	  turn_end
 //	  ... repeat if tool_use and under maxTurns ...
-//	agent_end
-//	session_end   ← once, on Close
+//	agent_end   ← success only; failures end the stream with an error
 //
-// Caller-supplied input messages (Send / SendMessages) are not echoed
-// as message_start/end events — only messages produced by the loop are
-// emitted on the stream.
+// Caller-supplied input messages are not echoed as message_start/end
+// events — only messages produced by the loop are emitted.
 type Default struct {
 	config   config
 	toolMap  map[string]ai.Tool
 	toolInfo []ai.ToolInfo
-	broker   *pubsub.Broker[Event]
 
-	mu        sync.Mutex
-	running   bool
-	done      chan struct{}
-	runCancel context.CancelFunc
-	lastMsgs  []ai.Message
-	messages  []ai.Message
-	err       error
-
-	// session lifecycle tracking — session_init fires once on first run,
-	// session_end fires once on Close (and only if session_init fired).
-	sessionInitOnce  sync.Once
-	sessionEndOnce   sync.Once
-	sessionInitFired bool
+	mu       sync.Mutex
+	running  bool
+	messages []ai.Message
 }
 
 var _ Agent = (*Default)(nil)
@@ -82,88 +67,49 @@ func New(model ai.Model, opts ...Option) *Default {
 		config:   c,
 		toolMap:  toolMap,
 		toolInfo: toolInfo,
-		broker:   pubsub.NewBroker[Event](pubsub.WithBlockingPublish()),
 		messages: msgs,
 	}
 }
 
-// Send adds a user message and runs the agent loop.
-func (a *Default) Send(ctx context.Context, input string) error {
-	return a.SendMessages(ctx, ai.UserMessage(input))
-}
-
-// SendMessages adds messages and runs the agent loop.
-func (a *Default) SendMessages(ctx context.Context, msgs ...ai.Message) error {
-	return a.run(ctx, msgs)
-}
-
-// Continue resumes from current message state without adding new messages.
-func (a *Default) Continue(ctx context.Context) error {
-	return a.run(ctx, nil)
-}
-
-// Subscribe returns a channel of agent events. Each call creates an
-// independent subscription. Use [pubsub.After] to replay buffered events.
-func (a *Default) Subscribe(
-	ctx context.Context,
-	opts ...pubsub.SubscribeOption,
-) <-chan pubsub.Event[Event] {
-	return a.broker.Subscribe(ctx, opts...)
-}
-
-// Wait blocks until the current agent loop completes and returns
-// all new messages produced during the run. If the agent is not
-// running, Wait returns the result of the last completed run.
-func (a *Default) Wait(ctx context.Context) ([]ai.Message, error) {
-	a.mu.Lock()
-	if !a.running {
-		msgs, err := a.lastMsgs, a.err
-		a.mu.Unlock()
-		return msgs, err
+// Run implements [Agent]. It appends msgs to the history and executes
+// the loop, streaming events on the returned [Stream].
+func (a *Default) Run(ctx context.Context, msgs ...ai.Message) *Stream {
+	if a.config.provider == nil && a.config.model.Provider == "" {
+		return errStream(errors.New("agent: no model configured; pass a model or use WithProvider"))
 	}
-	done := a.done
-	a.mu.Unlock()
-
-	select {
-	case <-done:
-		a.mu.Lock()
-		msgs, err := a.lastMsgs, a.err
-		a.mu.Unlock()
-		return msgs, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-// Close shuts down the agent's event broker, closing all subscriber
-// channels. Subsequent calls to [Default.Subscribe] return closed channels.
-// If a run is in flight, Close waits for it to finish so [EventSessionEnd]
-// is published after the loop's final [EventAgentEnd]. If the agent ever
-// ran (session_init was emitted), Close emits a matching [EventSessionEnd]
-// before shutting down the broker.
-func (a *Default) Close() {
-	a.mu.Lock()
-	done := a.done
-	a.mu.Unlock()
-	if done != nil {
-		<-done
-	}
-	if a.sessionInitFired {
-		a.sessionEndOnce.Do(func() {
-			a.broker.Publish(Event{Type: EventSessionEnd})
-		})
-	}
-	a.broker.Shutdown()
-}
-
-// fireSessionInit emits [EventSessionInit] on the very first run and
-// is a no-op on subsequent calls.
-func (a *Default) fireSessionInit() {
-	a.sessionInitOnce.Do(func() {
-		a.sessionInitFired = true
-		a.broker.Publish(Event{Type: EventSessionInit})
+	return NewStream(func(push func(Event)) ([]ai.Message, error) {
+		return a.run(ctx, msgs, push)
 	})
 }
+
+// run guards against concurrent runs, appends the input messages, and
+// executes the loop. It is the producer behind [Default.Run]'s stream.
+func (a *Default) run(
+	ctx context.Context,
+	newMsgs []ai.Message,
+	push func(Event),
+) ([]ai.Message, error) {
+	a.mu.Lock()
+	if a.running {
+		a.mu.Unlock()
+		return nil, errors.New("agent: already running")
+	}
+	a.running = true
+	a.messages = append(a.messages, newMsgs...)
+	a.mu.Unlock()
+
+	defer func() {
+		a.mu.Lock()
+		a.running = false
+		a.mu.Unlock()
+	}()
+
+	return a.loop(ctx, push)
+}
+
+// Close implements [Agent]. The in-process loop holds no backend
+// resources, so it is a no-op.
+func (a *Default) Close() error { return nil }
 
 // Messages returns a copy of the current conversation history.
 func (a *Default) Messages() []ai.Message {
@@ -177,88 +123,26 @@ func (a *Default) Messages() []ai.Message {
 	return out
 }
 
-// IsRunning reports whether the agent loop is currently executing.
-func (a *Default) IsRunning() bool {
+// history returns the current conversation history without copying.
+// Callers must treat the result as read-only.
+func (a *Default) history() []ai.Message {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.running
+	return a.messages
 }
 
-// Err returns the last error encountered during the agent loop, or nil.
-func (a *Default) Err() error {
+// appendHistory appends msgs to the conversation history.
+func (a *Default) appendHistory(msgs ...ai.Message) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.err
+	a.messages = append(a.messages, msgs...)
 }
 
-// run starts the agent loop. It acquires the mutex to check for concurrent
-// runs and set up initial state, then launches the loop in a goroutine
-// that publishes events to the agent's broker.
-func (a *Default) run(ctx context.Context, newMsgs []ai.Message) error {
-	if a.config.provider == nil && a.config.model.Provider == "" {
-		return errors.New("agent: no model configured; pass a model or use WithProvider")
-	}
-
+// replaceHistory swaps the conversation history (AfterTurn hooks).
+func (a *Default) replaceHistory(msgs []ai.Message) {
 	a.mu.Lock()
-
-	if a.running {
-		a.mu.Unlock()
-		return errors.New("agent: already streaming")
-	}
-
-	// Derive a run-scoped context the agent owns, so [Default.Abort] can
-	// cancel the in-flight run without the caller holding the handle —
-	// mirroring pi-mono's per-run AbortController.
-	runCtx, runCancel := context.WithCancel(ctx)
-
-	a.running = true
-	a.err = nil
-	a.lastMsgs = nil
-	a.done = make(chan struct{})
-	a.runCancel = runCancel
-	a.messages = append(a.messages, newMsgs...)
-	a.mu.Unlock()
-
-	// Caller-supplied input messages are not echoed back as
-	// message_start/message_end events — the caller already has them.
-	go func() {
-		defer a.stop()
-		a.loop(runCtx, a.broker.Publish)
-	}()
-
-	return nil
-}
-
-// Abort cancels the in-flight run, if one is active. It is a no-op when the
-// agent is idle. The run terminates promptly — the LLM stream and any
-// ctx-honoring tools observe the cancellation — and ends with
-// [EventAgentEnd] carrying [context.Canceled]. The agent stays reusable for
-// the next Send. Mirrors pi-mono's agent.abort().
-func (a *Default) Abort() {
-	a.mu.Lock()
-	cancel := a.runCancel
-	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-}
-
-// stop marks the agent as no longer running and signals [Wait]. It also
-// releases the run-scoped cancel so the derived context is not leaked and a
-// post-completion [Default.Abort] is a no-op.
-func (a *Default) stop() {
-	a.mu.Lock()
-	a.running = false
-	done := a.done
-	cancel := a.runCancel
-	a.runCancel = nil
-	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-	if done != nil {
-		close(done)
-	}
+	defer a.mu.Unlock()
+	a.messages = msgs
 }
 
 // turnResult holds the output of a single turn, returned by executeTurn
@@ -270,56 +154,41 @@ type turnResult struct {
 	cont         bool // true = tool calls made, keep looping
 }
 
-// loop is the core agent loop, running inside the producer goroutine.
+// loop is the core agent loop, running inside the stream's producer
+// goroutine. On success it ends with [EventAgentEnd]; on failure it
+// returns the messages produced so far along with the error, and no
+// agent_end is emitted.
 func (a *Default) loop(
 	ctx context.Context,
 	push func(Event),
-) {
+) ([]ai.Message, error) {
 	var (
 		totalUsage  ai.Usage
 		newMessages []ai.Message
-		loopErr     error
 	)
 
-	a.fireSessionInit()
 	push(Event{Type: EventAgentStart})
-
-	defer func() {
-		a.mu.Lock()
-		a.lastMsgs = newMessages
-		a.err = loopErr
-		a.mu.Unlock()
-
-		push(Event{
-			Type:     EventAgentEnd,
-			Messages: newMessages,
-			Usage:    totalUsage,
-			Err:      loopErr,
-		})
-	}()
 
 	for turn := 0; ; turn++ {
 		if a.config.maxTurns > 0 && turn >= a.config.maxTurns {
-			return
+			break
 		}
 		if ctx.Err() != nil {
-			loopErr = ctx.Err()
-			return
+			return newMessages, ctx.Err()
 		}
 
 		tr, err := a.executeTurn(ctx, push)
 		if err != nil {
-			loopErr = err
-			return
+			return newMessages, err
 		}
 
 		totalUsage = addUsage(totalUsage, tr.usage)
 
-		a.messages = append(a.messages, tr.assistantMsg)
+		a.appendHistory(tr.assistantMsg)
 		newMessages = append(newMessages, tr.assistantMsg)
 
 		for _, trMsg := range tr.toolResults {
-			a.messages = append(a.messages, trMsg)
+			a.appendHistory(trMsg)
 			newMessages = append(newMessages, trMsg)
 		}
 
@@ -329,13 +198,12 @@ func (a *Default) loop(
 			ToolResults:  tr.toolResults,
 			Usage:        tr.usage,
 		}
-		replaced, err := a.config.hooks.runAfterTurn(ctx, a.messages, hookTR)
+		replaced, err := a.config.hooks.runAfterTurn(ctx, a.history(), hookTR)
 		if err != nil {
-			loopErr = err
-			return
+			return newMessages, err
 		}
 		if replaced != nil {
-			a.messages = replaced
+			a.replaceHistory(replaced)
 		}
 
 		if tr.cont {
@@ -346,20 +214,27 @@ func (a *Default) loop(
 		// Check that another turn is allowed before injecting.
 		nextTurn := turn + 1
 		if a.config.maxTurns > 0 && nextTurn >= a.config.maxTurns {
-			return
+			break
 		}
-		followMsgs, err := a.config.hooks.runBeforeStop(ctx, a.messages)
+		followMsgs, err := a.config.hooks.runBeforeStop(ctx, a.history())
 		if err != nil {
-			loopErr = err
-			return
+			return newMessages, err
 		}
 		if len(followMsgs) == 0 {
-			return
+			break
 		}
-		a.messages = append(a.messages, followMsgs...)
+		a.appendHistory(followMsgs...)
 		newMessages = append(newMessages, followMsgs...)
 		emitMessages(push, followMsgs, true)
 	}
+
+	push(Event{
+		Type:     EventAgentEnd,
+		Messages: newMessages,
+		Usage:    totalUsage,
+	})
+
+	return newMessages, nil
 }
 
 // executeTurn runs a single turn of the agent loop. It emits TurnStart
@@ -444,7 +319,7 @@ func (a *Default) streamText(ctx context.Context, p ai.Prompt) *ai.EventStream {
 // buildPrompt assembles an [ai.Prompt] from the system prompt and the
 // current message history.
 func (a *Default) buildPrompt(ctx context.Context) (ai.Prompt, error) {
-	llmMsgs, err := a.config.hooks.runBeforeCall(ctx, a.messages)
+	llmMsgs, err := a.config.hooks.runBeforeCall(ctx, a.history())
 	if err != nil {
 		return ai.Prompt{}, err
 	}
@@ -650,7 +525,7 @@ func (a *Default) executeSingleTool(
 	}()
 
 	// BeforeTool: hooks can deny execution.
-	denied, err := a.config.hooks.runBeforeTool(ctx, a.messages, tc)
+	denied, err := a.config.hooks.runBeforeTool(ctx, a.history(), tc)
 	if err != nil {
 		return finishToolError(push, tc, err.Error())
 	}
@@ -668,7 +543,7 @@ func (a *Default) executeSingleTool(
 	}
 
 	// AfterTool: hooks can modify the result.
-	toolResult, err = a.config.hooks.runAfterTool(ctx, a.messages, tc, toolResult)
+	toolResult, err = a.config.hooks.runAfterTool(ctx, a.history(), tc, toolResult)
 	if err != nil {
 		return finishToolError(push, tc, err.Error())
 	}

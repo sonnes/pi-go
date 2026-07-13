@@ -11,7 +11,6 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
-	"github.com/sonnes/pi-go/pkg/pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,20 +78,16 @@ func stubRunner(
 	}, func() { a.runFn = orig }
 }
 
-func TestAgent_Send_SimpleText(t *testing.T) {
+func TestAgent_Run_SimpleText(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	_, restore := stubRunner(a, simpleTurnJSONL)
 	defer restore()
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "hi"))
-
-	events := collectUntilAgentEnd(t, ch)
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("hi")))
+	require.NoError(t, err)
 
 	assert.Equal(t, []agent.EventType{
-		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -101,6 +96,10 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 		agent.EventAgentEnd,
 	}, eventTypes(events))
 
+	assert.Equal(t, "thread-1", events[0].SessionID,
+		"agent_start carries the thread ID",
+	)
+
 	last := events[len(events)-1]
 	require.Len(t, last.Messages, 1)
 	assert.Equal(t, "Hello!", last.Messages[0].Text())
@@ -108,11 +107,10 @@ func TestAgent_Send_SimpleText(t *testing.T) {
 	assert.Equal(t, 5, last.Usage.Output)
 	assert.Equal(t, 3, last.Usage.CacheRead)
 	assert.Equal(t, 2, last.Usage.Reasoning)
-	assert.NoError(t, last.Err)
 	assert.Equal(t, "thread-1", a.SessionID())
 }
 
-func TestAgent_Send_ForwardsPromptAndOptions(t *testing.T) {
+func TestAgent_Run_ForwardsPromptAndOptions(t *testing.T) {
 	a := New(
 		ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"},
 		agent.WithSystemPrompt("Be terse."),
@@ -128,9 +126,7 @@ func TestAgent_Send_ForwardsPromptAndOptions(t *testing.T) {
 	defer restore()
 	defer a.Close()
 
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "ping"))
-	_, err := a.Wait(ctx)
+	_, err := a.Run(context.Background(), ai.UserMessage("ping")).Wait()
 	require.NoError(t, err)
 
 	require.Len(t, calls(), 1)
@@ -147,19 +143,17 @@ func TestAgent_Send_ForwardsPromptAndOptions(t *testing.T) {
 	assert.False(t, call.args.resume)
 }
 
-func TestAgent_Send_SecondTurnResumesSession(t *testing.T) {
+func TestAgent_Run_SecondTurnResumesSession(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	calls, restore := stubRunner(a, simpleTurnJSONL, secondTurnJSONL)
 	defer restore()
 	defer a.Close()
 
 	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "first"))
-	_, err := a.Wait(ctx)
+	_, err := a.Run(ctx, ai.UserMessage("first")).Wait()
 	require.NoError(t, err)
 
-	require.NoError(t, a.Send(ctx, "second"))
-	msgs, err := a.Wait(ctx)
+	msgs, err := a.Run(ctx, ai.UserMessage("second")).Wait()
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 1)
@@ -172,20 +166,16 @@ func TestAgent_Send_SecondTurnResumesSession(t *testing.T) {
 	assert.Equal(t, "thread-1", a.SessionID())
 }
 
-func TestAgent_Send_CommandExecutionEvents(t *testing.T) {
+func TestAgent_Run_CommandExecutionEvents(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	_, restore := stubRunner(a, commandTurnJSONL)
 	defer restore()
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "run pwd"))
-
-	events := collectUntilAgentEnd(t, ch)
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("run pwd")))
+	require.NoError(t, err)
 
 	assert.Equal(t, []agent.EventType{
-		agent.EventSessionInit,
 		agent.EventAgentStart,
 		agent.EventTurnStart,
 		agent.EventToolExecutionStart,
@@ -218,17 +208,14 @@ func TestAgent_Send_CommandExecutionEvents(t *testing.T) {
 	assert.Equal(t, "/tmp/project\n", turnEnd.ToolResults[0].Text())
 }
 
-func TestAgent_Send_TodoListMessages(t *testing.T) {
+func TestAgent_Run_TodoListMessages(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	_, restore := stubRunner(a, todoTurnJSONL)
 	defer restore()
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "make a plan"))
-
-	events := collectUntilAgentEnd(t, ch)
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("make a plan")))
+	require.NoError(t, err)
 
 	var ended []ai.Message
 	for i := range events {
@@ -266,36 +253,43 @@ func TestAgent_Send_TodoListMessages(t *testing.T) {
 	require.Len(t, last.Messages, 3)
 }
 
-func TestAgent_ConcurrentSendRejected(t *testing.T) {
+func TestAgent_Run_ConcurrentRejected(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	reader, writer := io.Pipe()
+	started := make(chan struct{})
 	a.runFn = func(_ context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error) {
+		close(started)
 		return reader, func() error { return nil }, nil
 	}
 	defer a.Close()
 
 	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "first"))
-	require.Eventually(t, a.IsRunning, time.Second, 5*time.Millisecond)
+	first := a.Run(ctx, ai.UserMessage("first"))
 
-	err := a.Send(ctx, "second")
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("first run never started")
+	}
+
+	_, err := a.Run(ctx, ai.UserMessage("second")).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already running")
 
 	_, _ = writer.Write([]byte(simpleTurnJSONL))
 	_ = writer.Close()
-	_, err = a.Wait(ctx)
+	_, err = first.Wait()
 	require.NoError(t, err)
 }
 
-// Abort cancels the in-flight turn's context, which terminates the Codex
-// child; the turn ends and the agent returns to idle.
-func TestAgent_Abort_CancelsTurn(t *testing.T) {
+// Canceling the Run context terminates the Codex child; the run ends
+// with context.Canceled and the agent returns to idle.
+func TestAgent_Run_CancelKillsTurn(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	reader, writer := io.Pipe()
-	ctxCh := make(chan context.Context, 1)
+	started := make(chan struct{})
 	a.runFn = func(ctx context.Context, _ config, _ runArgs) (io.ReadCloser, func() error, error) {
-		ctxCh <- ctx
+		close(started)
 		// Mirror the real transport: when the turn ctx is cancelled, the child
 		// dies and stdout closes.
 		go func() {
@@ -306,53 +300,43 @@ func TestAgent_Abort_CancelsTurn(t *testing.T) {
 	}
 	defer a.Close()
 
-	ctx := context.Background()
-	require.NoError(t, a.Send(ctx, "hi"))
-	require.Eventually(t, a.IsRunning, time.Second, 5*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	s := a.Run(ctx, ai.UserMessage("hi"))
 
-	a.Abort()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("run never started")
+	}
 
-	_, err := a.Wait(ctx)
+	cancel()
+
+	_, err := s.Wait()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.False(t, a.IsRunning())
-
-	turnCtx := <-ctxCh
-	assert.ErrorIs(t, turnCtx.Err(), context.Canceled)
 }
 
-// Abort is a no-op when the agent is idle.
-func TestAgent_Abort_IdleNoOp(t *testing.T) {
-	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
-	defer a.Close()
-	a.Abort() // must not panic
-	assert.False(t, a.IsRunning())
-}
-
-func TestAgent_Send_StartError(t *testing.T) {
+func TestAgent_Run_StartError(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	a.runFn = func(_ context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error) {
 		return nil, nil, errors.New("cli not found")
 	}
 	defer a.Close()
 
-	ctx := context.Background()
-	ch := a.Subscribe(ctx)
-	require.NoError(t, a.Send(ctx, "hi"))
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("hi")))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cli not found")
 
-	events := collectUntilAgentEnd(t, ch)
 	for _, evt := range events {
-		assert.NotEqual(t, agent.EventSessionInit, evt.Type)
-		assert.NotEqual(t, agent.EventAgentStart, evt.Type)
+		assert.NotEqual(t, agent.EventAgentStart, evt.Type,
+			"agent_start must not fire when the CLI fails to start",
+		)
 	}
-	last := events[len(events)-1]
-	require.Error(t, last.Err)
-	assert.Contains(t, last.Err.Error(), "cli not found")
 }
 
-func TestAgent_ContinueReturnsError(t *testing.T) {
+func TestAgent_Run_NoMessages_ReturnsError(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
-	err := a.Continue(context.Background())
+	_, err := a.Run(context.Background()).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not supported")
 }
@@ -460,23 +444,34 @@ func eventTypes(events []agent.Event) []agent.EventType {
 	return types
 }
 
-func collectUntilAgentEnd(t *testing.T, ch <-chan pubsub.Event[agent.Event]) []agent.Event {
+// collectRun drains a run's stream with a watchdog timeout, returning
+// its events and terminal error.
+func collectRun(t *testing.T, s *agent.Stream) ([]agent.Event, error) {
 	t.Helper()
-	var events []agent.Event
-	timeout := time.After(5 * time.Second)
-	for {
-		select {
-		case pe, ok := <-ch:
-			if !ok {
-				t.Fatalf("subscription channel closed before agent_end")
+
+	type outcome struct {
+		events []agent.Event
+		err    error
+	}
+	done := make(chan outcome, 1)
+
+	go func() {
+		var events []agent.Event
+		for e, err := range s.Events() {
+			if err != nil {
+				done <- outcome{events, err}
+				return
 			}
-			evt := pe.Payload()
-			events = append(events, evt)
-			if evt.Type == agent.EventAgentEnd {
-				return events
-			}
-		case <-timeout:
-			t.Fatalf("timed out waiting for agent_end; saw %d events", len(events))
+			events = append(events, e)
 		}
+		done <- outcome{events, nil}
+	}()
+
+	select {
+	case o := <-done:
+		return o.events, o.err
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the run to finish")
+		return nil, nil
 	}
 }

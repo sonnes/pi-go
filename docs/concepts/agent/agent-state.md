@@ -1,6 +1,6 @@
 ---
 title: "Agent State"
-summary: "Runtime state observability via mutex-guarded getters"
+summary: "Runtime state observability: history via Messages, everything else via the run stream"
 read_when:
   - Reading agent state during or after a run
   - Understanding state concurrency model
@@ -8,46 +8,31 @@ read_when:
 
 # Agent State
 
-The agent exposes runtime state through direct getters on the `Agent` interface. Configuration is frozen at construction; runtime state evolves during the loop.
+Configuration is frozen at construction; the only runtime state the interface exposes is the conversation history, via `Messages()`. Everything that used to be a getter is now a property of the run: whether a run is active, how it ended, and what it produced all live on the `Stream` returned by `Run`.
 
-## Design: mutex-guarded fields
+## Design: state lives on the run, not the agent
 
-The `Default` agent holds `running`, `messages`, and `err` as fields protected by a `sync.Mutex`. Getters acquire the lock, copy, and return. During a run, only the producer goroutine mutates these fields, and `running=true` prevents concurrent runs — so lock contention is minimal.
+An earlier design exposed `IsRunning()` and `Err()` getters plus a `Wait()` method. All three existed only because runs were asynchronous — and `Wait`/`Err` had a footgun: called between runs, they reported the *previous* run's result. With `Run` returning a per-run stream, each run's outcome is unambiguous: `Stream.Wait()` returns that run's messages and error, and "is it running" is simply "has my stream ended". One error channel replaces four.
 
-**Why not atomic snapshots?** An earlier design used `atomic.Pointer[State]` with copy-on-write snapshots. This created ~8 heap allocations per turn for immutable state objects that consumers rarely polled. Since events already deliver all mid-run information (streaming content, tool progress), the snapshot overhead wasn't justified.
+## Messages
 
-**Why not channels/push?** State is pull-based. Callers decide when to read. Events handle the push-based case — subscribe to the agent for real-time updates.
-
-## Getters
-
-| Method        | Description                                  |
-| ------------- | -------------------------------------------- |
-| `IsRunning()` | Whether the agent loop is currently executing |
-| `Err()`       | Last error from the agent loop, or nil       |
-| `Messages()`  | Full conversation history including custom messages (defensive copy) |
-
-`Messages()` returns a copy — callers cannot corrupt internal state.
-
-## Initial state
-
-`WithHistory(msgs...)` copies messages into the agent at construction. The caller's slice is not aliased. Both `LLMMessage` and custom messages are preserved. Initial state: not running, no error, messages from history (or empty).
+`Messages()` returns a defensive copy of the full conversation history — callers cannot corrupt internal state. `WithHistory(msgs...)` copies messages in at construction; the caller's slice is not aliased.
 
 ## Concurrency
 
-- **Reads** — acquire mutex, copy, return. Safe from any goroutine.
-- **Writes** — only the loop's producer goroutine appends to `messages` and sets `err`. The mutex serializes reads against writes.
-- **Guard** — `run()` checks `running` under the lock and rejects concurrent runs with an error.
+- **Reads** — `Messages()` acquires a mutex, copies, returns. Safe from any goroutine, including mid-run.
+- **Writes** — only the run's producer goroutine appends to history, also under the mutex.
+- **Guard** — `Run` checks a `running` flag under the lock; a concurrent `Run` fails its stream with an "already running" error.
 
 ## Mid-run observability
 
-For real-time updates during a run, subscribe to the agent rather than polling getters:
+For real-time updates during a run, consume the run's stream:
 
 - **Streaming content** — `message_update` events carry partial assistant messages as they stream.
 - **Tool progress** — `tool_execution_start`/`update`/`end` events track tool calls.
-- **Completion** — `agent_end` carries all new messages and accumulated usage.
+- **Completion** — `agent_end` carries all new messages and accumulated usage; failures end the stream with an error.
 
 ## Related
 
 - [Agent](/concepts/agent/agent) — construction, options, entry points
-- [Agent Messages](/concepts/agent/messages) — extensible message type with custom message support
 - [Streaming](/concepts/agent/streaming) — event stream and consumption patterns

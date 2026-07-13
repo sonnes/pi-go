@@ -124,30 +124,24 @@ func blockingStream(ctx context.Context) *ai.EventStream {
 	})
 }
 
-// collectEvents subscribes to the agent, runs fn, and collects events until EventAgentEnd.
-func collectEvents(t *testing.T, a *Default, fn func()) []Event {
+// collectEvents drains a run's stream and returns its events and
+// terminal error.
+func collectEvents(t *testing.T, s *Stream) ([]Event, error) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	ch := a.Subscribe(ctx)
-	fn()
 	var events []Event
-	for pe := range ch {
-		evt := pe.Payload()
-		events = append(events, evt)
-		if evt.Type == EventAgentEnd {
-			break
+	for e, err := range s.Events() {
+		if err != nil {
+			return events, err
 		}
+		events = append(events, e)
 	}
-	return events
+	return events, nil
 }
 
-// sendAndWait sends input to the agent and blocks until done.
-func sendAndWait(t *testing.T, a *Default, input string) ([]ai.Message, error) {
+// runAndWait sends input to the agent and blocks until the run is done.
+func runAndWait(t *testing.T, a *Default, input string) ([]ai.Message, error) {
 	t.Helper()
-	err := a.Send(t.Context(), input)
-	require.NoError(t, err)
-	return a.Wait(t.Context())
+	return a.Run(t.Context(), ai.UserMessage(input)).Wait()
 }
 
 // findToolResult finds the first tool result message in a slice.
@@ -233,7 +227,7 @@ func blockingTool(name string) ai.Tool {
 	)
 }
 
-// --- Existing constructor tests ---
+// --- Constructor tests ---
 
 func TestWithProvider_BypassesGlobalRegistry(t *testing.T) {
 	// Do not call registerMock — the global registry must stay empty so
@@ -246,7 +240,7 @@ func TestWithProvider_BypassesGlobalRegistry(t *testing.T) {
 		WithProvider(m),
 	)
 
-	msgs, err := sendAndWait(t, a, "hello")
+	msgs, err := runAndWait(t, a, "hello")
 	require.NoError(t, err)
 	require.NotEmpty(t, msgs)
 
@@ -255,7 +249,7 @@ func TestWithProvider_BypassesGlobalRegistry(t *testing.T) {
 
 func TestRun_NoModelOrProvider(t *testing.T) {
 	a := New(ai.Model{})
-	err := a.Send(t.Context(), "hi")
+	_, err := a.Run(t.Context(), ai.UserMessage("hi")).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no model configured")
 }
@@ -264,8 +258,6 @@ func TestNewDefault_Defaults(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 	a := New(model)
 
-	assert.False(t, a.IsRunning())
-	assert.NoError(t, a.Err())
 	assert.Empty(t, a.Messages())
 	assert.Equal(t, model, a.config.model)
 	assert.Empty(t, a.config.tools)
@@ -396,25 +388,23 @@ func TestNewDefault_MultipleOptions(t *testing.T) {
 
 // --- Agent loop tests ---
 
-// Test 1: Simple text response — no tools, verify events + Result()
-func TestSend_SimpleTextResponse(t *testing.T) {
+// Test 1: Simple text response — no tools, verify messages + history.
+func TestRun_SimpleTextResponse(t *testing.T) {
 	usage := ai.Usage{Input: 10, Output: 20, Total: 30}
 	registerMock(t, textStream("Hello!", usage))
 
 	a := New(testModel())
-	msgs, err := sendAndWait(t, a, "hi")
+	msgs, err := runAndWait(t, a, "hi")
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 	assert.Equal(t, ai.RoleAssistant, msgs[0].Role)
 	assert.Equal(t, ai.StopReasonStop, msgs[0].StopReason)
 
-	assert.False(t, a.IsRunning())
-	assert.NoError(t, a.Err())
 	assert.Len(t, a.Messages(), 2)
 }
 
 // Test 2: Single tool call → result → final response
-func TestSend_SingleToolCall(t *testing.T) {
+func TestRun_SingleToolCall(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -426,7 +416,7 @@ func TestSend_SingleToolCall(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(echoTool()))
-	msgs, err := sendAndWait(t, a, "call echo")
+	msgs, err := runAndWait(t, a, "call echo")
 	require.NoError(t, err)
 	// assistant (tool call) + tool result + assistant (final)
 	require.Len(t, msgs, 3)
@@ -436,7 +426,7 @@ func TestSend_SingleToolCall(t *testing.T) {
 }
 
 // Test 3: Multi-turn tool calls (2+ rounds)
-func TestSend_MultiTurnToolCalls(t *testing.T) {
+func TestRun_MultiTurnToolCalls(t *testing.T) {
 	call1 := ai.ToolCall{ID: "call_1", Name: "echo", Arguments: map[string]any{"input": "a"}}
 	call2 := ai.ToolCall{ID: "call_2", Name: "echo", Arguments: map[string]any{"input": "b"}}
 	registerMock(t,
@@ -446,7 +436,7 @@ func TestSend_MultiTurnToolCalls(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(echoTool()))
-	msgs, err := sendAndWait(t, a, "do two things")
+	msgs, err := runAndWait(t, a, "do two things")
 	require.NoError(t, err)
 	// turn 1: assistant (tool call) + tool result
 	// turn 2: assistant (tool call) + tool result
@@ -455,7 +445,7 @@ func TestSend_MultiTurnToolCalls(t *testing.T) {
 }
 
 // Test 4: Parallel tool execution (all parallel-safe)
-func TestSend_ParallelToolExecution(t *testing.T) {
+func TestRun_ParallelToolExecution(t *testing.T) {
 	calls := []ai.ToolCall{
 		{ID: "call_1", Name: "par_a", Arguments: map[string]any{"input": "x"}},
 		{ID: "call_2", Name: "par_b", Arguments: map[string]any{"input": "y"}},
@@ -469,7 +459,7 @@ func TestSend_ParallelToolExecution(t *testing.T) {
 		testModel(),
 		WithTools(parallelEchoTool("par_a"), parallelEchoTool("par_b")),
 	)
-	msgs, err := sendAndWait(t, a, "parallel")
+	msgs, err := runAndWait(t, a, "parallel")
 	require.NoError(t, err)
 	// assistant (tool calls) + 2 tool results + assistant (final)
 	require.Len(t, msgs, 4)
@@ -486,7 +476,7 @@ func TestSend_ParallelToolExecution(t *testing.T) {
 }
 
 // Test 5: Mixed parallel/sequential tools (sequential fallback)
-func TestSend_MixedParallelSequential(t *testing.T) {
+func TestRun_MixedParallelSequential(t *testing.T) {
 	calls := []ai.ToolCall{
 		{ID: "call_1", Name: "par_a", Arguments: map[string]any{"input": "x"}},
 		{ID: "call_2", Name: "echo", Arguments: map[string]any{"input": "y"}},
@@ -502,9 +492,8 @@ func TestSend_MixedParallelSequential(t *testing.T) {
 		WithTools(parallelEchoTool("par_a"), echoTool()),
 	)
 
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "mixed"))
-	})
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("mixed")))
+	require.NoError(t, err)
 
 	// Verify sequential ordering: tool_execution_end for call_1 before
 	// tool_execution_start for call_2.
@@ -521,7 +510,7 @@ func TestSend_MixedParallelSequential(t *testing.T) {
 }
 
 // Test 6: maxTurns reached mid-loop
-func TestSend_MaxTurnsReached(t *testing.T) {
+func TestRun_MaxTurnsReached(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -535,14 +524,14 @@ func TestSend_MaxTurnsReached(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(echoTool()), WithMaxTurns(1))
-	msgs, err := sendAndWait(t, a, "loop")
+	msgs, err := runAndWait(t, a, "loop")
 	require.NoError(t, err)
 	// Only 1 turn: assistant (tool call) + tool result. No second turn.
 	require.Len(t, msgs, 2)
 }
 
 // Test 7: maxTurns=0 (unlimited)
-func TestSend_MaxTurnsZero_Unlimited(t *testing.T) {
+func TestRun_MaxTurnsZero_Unlimited(t *testing.T) {
 	call := ai.ToolCall{ID: "call_1", Name: "echo", Arguments: map[string]any{"input": "x"}}
 	registerMock(t,
 		toolCallStream([]ai.ToolCall{call}, ai.Usage{}),
@@ -551,30 +540,26 @@ func TestSend_MaxTurnsZero_Unlimited(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(echoTool())) // maxTurns=0 by default
-	msgs, err := sendAndWait(t, a, "go")
+	msgs, err := runAndWait(t, a, "go")
 	require.NoError(t, err)
 	// 3 turns: tool+result, tool+result, final text
 	require.Len(t, msgs, 5)
 }
 
 // Test 8: Context cancellation before first turn
-func TestSend_ContextCanceledBeforeFirstTurn(t *testing.T) {
+func TestRun_ContextCanceledBeforeFirstTurn(t *testing.T) {
 	registerMock(t, textStream("should not reach", ai.Usage{}))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // Cancel immediately.
 
 	a := New(testModel())
-	err := a.Send(ctx, "hi")
-	require.NoError(t, err)
-
-	_, err = a.Wait(t.Context())
-	assert.Error(t, err)
-	assert.False(t, a.IsRunning())
+	_, err := a.Run(ctx, ai.UserMessage("hi")).Wait()
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 // Test 9: Context cancellation mid-stream
-func TestSend_ContextCanceledMidStream(t *testing.T) {
+func TestRun_ContextCanceledMidStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	mock := &mockProvider{
@@ -584,19 +569,17 @@ func TestSend_ContextCanceledMidStream(t *testing.T) {
 	t.Cleanup(ai.ClearProviders)
 
 	a := New(testModel())
-	err := a.Send(ctx, "hi")
-	require.NoError(t, err)
+	s := a.Run(ctx, ai.UserMessage("hi"))
 
 	time.AfterFunc(50*time.Millisecond, cancel)
 
-	_, err = a.Wait(t.Context())
+	_, err := s.Wait()
 	assert.Error(t, err)
-	assert.False(t, a.IsRunning())
 }
 
 // ctxBlockingProvider blocks each StreamText call on the context the agent
-// passes in (the run's own ctx), so a test can prove [Default.Abort] cancels
-// that ctx. It signals startedCh once the first call begins streaming.
+// passes in (the run's own ctx), so a test can prove cancellation aborts
+// the run. It signals startedCh once the first call begins streaming.
 type ctxBlockingProvider struct {
 	startOnce sync.Once
 	startedCh chan struct{}
@@ -617,47 +600,30 @@ func (p *ctxBlockingProvider) StreamText(
 	})
 }
 
-// Abort cancels the in-flight run via the agent-owned cancel, mirroring
-// pi-mono's agent.abort(); the run ends with context.Canceled.
-func TestAbort_CancelsRunningRun(t *testing.T) {
+// Canceling the Run context aborts the in-flight run; the stream ends
+// with context.Canceled and the agent stays reusable.
+func TestRun_CancelAbortsRun(t *testing.T) {
 	prov := &ctxBlockingProvider{startedCh: make(chan struct{})}
 	a := New(testModel(), WithProvider(prov))
 
-	require.NoError(t, a.Send(t.Context(), "hi"))
+	ctx, cancel := context.WithCancel(t.Context())
+	s := a.Run(ctx, ai.UserMessage("hi"))
 
 	select {
 	case <-prov.startedCh:
 	case <-time.After(2 * time.Second):
 		t.Fatal("stream never started")
 	}
-	require.True(t, a.IsRunning())
 
-	a.Abort()
+	cancel()
 
-	_, err := a.Wait(t.Context())
+	_, err := s.Wait()
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.False(t, a.IsRunning())
 }
 
-// Abort is a no-op when no run is active (before any Send and after one
-// completes), matching pi-mono's optional-chaining semantics.
-func TestAbort_NoActiveRun_NoOp(t *testing.T) {
-	a := New(testModel(), WithProvider(&mockProvider{
-		responses: []*ai.EventStream{textStream("hi", ai.Usage{})},
-	}))
-
-	a.Abort() // before any run — must not panic
-
-	_, err := sendAndWait(t, a, "hi")
-	require.NoError(t, err)
-
-	a.Abort() // after the run finished — must not panic
-	assert.False(t, a.IsRunning())
-}
-
-// Test 10: Already streaming guard
-func TestSend_AlreadyStreaming(t *testing.T) {
+// Test 10: Concurrent run guard
+func TestRun_AlreadyRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -668,45 +634,48 @@ func TestSend_AlreadyStreaming(t *testing.T) {
 	t.Cleanup(ai.ClearProviders)
 
 	a := New(testModel())
-	err := a.Send(ctx, "first")
-	require.NoError(t, err)
+	first := a.Run(ctx, ai.UserMessage("first"))
 
 	time.Sleep(50 * time.Millisecond)
 
-	err = a.Send(ctx, "second")
+	_, err := a.Run(ctx, ai.UserMessage("second")).Wait()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already running")
+
+	cancel()
+	_, err = first.Wait()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "streaming")
 }
 
 // Test 11: No provider registered
-func TestSend_NoProviderRegistered(t *testing.T) {
+func TestRun_NoProviderRegistered(t *testing.T) {
 	// Don't register any provider.
 	ai.ClearProviders()
 
 	a := New(testModel())
-	err := a.Send(t.Context(), "hi")
-	require.NoError(t, err)
-
-	_, err = a.Wait(t.Context())
-	assert.Error(t, err)
+	_, err := a.Run(t.Context(), ai.UserMessage("hi")).Wait()
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no provider")
 }
 
-// Test 12: Provider returns error event
-func TestSend_ProviderError(t *testing.T) {
+// Test 12: Provider returns error event — the stream fails, no agent_end.
+func TestRun_ProviderError(t *testing.T) {
 	registerMock(t, errorStream(errors.New("rate limit exceeded")))
 
 	a := New(testModel())
-	err := a.Send(t.Context(), "hi")
-	require.NoError(t, err)
-
-	_, err = a.Wait(t.Context())
-	assert.Error(t, err)
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("hi")))
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "rate limit exceeded")
+
+	for _, e := range events {
+		assert.NotEqual(t, EventAgentEnd, e.Type,
+			"failed runs must not emit agent_end",
+		)
+	}
 }
 
 // Test 13: Nil/empty message from provider
-func TestSend_NilMessageFromProvider(t *testing.T) {
+func TestRun_NilMessageFromProvider(t *testing.T) {
 	// Stream that emits Done with nil message.
 	nilMsgStream := ai.NewEventStream(func(push func(ai.Event)) {
 		push(ai.Event{Type: ai.EventDone, Message: nil})
@@ -714,15 +683,12 @@ func TestSend_NilMessageFromProvider(t *testing.T) {
 	registerMock(t, nilMsgStream)
 
 	a := New(testModel())
-	err := a.Send(t.Context(), "hi")
-	require.NoError(t, err)
-
-	_, err = a.Wait(t.Context())
+	_, err := a.Run(t.Context(), ai.UserMessage("hi")).Wait()
 	assert.Error(t, err)
 }
 
 // Test 14: Unknown tool name → ErrorToolResultMessage
-func TestSend_UnknownTool(t *testing.T) {
+func TestRun_UnknownTool(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "nonexistent",
@@ -734,7 +700,7 @@ func TestSend_UnknownTool(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(echoTool()))
-	msgs, err := sendAndWait(t, a, "call unknown")
+	msgs, err := runAndWait(t, a, "call unknown")
 	require.NoError(t, err)
 
 	toolResult := findToolResult(t, msgs)
@@ -743,7 +709,7 @@ func TestSend_UnknownTool(t *testing.T) {
 }
 
 // Test 15: Tool returns error → ErrorToolResultMessage
-func TestSend_ToolReturnsError(t *testing.T) {
+func TestRun_ToolReturnsError(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "fail",
@@ -755,7 +721,7 @@ func TestSend_ToolReturnsError(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(errorTool()))
-	msgs, err := sendAndWait(t, a, "do it")
+	msgs, err := runAndWait(t, a, "do it")
 	require.NoError(t, err) // Agent should NOT error — tool error is non-fatal.
 
 	toolResult := findToolResult(t, msgs)
@@ -763,7 +729,7 @@ func TestSend_ToolReturnsError(t *testing.T) {
 }
 
 // Test 16: Tool panics → recovered, ErrorToolResultMessage
-func TestSend_ToolPanics(t *testing.T) {
+func TestRun_ToolPanics(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "panic_tool",
@@ -775,7 +741,7 @@ func TestSend_ToolPanics(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(panicTool()))
-	msgs, err := sendAndWait(t, a, "panic")
+	msgs, err := runAndWait(t, a, "panic")
 	require.NoError(t, err) // Should recover, not crash.
 
 	toolResult := findToolResult(t, msgs)
@@ -783,14 +749,14 @@ func TestSend_ToolPanics(t *testing.T) {
 }
 
 // Test 17: System prompt is forwarded to the provider
-func TestSend_SystemPromptRendering(t *testing.T) {
+func TestRun_SystemPromptRendering(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
 	a := New(
 		testModel(),
 		WithSystemPrompt("You are a helper.\n\nBe concise."),
 	)
-	_, err := sendAndWait(t, a, "hi")
+	_, err := runAndWait(t, a, "hi")
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 1)
@@ -798,11 +764,11 @@ func TestSend_SystemPromptRendering(t *testing.T) {
 }
 
 // Test 18: Empty system prompt
-func TestSend_EmptySystemPrompt(t *testing.T) {
+func TestRun_EmptySystemPrompt(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
 	a := New(testModel()) // No system prompt.
-	_, err := sendAndWait(t, a, "hi")
+	_, err := runAndWait(t, a, "hi")
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 1)
@@ -810,7 +776,7 @@ func TestSend_EmptySystemPrompt(t *testing.T) {
 }
 
 // Test 19: Event lifecycle ordering (full sequence verification)
-func TestSend_EventLifecycleOrdering(t *testing.T) {
+func TestRun_EventLifecycleOrdering(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -823,13 +789,11 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 
 	a := New(testModel(), WithTools(echoTool()))
 
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "go"))
-	})
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("go")))
+	require.NoError(t, err)
 	types := eventTypes(events)
 
 	// Expected lifecycle:
-	// session_init
 	// agent_start
 	//   turn_start
 	//     message_start (assistant), message_update*, message_end (assistant)
@@ -843,8 +807,7 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 
 	// Verify key ordering invariants.
 	require.GreaterOrEqual(t, len(types), 2)
-	assert.Equal(t, EventSessionInit, types[0])
-	assert.Equal(t, EventAgentStart, types[1])
+	assert.Equal(t, EventAgentStart, types[0])
 	assert.Equal(t, EventAgentEnd, types[len(types)-1])
 
 	// Every turn_start has a matching turn_end.
@@ -867,7 +830,7 @@ func TestSend_EventLifecycleOrdering(t *testing.T) {
 }
 
 // Test 20: Message events for user and tool_result messages
-func TestSend_MessageEventsForAllTypes(t *testing.T) {
+func TestRun_MessageEventsForAllTypes(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -880,9 +843,8 @@ func TestSend_MessageEventsForAllTypes(t *testing.T) {
 
 	a := New(testModel(), WithTools(echoTool()))
 
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "go"))
-	})
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("go")))
+	require.NoError(t, err)
 
 	// Count message_start events — caller input is not echoed; only
 	// messages produced by the loop count.
@@ -902,44 +864,8 @@ func TestSend_MessageEventsForAllTypes(t *testing.T) {
 	assert.Equal(t, msgStarts, msgEnds, "every message_start must have a matching message_end")
 }
 
-// Test 21: State snapshots during loop
-func TestSend_StateSnapshots(t *testing.T) {
-	started := make(chan struct{})
-	proceed := make(chan struct{})
-
-	// Provider that signals when called and waits.
-	mock := &mockProvider{}
-	mock.responses = []*ai.EventStream{
-		ai.NewEventStream(func(push func(ai.Event)) {
-			close(started) // Signal that streaming started.
-			<-proceed      // Wait for test to check state.
-			msg := &ai.Message{
-				Role:       ai.RoleAssistant,
-				Content:    []ai.Content{ai.Text{Text: "hi"}},
-				StopReason: ai.StopReasonStop,
-			}
-			push(ai.Event{Type: ai.EventStart, Message: msg})
-			push(ai.Event{Type: ai.EventDone, Message: msg})
-		}),
-	}
-	ai.RegisterProvider(mockAPI, mock)
-	t.Cleanup(ai.ClearProviders)
-
-	a := New(testModel())
-	err := a.Send(t.Context(), "hi")
-	require.NoError(t, err)
-
-	<-started
-	assert.True(t, a.IsRunning())
-	close(proceed)
-
-	_, err = a.Wait(t.Context())
-	require.NoError(t, err)
-	assert.False(t, a.IsRunning())
-}
-
 // Test 22: Wait() returns all new messages
-func TestSend_ResultReturnsNewMessages(t *testing.T) {
+func TestRun_WaitReturnsNewMessages(t *testing.T) {
 	registerMock(t, textStream("response", ai.Usage{}))
 
 	history := []ai.Message{
@@ -947,10 +873,10 @@ func TestSend_ResultReturnsNewMessages(t *testing.T) {
 		ai.AssistantMessage(ai.Text{Text: "old reply"}),
 	}
 	a := New(testModel(), WithHistory(history...))
-	msgs, err := sendAndWait(t, a, "new")
+	msgs, err := runAndWait(t, a, "new")
 	require.NoError(t, err)
 
-	// Result should only contain NEW messages from this run, not history.
+	// Wait should only return NEW messages from this run, not history.
 	require.Len(t, msgs, 1)
 	assert.Equal(t, ai.RoleAssistant, msgs[0].Role)
 
@@ -959,7 +885,7 @@ func TestSend_ResultReturnsNewMessages(t *testing.T) {
 }
 
 // Test 23: Usage accumulation across turns
-func TestSend_UsageAccumulation(t *testing.T) {
+func TestRun_UsageAccumulation(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -978,9 +904,8 @@ func TestSend_UsageAccumulation(t *testing.T) {
 
 	a := New(testModel(), WithTools(echoTool()))
 
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "go"))
-	})
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("go")))
+	require.NoError(t, err)
 
 	// Find the agent_end event.
 	var agentEnd *Event
@@ -996,8 +921,8 @@ func TestSend_UsageAccumulation(t *testing.T) {
 	assert.Equal(t, 45, agentEnd.Usage.Total)
 }
 
-// Test 24: Continue() with existing history
-func TestContinue_WithExistingHistory(t *testing.T) {
+// Test 24: Run with zero messages continues from existing history.
+func TestRun_ContinueWithExistingHistory(t *testing.T) {
 	registerMock(t, textStream("continued", ai.Usage{}))
 
 	history := []ai.Message{
@@ -1005,10 +930,8 @@ func TestContinue_WithExistingHistory(t *testing.T) {
 		ai.AssistantMessage(ai.Text{Text: "hi, what next?"}),
 	}
 	a := New(testModel(), WithHistory(history...))
-	err := a.Continue(t.Context())
-	require.NoError(t, err)
 
-	msgs, err := a.Wait(t.Context())
+	msgs, err := a.Run(t.Context()).Wait()
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 
@@ -1016,8 +939,8 @@ func TestContinue_WithExistingHistory(t *testing.T) {
 	assert.Len(t, a.Messages(), 3)
 }
 
-// Test 25: Send after previous error (re-entrancy)
-func TestSend_AfterPreviousError(t *testing.T) {
+// Test 25: Run after previous error (re-entrancy)
+func TestRun_AfterPreviousError(t *testing.T) {
 	registerMock(t,
 		errorStream(errors.New("first error")),
 		textStream("recovered", ai.Usage{}),
@@ -1025,21 +948,18 @@ func TestSend_AfterPreviousError(t *testing.T) {
 
 	a := New(testModel())
 
-	// First call errors.
-	err := a.Send(t.Context(), "first")
-	require.NoError(t, err)
-	_, err = a.Wait(t.Context())
+	// First run errors.
+	_, err := a.Run(t.Context(), ai.UserMessage("first")).Wait()
 	assert.Error(t, err)
-	assert.False(t, a.IsRunning())
 
-	// Second call should work.
-	msgs, err := sendAndWait(t, a, "second")
+	// Second run should work.
+	msgs, err := runAndWait(t, a, "second")
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 }
 
 // Test 27: Context cancellation mid-tool-execution (parallel)
-func TestSend_ContextCanceledMidToolExecution(t *testing.T) {
+func TestRun_ContextCanceledMidToolExecution(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
 	calls := []ai.ToolCall{
@@ -1051,8 +971,7 @@ func TestSend_ContextCanceledMidToolExecution(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(blockingTool("blocker")))
-	err := a.Send(ctx, "block")
-	require.NoError(t, err)
+	s := a.Run(ctx, ai.UserMessage("block"))
 
 	// Cancel while tool is executing.
 	time.AfterFunc(50*time.Millisecond, cancel)
@@ -1060,7 +979,7 @@ func TestSend_ContextCanceledMidToolExecution(t *testing.T) {
 	// The tool should unblock via context cancellation.
 	// The loop should complete with an error tool result, then
 	// the next turn's ctx.Err() check catches the cancellation.
-	msgs, err := a.Wait(t.Context())
+	msgs, err := s.Wait()
 
 	// The agent should terminate (either via error or with tool error result).
 	// We accept either outcome — the key invariant is it doesn't hang.
@@ -1077,19 +996,14 @@ func TestSend_ContextCanceledMidToolExecution(t *testing.T) {
 		}
 		assert.True(t, hasErrorResult)
 	}
-	assert.False(t, a.IsRunning())
 }
 
-// Verify SendMessages works like Send but with pre-formed messages.
-func TestSendMessages(t *testing.T) {
+// Verify Run accepts pre-formed messages.
+func TestRun_PreformedMessages(t *testing.T) {
 	registerMock(t, textStream("reply", ai.Usage{}))
 
 	a := New(testModel())
-	msg := ai.UserMessage("hello")
-	err := a.SendMessages(t.Context(), msg)
-	require.NoError(t, err)
-
-	msgs, err := a.Wait(t.Context())
+	msgs, err := a.Run(t.Context(), ai.UserMessage("hello")).Wait()
 	require.NoError(t, err)
 	require.Len(t, msgs, 1)
 
@@ -1098,11 +1012,11 @@ func TestSendMessages(t *testing.T) {
 }
 
 // Verify tool info is passed to the provider.
-func TestSend_ToolInfoPassedToProvider(t *testing.T) {
+func TestRun_ToolInfoPassedToProvider(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
 	a := New(testModel(), WithTools(echoTool()))
-	_, err := sendAndWait(t, a, "hi")
+	_, err := runAndWait(t, a, "hi")
 	require.NoError(t, err)
 
 	require.Len(t, mock.prompts, 1)
@@ -1111,7 +1025,7 @@ func TestSend_ToolInfoPassedToProvider(t *testing.T) {
 }
 
 // Verify tool result content.
-func TestSend_ToolResultContent(t *testing.T) {
+func TestRun_ToolResultContent(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
 		Name:      "echo",
@@ -1123,7 +1037,7 @@ func TestSend_ToolResultContent(t *testing.T) {
 	)
 
 	a := New(testModel(), WithTools(echoTool()))
-	msgs, err := sendAndWait(t, a, "echo")
+	msgs, err := runAndWait(t, a, "echo")
 	require.NoError(t, err)
 
 	toolResult := findToolResult(t, msgs)
@@ -1140,15 +1054,15 @@ func TestSend_ToolResultContent(t *testing.T) {
 }
 
 // Verify message_update events carry streaming content.
-func TestSend_StreamMessageUpdates(t *testing.T) {
+func TestRun_StreamMessageUpdates(t *testing.T) {
 	registerMock(t, textStream("hello", ai.Usage{}))
 
 	a := New(testModel())
 
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("hi")))
+	require.NoError(t, err)
+
 	var updateMsgSeen bool
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "hi"))
-	})
 	for _, event := range events {
 		if event.Type == EventMessageUpdate && event.Message != nil {
 			updateMsgSeen = true
@@ -1156,11 +1070,11 @@ func TestSend_StreamMessageUpdates(t *testing.T) {
 	}
 
 	assert.True(t, updateMsgSeen, "message_update events should carry a non-nil Message")
-	assert.False(t, a.IsRunning())
 }
 
-// Test: Multi-turn subscribe — one subscriber sees events from multiple Send calls.
-func TestSubscribe_MultiTurn(t *testing.T) {
+// Sequential runs: each Run gets its own stream with its own
+// agent_start/agent_end brackets; history accumulates across runs.
+func TestRun_SequentialRuns(t *testing.T) {
 	registerMock(t,
 		textStream("first reply", ai.Usage{}),
 		textStream("second reply", ai.Usage{}),
@@ -1168,61 +1082,25 @@ func TestSubscribe_MultiTurn(t *testing.T) {
 
 	a := New(testModel())
 
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	ch := a.Subscribe(ctx)
+	first, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("hello")))
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(first), 2)
+	assert.Equal(t, EventAgentStart, first[0].Type)
+	assert.Equal(t, EventAgentEnd, first[len(first)-1].Type)
 
-	// First Send.
-	require.NoError(t, a.Send(t.Context(), "hello"))
-	var firstEvents []Event
-	for pe := range ch {
-		evt := pe.Payload()
-		firstEvents = append(firstEvents, evt)
-		if evt.Type == EventAgentEnd {
-			break
-		}
-	}
-	// First run leads with session_init (once per agent lifetime), then agent_start.
-	require.GreaterOrEqual(t, len(firstEvents), 2)
-	assert.Equal(t, EventSessionInit, firstEvents[0].Type)
-	assert.Equal(t, EventAgentStart, firstEvents[1].Type)
-	assert.Equal(t, EventAgentEnd, firstEvents[len(firstEvents)-1].Type)
-
-	// Second Send on the same subscriber — no second session_init.
-	require.NoError(t, a.Send(t.Context(), "world"))
-	var secondEvents []Event
-	for pe := range ch {
-		evt := pe.Payload()
-		secondEvents = append(secondEvents, evt)
-		if evt.Type == EventAgentEnd {
-			break
-		}
-	}
-	assert.Equal(t, EventAgentStart, secondEvents[0].Type)
-	assert.Equal(t, EventAgentEnd, secondEvents[len(secondEvents)-1].Type)
-	for _, evt := range secondEvents {
-		assert.NotEqual(t, EventSessionInit, evt.Type,
-			"session_init must fire only once per agent lifetime",
-		)
-	}
+	second, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("world")))
+	require.NoError(t, err)
+	assert.Equal(t, EventAgentStart, second[0].Type)
+	assert.Equal(t, EventAgentEnd, second[len(second)-1].Type)
 
 	// History should have both turns.
 	assert.Len(t, a.Messages(), 4) // user+assistant + user+assistant
 }
 
-// Test: Wait on a fresh agent returns (nil, nil).
-func TestWait_FreshAgent(t *testing.T) {
-	a := New(testModel())
-
-	msgs, err := a.Wait(t.Context())
-	assert.NoError(t, err)
-	assert.Nil(t, msgs)
-}
-
 // Test: Incremental streaming — message_start fires on first delta,
 // every message_update carries a non-nil partial Message snapshot,
 // and message_end carries the final provider message.
-func TestSend_IncrementalStreamingEvents(t *testing.T) {
+func TestRun_IncrementalStreamingEvents(t *testing.T) {
 	// Create a realistic multi-delta stream (Message only on EventDone).
 	stream := ai.NewEventStream(func(push func(ai.Event)) {
 		finalMsg := &ai.Message{
@@ -1241,9 +1119,8 @@ func TestSend_IncrementalStreamingEvents(t *testing.T) {
 
 	a := New(testModel())
 
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "hi"))
-	})
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("hi")))
+	require.NoError(t, err)
 
 	// Filter to assistant message events only.
 	var msgEvents []Event
@@ -1290,7 +1167,7 @@ func TestSend_IncrementalStreamingEvents(t *testing.T) {
 }
 
 // Test: Multi-block streaming — thinking + text blocks accumulate correctly.
-func TestSend_MultiBlockStreaming(t *testing.T) {
+func TestRun_MultiBlockStreaming(t *testing.T) {
 	stream := ai.NewEventStream(func(push func(ai.Event)) {
 		finalMsg := &ai.Message{
 			Role: ai.RoleAssistant,
@@ -1316,9 +1193,8 @@ func TestSend_MultiBlockStreaming(t *testing.T) {
 
 	a := New(testModel())
 
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "think"))
-	})
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("think")))
+	require.NoError(t, err)
 
 	// Find the last message_update before message_end for the assistant.
 	var lastUpdate *Event
@@ -1344,7 +1220,7 @@ func TestSend_MultiBlockStreaming(t *testing.T) {
 }
 
 // Test: Message snapshots are independent copies (mutation safety).
-func TestSend_SnapshotIndependence(t *testing.T) {
+func TestRun_SnapshotIndependence(t *testing.T) {
 	stream := ai.NewEventStream(func(push func(ai.Event)) {
 		finalMsg := &ai.Message{
 			Role:       ai.RoleAssistant,
@@ -1361,9 +1237,8 @@ func TestSend_SnapshotIndependence(t *testing.T) {
 
 	a := New(testModel())
 
-	events := collectEvents(t, a, func() {
-		require.NoError(t, a.Send(t.Context(), "hi"))
-	})
+	events, err := collectEvents(t, a.Run(t.Context(), ai.UserMessage("hi")))
+	require.NoError(t, err)
 
 	// Collect all message_update snapshots for the assistant.
 	var snapshots []*ai.Message
@@ -1384,114 +1259,34 @@ func TestSend_SnapshotIndependence(t *testing.T) {
 	assert.NotEqual(t, firstText, lastText, "snapshots should differ (not aliased)")
 }
 
-// TestSessionLifecycle_SendThenClose verifies that session_init fires
-// exactly once on the first run and session_end fires exactly once on
-// Close, wrapping all per-run agent_start/agent_end pairs.
-func TestSessionLifecycle_SendThenClose(t *testing.T) {
-	registerMock(t,
-		textStream("first reply", ai.Usage{}),
-		textStream("second reply", ai.Usage{}),
-	)
-
-	a := New(testModel())
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	ch := a.Subscribe(ctx)
-
-	require.NoError(t, a.Send(t.Context(), "one"))
-	_, err := a.Wait(t.Context())
-	require.NoError(t, err)
-
-	require.NoError(t, a.Send(t.Context(), "two"))
-	_, err = a.Wait(t.Context())
-	require.NoError(t, err)
-
-	a.Close()
-
-	var events []Event
-	for pe := range ch {
-		events = append(events, pe.Payload())
-	}
-
-	var inits, ends, agentStarts, agentEnds int
-	for _, e := range events {
-		switch e.Type {
-		case EventSessionInit:
-			inits++
-		case EventSessionEnd:
-			ends++
-		case EventAgentStart:
-			agentStarts++
-		case EventAgentEnd:
-			agentEnds++
-		}
-	}
-	assert.Equal(t, 1, inits, "session_init fires once")
-	assert.Equal(t, 1, ends, "session_end fires once")
-	assert.Equal(t, 2, agentStarts, "agent_start fires once per Send")
-	assert.Equal(t, 2, agentEnds, "agent_end fires once per Send")
-
-	require.GreaterOrEqual(t, len(events), 1)
-	assert.Equal(t, EventSessionInit, events[0].Type)
-	assert.Equal(t, EventSessionEnd, events[len(events)-1].Type)
-}
-
-// TestSessionLifecycle_CloseWithoutSend verifies that closing a never-used
-// agent emits no session events at all.
-func TestSessionLifecycle_CloseWithoutSend(t *testing.T) {
-	a := New(testModel())
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	ch := a.Subscribe(ctx)
-
-	a.Close()
-
-	var events []Event
-	for pe := range ch {
-		events = append(events, pe.Payload())
-	}
-
-	assert.Empty(t, events, "Close on a never-used agent should publish no events")
-}
-
-// TestSessionLifecycle_CloseWithoutWait verifies that calling Close
-// immediately after Send (without Wait) is race-free and still preserves
-// the documented session_end-after-agent_end ordering. Run with -race
-// to catch regressions of the sessionInitFired data race.
-func TestSessionLifecycle_CloseWithoutWait(t *testing.T) {
+// Close is a no-op for the in-process agent and the agent stays usable.
+func TestClose_NoOp(t *testing.T) {
 	registerMock(t, textStream("hi", ai.Usage{}))
 
 	a := New(testModel())
+	require.NoError(t, a.Close())
 
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	ch := a.Subscribe(ctx)
+	msgs, err := runAndWait(t, a, "hello")
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+}
 
-	require.NoError(t, a.Send(t.Context(), "x"))
-	a.Close()
+// Prompt is the Run+Wait convenience: returns the final assistant message.
+func TestPrompt(t *testing.T) {
+	registerMock(t, textStream("Hello!", ai.Usage{}))
 
-	var events []Event
-	for pe := range ch {
-		events = append(events, pe.Payload())
-	}
+	a := New(testModel())
+	msg, err := Prompt(t.Context(), a, "hi")
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "Hello!", msg.Text())
+}
 
-	require.NotEmpty(t, events)
+func TestPrompt_Error(t *testing.T) {
+	registerMock(t, errorStream(errors.New("boom")))
 
-	var lastAgentEnd, sessionEnd int = -1, -1
-	for i, e := range events {
-		switch e.Type {
-		case EventAgentEnd:
-			lastAgentEnd = i
-		case EventSessionEnd:
-			sessionEnd = i
-		}
-	}
-	require.NotEqual(t, -1, lastAgentEnd, "agent_end must fire")
-	require.NotEqual(t, -1, sessionEnd, "session_end must fire")
-	assert.Less(t, lastAgentEnd, sessionEnd,
-		"session_end must come after the final agent_end",
-	)
-	assert.Equal(t, EventSessionEnd, events[len(events)-1].Type)
+	a := New(testModel())
+	_, err := Prompt(t.Context(), a, "hi")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "boom")
 }

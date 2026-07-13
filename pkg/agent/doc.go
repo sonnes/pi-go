@@ -2,7 +2,11 @@
 //
 // It manages prompt building, tool execution, event streaming, and turn
 // management. The [Agent] interface is the main entry point, with
-// [Default] as the standard implementation.
+// [Default] as the standard implementation. A single verb drives the
+// loop: [Agent.Run] appends messages and returns the run's [Stream],
+// which is consumed event by event ([Stream.Events]) or awaited as a
+// whole ([Stream.Wait]). [Prompt] wraps Run+Wait for the common
+// send-text-get-answer case.
 //
 // [New] takes the model as its first argument; the rest of the
 // configuration flows through [Option] values. [Default] resolves the
