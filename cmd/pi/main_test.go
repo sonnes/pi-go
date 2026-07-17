@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/base64"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,79 +10,6 @@ import (
 	cursoragent "github.com/sonnes/pi-go/pkg/agent/cursor"
 	"github.com/sonnes/pi-go/pkg/ai"
 )
-
-// jwtWithAuthClaim builds an unsigned JWT-shaped token whose payload carries
-// the given OpenAI auth claim, for testing account-id extraction.
-func jwtWithAuthClaim(t *testing.T, payloadJSON string) string {
-	t.Helper()
-	enc := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
-	return "header." + enc + ".signature"
-}
-
-func TestChatGPTAccountID(t *testing.T) {
-	tests := []struct {
-		name  string
-		token string
-		want  string
-	}{
-		{
-			name:  "extracts account id from auth claim",
-			token: jwtWithAuthClaim(t, `{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-123"}}`),
-			want:  "acct-123",
-		},
-		{
-			name:  "missing claim yields empty",
-			token: jwtWithAuthClaim(t, `{"sub":"user"}`),
-			want:  "",
-		},
-		{
-			name:  "non-jwt yields empty",
-			token: "not-a-jwt",
-			want:  "",
-		},
-		{
-			name:  "empty token yields empty",
-			token: "",
-			want:  "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, chatgptAccountID(tt.token))
-		})
-	}
-}
-
-// authProviderCreate returns the create func for the named entry in
-// authProviderOrder, or nil if absent.
-func authProviderCreate(name string) func(StoredCredential) (ai.Provider, error) {
-	for _, e := range authProviderOrder {
-		if e.name == name {
-			return e.create
-		}
-	}
-	return nil
-}
-
-// TestAuthProviderOrder_OpenAIUsesResponsesAPI verifies the OpenAI OAuth
-// path builds a Responses-API provider. ChatGPT/Codex OAuth tokens are only
-// honored on the Responses backend, not Chat Completions.
-func TestAuthProviderOrder_OpenAIUsesResponsesAPI(t *testing.T) {
-	create := authProviderCreate("openai")
-	require.NotNil(t, create)
-
-	sc := StoredCredential{
-		AccessToken:  "test-token",
-		RefreshToken: "test-refresh",
-		ExpiresAt:    time.Now().Add(time.Hour),
-		ClientID:     "app_test",
-	}
-
-	p, err := create(sc)
-	require.NoError(t, err)
-	assert.Equal(t, "openai-responses", p.Provider())
-}
 
 func TestParseServerTools_Empty(t *testing.T) {
 	tools, err := parseServerTools("")
@@ -163,40 +88,32 @@ func TestCreateAPIAgent_CodexCLIPrefix(t *testing.T) {
 	a, err := createAPIAgent("codex-cli/gpt-5.4", 0, "", "")
 	require.NoError(t, err)
 	defer a.Close()
-	defer ai.UnregisterProvider("codex-cli")
-
-	p, ok := ai.GetProvider("codex-cli")
-	require.True(t, ok)
-	assert.Equal(t, "codex-cli", p.Provider())
+	assert.NotNil(t, a)
 }
 
 func TestCreateAPIAgent_CursorCLIPrefix(t *testing.T) {
 	a, err := createAPIAgent("cursor-cli/gpt-5", 0, "", "")
 	require.NoError(t, err)
 	defer a.Close()
-	defer ai.UnregisterProvider("cursor-cli")
-
-	p, ok := ai.GetProvider("cursor-cli")
-	require.True(t, ok)
-	assert.Equal(t, "cursor-cli", p.Provider())
+	assert.NotNil(t, a)
 }
 
-func TestSelectProvider_CLIPrefixes(t *testing.T) {
+// TestSelectAPISpec_CLIPrefixes verifies the stateless CLI-provider prefixes
+// resolve to a "<provider>/<model>" catalog spec.
+func TestSelectAPISpec_CLIPrefixes(t *testing.T) {
 	cases := []struct {
-		spec         string
-		wantProvider string
-		wantModelID  string
+		spec     string
+		wantSpec string
 	}{
-		{"claude-cli/sonnet", "claude-cli", "sonnet"},
-		{"codex-cli/gpt-5.4", "codex-cli", "gpt-5.4"},
-		{"cursor-cli/gpt-5", "cursor-cli", "gpt-5"},
+		{"claude-cli/sonnet", "claude-cli/sonnet"},
+		{"codex-cli/gpt-5.4", "codex-cli/gpt-5.4"},
+		{"cursor-cli/gpt-5", "cursor-cli/gpt-5"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.spec, func(t *testing.T) {
-			p, modelID, err := selectProvider(tc.spec, "")
+			spec, err := selectAPISpec(tc.spec, "")
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantProvider, p.Provider())
-			assert.Equal(t, tc.wantModelID, modelID)
+			assert.Equal(t, tc.wantSpec, spec)
 		})
 	}
 }

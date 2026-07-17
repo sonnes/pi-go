@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -45,6 +46,15 @@ func New(opts ...option.RequestOption) *Provider {
 // Provider returns the provider API identifier.
 func (p *Provider) Provider() string {
 	return providerID
+}
+
+// Detect builds a provider from OPENAI_API_KEY and reports whether it was set.
+func Detect() (*Provider, bool) {
+	key := os.Getenv("OPENAI_API_KEY")
+	if key == "" {
+		return nil, false
+	}
+	return New(option.WithAPIKey(key)), true
 }
 
 // StreamText streams a text response from the given model.

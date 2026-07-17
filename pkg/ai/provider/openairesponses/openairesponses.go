@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -105,6 +106,19 @@ func NewForCodex(opts ...option.RequestOption) *Provider {
 // lookup.
 func (p *Provider) Provider() string {
 	return providerID
+}
+
+// DetectOpenRouter builds an OpenRouter-dialect provider from
+// OPENROUTER_API_KEY and reports whether it was set.
+func DetectOpenRouter() (*Provider, bool) {
+	key := os.Getenv("OPENROUTER_API_KEY")
+	if key == "" {
+		return nil, false
+	}
+	return NewForOpenRouter(
+		option.WithAPIKey(key),
+		option.WithBaseURL("https://openrouter.ai/api/v1"),
+	), true
 }
 
 // StreamText streams a text response using the Responses API.

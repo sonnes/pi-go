@@ -9,11 +9,13 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/catalog"
+	"github.com/sonnes/pi-go/pkg/pi"
 )
 
-// objectCommand exercises structured output via [ai.GenerateObject]. It
-// resolves the model spec to a provider, registers it, and asks the model to
-// fill a free-form JSON object derived from the prompt.
+// objectCommand exercises structured output via [catalog.GenerateObject]. It
+// resolves the model spec to a provider, registers it in pi.Default, and asks
+// the model to fill a free-form JSON object derived from the prompt.
 func objectCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "object",
@@ -40,21 +42,14 @@ func runObject(ctx context.Context, cmd *cli.Command) error {
 	}
 	prompt := strings.Join(cmd.Args().Slice(), " ")
 
-	p, modelID, err := selectProvider(cmd.String("model"), cmd.String("provider"))
+	spec, err := selectAPISpec(cmd.String("model"), cmd.String("provider"))
 	if err != nil {
 		return err
 	}
-	if _, ok := p.(ai.ObjectProvider); !ok {
-		return fmt.Errorf("provider %q does not support object generation", p.Provider())
-	}
 
-	ai.RegisterProvider(p.Provider(), p)
-	m := ai.Model{ID: modelID, Name: modelID, Provider: p.Provider()}
-	ai.RegisterModel(m)
-
-	spec := p.Provider() + "/" + modelID
-	result, err := ai.GenerateObject[map[string]any](
+	result, err := catalog.GenerateObject[map[string]any](
 		ctx,
+		pi.Default,
 		spec,
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage(prompt)}},
 	)

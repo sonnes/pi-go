@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/charmbracelet/log"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -82,6 +83,19 @@ func New(opts ...Option) (*Provider, error) {
 // Provider returns the provider identifier.
 func (p *Provider) Provider() string {
 	return providerID
+}
+
+// Detect builds a provider from GOOGLE_API_KEY and reports whether it was set.
+func Detect() (*Provider, bool) {
+	key := os.Getenv("GOOGLE_API_KEY")
+	if key == "" {
+		return nil, false
+	}
+	p, err := New(WithAPIKey(key))
+	if err != nil {
+		return nil, false
+	}
+	return p, true
 }
 
 // StreamText streams a text response from the model.

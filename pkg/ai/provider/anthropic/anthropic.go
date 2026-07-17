@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -82,6 +83,25 @@ func New(opts ...Option) *Provider {
 // Provider returns the provider API identifier.
 func (p *Provider) Provider() string {
 	return providerID
+}
+
+// Detect builds a provider from environment credentials and reports whether
+// any were present. ANTHROPIC_OAUTH_TOKEN — or an ANTHROPIC_API_KEY holding
+// an "sk-ant-oat" OAuth token — authenticates via OAuth with the optional
+// ANTHROPIC_OAUTH_CLIENT_ID; a plain ANTHROPIC_API_KEY uses the API-key path.
+func Detect() (*Provider, bool) {
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if token := os.Getenv("ANTHROPIC_OAUTH_TOKEN"); token != "" {
+		key = token
+	}
+	if key == "" {
+		return nil, false
+	}
+	if strings.Contains(key, "sk-ant-oat") {
+		clientID := os.Getenv("ANTHROPIC_OAUTH_CLIENT_ID")
+		return New(WithOAuth(clientID, oauth.Credentials{AccessToken: key})), true
+	}
+	return New(WithAPIKey(key)), true
 }
 
 // StreamText streams a text response from the Anthropic Messages API.

@@ -1,4 +1,4 @@
-package main
+package openairesponses
 
 import (
 	"encoding/base64"
@@ -24,36 +24,12 @@ func jwtWithExp(t *testing.T, exp int64) string {
 	return "header." + enc + ".signature"
 }
 
-func TestParseClaudeCreds(t *testing.T) {
-	expires := time.Now().Add(time.Hour).UnixMilli()
-	data := fmt.Sprintf(
-		`{"claudeAiOauth":{"accessToken":"acc","refreshToken":"ref","expiresAt":%d}}`,
-		expires,
-	)
-
-	creds, err := parseClaudeCreds([]byte(data))
-	require.NoError(t, err)
-	assert.Equal(t, "acc", creds.AccessToken)
-	assert.Equal(t, "ref", creds.RefreshToken)
-	assert.Equal(t, time.UnixMilli(expires), creds.ExpiresAt)
-	assert.False(t, creds.IsExpired())
-}
-
-func TestParseClaudeCreds_Errors(t *testing.T) {
-	tests := []struct {
-		name string
-		data string
-	}{
-		{name: "malformed json", data: `{`},
-		{name: "missing access token", data: `{"claudeAiOauth":{"refreshToken":"ref"}}`},
-		{name: "empty object", data: `{}`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseClaudeCreds([]byte(tt.data))
-			require.Error(t, err)
-		})
-	}
+// jwtWithAuthClaim builds an unsigned JWT-shaped token whose payload carries
+// the given OpenAI auth claim, for testing account-id extraction.
+func jwtWithAuthClaim(t *testing.T, payloadJSON string) string {
+	t.Helper()
+	enc := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
+	return "header." + enc + ".signature"
 }
 
 func TestParseCodexCreds(t *testing.T) {
@@ -94,6 +70,32 @@ func TestJWTExpiry(t *testing.T) {
 	assert.True(t, jwtExpiry("header.bad-base64!.sig").IsZero())
 }
 
+func TestChatGPTAccountID(t *testing.T) {
+	tests := []struct {
+		name  string
+		token string
+		want  string
+	}{
+		{
+			name:  "extracts account id from auth claim",
+			token: jwtWithAuthClaim(t, `{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-123"}}`),
+			want:  "acct-123",
+		},
+		{
+			name:  "missing claim yields empty",
+			token: jwtWithAuthClaim(t, `{"sub":"user"}`),
+			want:  "",
+		},
+		{name: "non-jwt yields empty", token: "not-a-jwt", want: ""},
+		{name: "empty token yields empty", token: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, chatgptAccountID(tt.token))
+		})
+	}
+}
+
 func TestCodexCLISource_Load(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
@@ -109,24 +111,18 @@ func TestCodexCLISource_Load(t *testing.T) {
 	assert.Equal(t, "acct-1", creds.Extras[chatgptAccountIDExtra])
 }
 
-func TestClaudeCLISource_LoadFromFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "credentials.json")
-	expires := time.Now().Add(time.Hour).UnixMilli()
-	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(
-		`{"claudeAiOauth":{"accessToken":"acc","refreshToken":"ref","expiresAt":%d}}`, expires,
-	)), 0o600))
-
-	// A non-empty path skips the Keychain even on macOS.
-	src := claudeCLISource{path: path}
-	creds, err := src.load()
-	require.NoError(t, err)
-	assert.Equal(t, "acc", creds.AccessToken)
+// TestNewForCodexOAuth_UsesResponsesAPI verifies the ChatGPT/Codex OAuth path
+// builds a Responses-API provider. These tokens are honored only on the
+// Responses backend, not Chat Completions.
+func TestNewForCodexOAuth_UsesResponsesAPI(t *testing.T) {
+	p := NewForCodexOAuth("app_test", "", oauth.Credentials{AccessToken: "test-token"})
+	require.NotNil(t, p)
+	assert.Equal(t, "openai-responses", p.Provider())
 }
 
-// TestCLICredRefresher_ReReads verifies the refresher returns the freshest
+// TestCodexReReadRefresher_ReReads verifies the refresher returns the freshest
 // credentials from the source rather than running an HTTP refresh.
-func TestCLICredRefresher_ReReads(t *testing.T) {
+func TestCodexReReadRefresher_ReReads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
 	freshToken := jwtWithExp(t, time.Now().Add(time.Hour).Unix())
@@ -134,16 +130,15 @@ func TestCLICredRefresher_ReReads(t *testing.T) {
 		`{"tokens":{"access_token":%q,"refresh_token":"ref"}}`, freshToken,
 	)), 0o600))
 
-	refresher := cliCredRefresher(codexCLISource{path: path})
+	refresher := codexReReadRefresher(codexCLISource{path: path})
 	got, err := refresher.RefreshToken(t.Context(), oauth.Credentials{AccessToken: "stale"})
 	require.NoError(t, err)
 	assert.Equal(t, freshToken, got.AccessToken)
 }
 
-// TestCLICredRefresher_ExpiredError verifies that when the re-read token is
-// still expired, the refresher surfaces a re-auth error instead of returning
-// stale credentials.
-func TestCLICredRefresher_ExpiredError(t *testing.T) {
+// TestCodexReReadRefresher_ExpiredError verifies that when the re-read token is
+// still expired, the refresher surfaces a re-auth error.
+func TestCodexReReadRefresher_ExpiredError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
 	expiredToken := jwtWithExp(t, time.Now().Add(-time.Hour).Unix())
@@ -151,16 +146,16 @@ func TestCLICredRefresher_ExpiredError(t *testing.T) {
 		`{"tokens":{"access_token":%q,"refresh_token":"ref"}}`, expiredToken,
 	)), 0o600))
 
-	refresher := cliCredRefresher(codexCLISource{path: path})
+	refresher := codexReReadRefresher(codexCLISource{path: path})
 	_, err := refresher.RefreshToken(t.Context(), oauth.Credentials{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "re-authenticate")
 }
 
-// TestCLICredRefresher_MissingSourceError verifies an absent source surfaces
-// a reload error.
-func TestCLICredRefresher_MissingSourceError(t *testing.T) {
-	refresher := cliCredRefresher(codexCLISource{path: filepath.Join(t.TempDir(), "absent.json")})
+// TestCodexReReadRefresher_MissingSourceError verifies an absent source
+// surfaces a reload error.
+func TestCodexReReadRefresher_MissingSourceError(t *testing.T) {
+	refresher := codexReReadRefresher(codexCLISource{path: filepath.Join(t.TempDir(), "absent.json")})
 	_, err := refresher.RefreshToken(t.Context(), oauth.Credentials{})
 	require.Error(t, err)
 }

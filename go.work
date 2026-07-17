@@ -13,4 +13,5 @@ use (
 	./pkg/ai/provider/google
 	./pkg/ai/provider/openai
 	./pkg/ai/provider/openairesponses
+	./pkg/pi
 )

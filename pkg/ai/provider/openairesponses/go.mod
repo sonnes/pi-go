@@ -2,14 +2,18 @@ module github.com/sonnes/pi-go/pkg/ai/provider/openairesponses
 
 go 1.24.0
 
-replace github.com/sonnes/pi-go => ../../../..
+replace (
+	github.com/sonnes/pi-go => ../../../..
+	github.com/sonnes/pi-go/pkg/ai/provider/openai => ../openai
+)
 
 require (
 	github.com/charmbracelet/log v1.0.0
 	github.com/openai/openai-go v1.12.0
-	github.com/sonnes/pi-go v0.0.0-00010101000000-000000000000
+	github.com/sonnes/pi-go v0.0.0
+	github.com/sonnes/pi-go/pkg/ai/provider/openai v0.0.0
 	github.com/stretchr/testify v1.11.1
-	github.com/tidwall/gjson v1.14.4
+	github.com/tidwall/gjson v1.18.0
 )
 
 require (
@@ -33,6 +37,6 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/sys v0.34.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
