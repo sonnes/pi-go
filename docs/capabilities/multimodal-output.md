@@ -8,7 +8,7 @@ read_when:
 
 # Multimodal Output
 
-pi-go exposes image generation through the optional [`ImageProvider`](../../pkg/ai/image.go) capability interface. The entry point [`ai.GenerateImage`](../../pkg/ai/generate.go) resolves a `"<provider>/<model>"` spec and takes a `Prompt`, mirroring [`ai.Generate`](../../pkg/ai/generate.go); set dimensions and image count with `WithImageSize` / `WithImageCount`. There is no `AudioProvider` interface — TTS is unimplemented.
+pi-go exposes image generation through the optional [`ImageProvider`](../../pkg/ai/image.go) capability interface. The entry point `catalog.GenerateImage` (also a package-level helper in `pi`) resolves a `"<provider>/<model>"` spec and takes a `Prompt`, mirroring `GenerateText`; set dimensions and image count with `WithImageSize` / `WithImageCount`. TTS has the same shape via [`SpeechProvider`](../../pkg/ai/speech.go) and `GenerateSpeech`, though no built-in provider implements it yet.
 
 ## Image Generation
 

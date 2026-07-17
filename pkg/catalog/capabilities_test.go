@@ -50,6 +50,43 @@ func TestImageModel_Unsupported(t *testing.T) {
 	assert.ErrorContains(t, err, "does not support image generation")
 }
 
+// --- speech ---
+
+type fakeSpeechProvider struct{}
+
+func (fakeSpeechProvider) Provider() string   { return "tts" }
+func (fakeSpeechProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
+
+func (fakeSpeechProvider) GenerateSpeech(
+	_ context.Context,
+	_ ai.Model,
+	_ ai.Prompt,
+	_ ai.StreamOptions,
+) (*ai.SpeechResponse, error) {
+	return &ai.SpeechResponse{Audio: []byte{1}, MediaType: "audio/mp3"}, nil
+}
+
+func TestSpeechModel_ResolvesAndBinds(t *testing.T) {
+	c := catalog.New()
+	c.RegisterProvider(fakeSpeechProvider{})
+
+	sm, err := c.SpeechModel("tts/m1")
+	require.NoError(t, err)
+	assert.Equal(t, "m1", sm.Model().ID)
+
+	resp, err := c.GenerateSpeech(context.Background(), "tts/m1", ai.Prompt{})
+	require.NoError(t, err)
+	assert.Equal(t, "audio/mp3", resp.MediaType)
+}
+
+func TestSpeechModel_Unsupported(t *testing.T) {
+	c := catalog.New()
+	c.RegisterProvider(&fakeProvider{id: "fake"}) // text-only
+
+	_, err := c.SpeechModel("fake/m1")
+	assert.ErrorContains(t, err, "does not support speech generation")
+}
+
 // --- object ---
 
 type fakeObjectProvider struct{ raw string }

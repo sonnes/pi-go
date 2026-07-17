@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -28,10 +29,10 @@ func (fakeProvider) StreamText(
 	})
 }
 
-func TestGenerate_ViaDefaultCatalog(t *testing.T) {
+func TestGenerateText_ViaDefaultCatalog(t *testing.T) {
 	pi.Default.RegisterProvider(fakeProvider{})
 
-	msg, err := pi.Generate(
+	msg, err := pi.GenerateText(
 		context.Background(),
 		"fake/m1",
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
@@ -74,6 +75,68 @@ func (fakeImageProvider) GenerateImage(
 	_ ai.StreamOptions,
 ) (*ai.ImageResponse, error) {
 	return &ai.ImageResponse{Images: []ai.GeneratedImage{{MediaType: "image/png"}}}, nil
+}
+
+// fakeObjectProvider implements catalog.Provider + ai.TextProvider +
+// ai.ObjectProvider.
+type fakeObjectProvider struct{}
+
+func (fakeObjectProvider) Provider() string   { return "obj" }
+func (fakeObjectProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
+
+func (fakeObjectProvider) StreamText(
+	_ context.Context,
+	_ ai.Model,
+	_ ai.Prompt,
+	_ ai.StreamOptions,
+) *ai.EventStream {
+	return ai.NewEventStream(func(_ func(ai.Event)) (*ai.Message, error) {
+		return &ai.Message{Role: ai.RoleAssistant}, nil
+	})
+}
+
+func (fakeObjectProvider) GenerateObject(
+	_ context.Context,
+	_ ai.Model,
+	_ ai.Prompt,
+	_ *jsonschema.Schema,
+	_ ai.StreamOptions,
+) (*ai.ObjectResponse, error) {
+	return &ai.ObjectResponse{Raw: `{"x":3}`}, nil
+}
+
+func TestGenerateObject_ViaDefaultCatalog(t *testing.T) {
+	pi.Default.RegisterProvider(fakeObjectProvider{})
+
+	type point struct {
+		X int `json:"x"`
+	}
+	res, err := pi.GenerateObject[point](context.Background(), "obj/m1", ai.Prompt{})
+	require.NoError(t, err)
+	assert.Equal(t, 3, res.Object.X)
+}
+
+// fakeSpeechProvider implements catalog.Provider + ai.SpeechProvider.
+type fakeSpeechProvider struct{}
+
+func (fakeSpeechProvider) Provider() string   { return "tts" }
+func (fakeSpeechProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
+
+func (fakeSpeechProvider) GenerateSpeech(
+	_ context.Context,
+	_ ai.Model,
+	_ ai.Prompt,
+	_ ai.StreamOptions,
+) (*ai.SpeechResponse, error) {
+	return &ai.SpeechResponse{Audio: []byte{1}, MediaType: "audio/mp3"}, nil
+}
+
+func TestGenerateSpeech_ViaDefaultCatalog(t *testing.T) {
+	pi.Default.RegisterProvider(fakeSpeechProvider{})
+
+	resp, err := pi.GenerateSpeech(context.Background(), "tts/m1", ai.Prompt{})
+	require.NoError(t, err)
+	assert.Equal(t, "audio/mp3", resp.MediaType)
 }
 
 func TestModelVarsAreReExported(t *testing.T) {

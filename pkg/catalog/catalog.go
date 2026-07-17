@@ -131,6 +131,17 @@ func (c *Catalog) StreamText(
 	return lm.StreamText(ctx, p, opts...)
 }
 
+// GenerateText resolves spec and blocks for a text response. Convenience
+// wrapper around StreamText(...).Wait().
+func (c *Catalog) GenerateText(
+	ctx context.Context,
+	spec string,
+	p ai.Prompt,
+	opts ...ai.Option,
+) (*ai.Message, error) {
+	return c.StreamText(ctx, spec, p, opts...).Wait()
+}
+
 // ImageModel resolves a spec to a bound [ai.ImageModel]. It errors if the
 // spec is unknown or the provider does not support image generation.
 func (c *Catalog) ImageModel(spec string) (ai.ImageModel, error) {
@@ -157,6 +168,34 @@ func (c *Catalog) GenerateImage(
 		return nil, err
 	}
 	return im.GenerateImage(ctx, p, opts...)
+}
+
+// SpeechModel resolves a spec to a bound [ai.SpeechModel]. It errors if the
+// spec is unknown or the provider does not support speech generation.
+func (c *Catalog) SpeechModel(spec string) (ai.SpeechModel, error) {
+	m, p, err := c.resolve(spec)
+	if err != nil {
+		return nil, err
+	}
+	sp, ok := p.(ai.SpeechProvider)
+	if !ok {
+		return nil, fmt.Errorf("catalog: provider %q does not support speech generation", p.Provider())
+	}
+	return ai.NewSpeechModel(m, sp), nil
+}
+
+// GenerateSpeech resolves spec and generates audio from the prompt.
+func (c *Catalog) GenerateSpeech(
+	ctx context.Context,
+	spec string,
+	p ai.Prompt,
+	opts ...ai.Option,
+) (*ai.SpeechResponse, error) {
+	sm, err := c.SpeechModel(spec)
+	if err != nil {
+		return nil, err
+	}
+	return sm.GenerateSpeech(ctx, p, opts...)
 }
 
 // GenerateObject resolves spec to a language model and generates a typed

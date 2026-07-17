@@ -62,6 +62,22 @@ func TestLanguageModel_Errors(t *testing.T) {
 	assert.ErrorContains(t, err, "does not support text generation")
 }
 
+func TestGenerateText_ViaCatalog(t *testing.T) {
+	c := catalog.New()
+	c.RegisterProvider(&fakeProvider{id: "fake"})
+
+	msg, err := c.GenerateText(context.Background(), "fake/m1", ai.Prompt{})
+	require.NoError(t, err)
+	assert.Equal(t, ai.RoleAssistant, msg.Role)
+}
+
+func TestGenerateText_Errors(t *testing.T) {
+	c := catalog.New()
+
+	_, err := c.GenerateText(context.Background(), "nope/m1", ai.Prompt{})
+	assert.ErrorContains(t, err, "unknown model")
+}
+
 func TestAgent_DefaultAndCustom(t *testing.T) {
 	c := catalog.New()
 	c.RegisterProvider(&fakeProvider{id: "fake"})

@@ -8,7 +8,7 @@ read_when:
 
 # Structured Outputs
 
-pi-go exposes structured output through the optional [`ObjectProvider`](../../pkg/ai/object.go) interface. The generic helper [`ai.GenerateObject[T]`](../../pkg/ai/generate.go) resolves a `"<provider>/<model>"` spec and returns a typed Go value, mirroring [`ai.Generate`](../../pkg/ai/generate.go).
+pi-go exposes structured output through the optional [`ObjectProvider`](../../pkg/ai/object.go) interface. The generic helper [`ai.GenerateObject[T]`](../../pkg/ai/object.go) takes a bound `LanguageModel` and returns a typed Go value; `catalog.GenerateObject[T]` and `pi.GenerateObject[T]` offer the same spec-first form as `GenerateText`.
 
 ## Compatibility
 

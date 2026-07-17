@@ -72,10 +72,17 @@ func StreamText(ctx context.Context, spec string, p Prompt, opts ...ai.Option) *
 	return Default.StreamText(ctx, spec, p, opts...)
 }
 
-// Generate resolves spec and blocks for a text response. Convenience
+// GenerateText resolves spec and blocks for a text response. Convenience
 // wrapper around StreamText(...).Wait().
-func Generate(ctx context.Context, spec string, p Prompt, opts ...ai.Option) (*Message, error) {
+func GenerateText(ctx context.Context, spec string, p Prompt, opts ...ai.Option) (*Message, error) {
 	return StreamText(ctx, spec, p, opts...).Wait()
+}
+
+// GenerateObject resolves spec against the default catalog and generates
+// a typed object. The model's provider must support object generation.
+func GenerateObject[T any](ctx context.Context, spec string, p Prompt, opts ...ai.Option) (*ai.ObjectResult[T], error) {
+	ensureProviders()
+	return catalog.GenerateObject[T](ctx, Default, spec, p, opts...)
 }
 
 // GenerateImage resolves spec and generates images from the prompt. The
@@ -83,6 +90,13 @@ func Generate(ctx context.Context, spec string, p Prompt, opts ...ai.Option) (*M
 func GenerateImage(ctx context.Context, spec string, p Prompt, opts ...ai.Option) (*ai.ImageResponse, error) {
 	ensureProviders()
 	return Default.GenerateImage(ctx, spec, p, opts...)
+}
+
+// GenerateSpeech resolves spec and generates audio from the prompt. The
+// model's provider must support speech generation.
+func GenerateSpeech(ctx context.Context, spec string, p Prompt, opts ...ai.Option) (*ai.SpeechResponse, error) {
+	ensureProviders()
+	return Default.GenerateSpeech(ctx, spec, p, opts...)
 }
 
 // Agent builds an agent for a "<kind>/<model>" spec from the default catalog.
