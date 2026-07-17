@@ -16,6 +16,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/catalog"
+	"github.com/sonnes/pi-go/pkg/durable"
 )
 
 // Default is the process-wide catalog backing the package-level helpers.
@@ -93,4 +94,12 @@ func GenerateSpeech(ctx context.Context, spec string, p Prompt, opts ...ai.Optio
 func Agent(spec string, opts ...agent.Option) (agent.Agent, error) {
 	ensureProviders()
 	return Default.Agent(spec, opts...)
+}
+
+// DurableAgent builds a session-backed durable agent for a "<kind>/<model>"
+// spec from the default catalog. Pass durable options ([durable.WithStore],
+// [durable.WithSessionID], [durable.WithPublisher]) alongside agent options.
+func DurableAgent[T any](ctx context.Context, spec string, opts ...agent.Option) (*durable.Agent[T], error) {
+	ensureProviders()
+	return catalog.DurableAgent[T](ctx, Default, spec, opts...)
 }
