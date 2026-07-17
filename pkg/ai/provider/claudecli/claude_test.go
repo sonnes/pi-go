@@ -125,21 +125,21 @@ func TestStreamText_SimpleText(t *testing.T) {
 		ai.EventTextStart,
 		ai.EventTextDelta,
 		ai.EventTextEnd,
-		ai.EventDone,
 	}, types)
 
 	assert.Equal(t, "Hello!", events[2].Delta)
 	assert.Equal(t, "Hello!", events[3].Content)
 
-	last := events[len(events)-1]
-	require.NotNil(t, last.Message)
-	assert.Equal(t, "Hello!", last.Message.Text())
-	assert.Equal(t, 10, last.Message.Usage.Input)
-	assert.Equal(t, 5, last.Message.Usage.Output)
-	assert.Equal(t, "claude-cli", last.Message.Provider, "assistant message is tagged with its provider")
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "Hello!", msg.Text())
+	assert.Equal(t, 10, msg.Usage.Input)
+	assert.Equal(t, 5, msg.Usage.Output)
+	assert.Equal(t, "claude-cli", msg.Provider, "assistant message is tagged with its provider")
 }
 
-func TestStreamText_ResultPath(t *testing.T) {
+func TestStreamText_WaitPath(t *testing.T) {
 	p := New()
 	_, _, restore := stubSend(p, simpleTextNDJSON, nil)
 	defer restore()
@@ -149,7 +149,7 @@ func TestStreamText_ResultPath(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 	assert.Equal(t, "Hello!", msg.Text())
@@ -186,10 +186,10 @@ func TestStreamText_ToolCall(t *testing.T) {
 	assert.Equal(t, "Read", toolEnd.ToolCall.Name)
 	assert.Equal(t, "/tmp/foo", toolEnd.ToolCall.Arguments["file_path"])
 
-	last := events[len(events)-1]
-	require.Equal(t, ai.EventDone, last.Type)
-	require.NotNil(t, last.Message)
-	assert.Equal(t, "It's a Go file.", last.Message.Text())
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "It's a Go file.", msg.Text())
 }
 
 func TestStreamText_Thinking(t *testing.T) {
@@ -219,7 +219,6 @@ func TestStreamText_Thinking(t *testing.T) {
 		ai.EventTextStart,
 		ai.EventTextDelta,
 		ai.EventTextEnd,
-		ai.EventDone,
 	}, types)
 
 	var thinkDelta *ai.Event
@@ -243,7 +242,7 @@ func TestStreamText_EmptyPrompt(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no user message")
 }
@@ -258,7 +257,7 @@ func TestStreamText_SubprocessError(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cli not found")
 }
@@ -276,7 +275,7 @@ func TestStreamText_ErrorResult(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Rate limited")
 }
@@ -291,7 +290,7 @@ func TestStreamText_ForwardsNoPersistence(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	args := lastArgs()
 	assert.True(t, args.noPersistence)
@@ -307,7 +306,7 @@ func TestStreamText_ForwardsSystemPrompt(t *testing.T) {
 		System:   "be terse",
 		Messages: []ai.Message{ai.UserMessage("hi")},
 	}
-	_, _ = p.StreamText(context.Background(), ai.Model{}, prompt, ai.StreamOptions{}).Result()
+	_, _ = p.StreamText(context.Background(), ai.Model{}, prompt, ai.StreamOptions{}).Wait()
 
 	assert.Equal(t, "be terse", lastArgs().systemPrompt)
 }
@@ -322,7 +321,7 @@ func TestStreamText_ModelOverride(t *testing.T) {
 		ai.Model{ID: "override"},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	assert.Equal(t, "override", lastCfg().model)
 }
@@ -339,7 +338,7 @@ func TestStreamText_UsesLastUserMessage(t *testing.T) {
 			ai.UserMessage("latest"),
 		},
 	}
-	_, _ = p.StreamText(context.Background(), ai.Model{}, prompt, ai.StreamOptions{}).Result()
+	_, _ = p.StreamText(context.Background(), ai.Model{}, prompt, ai.StreamOptions{}).Wait()
 
 	assert.Equal(t, "latest", lastArgs().prompt)
 }
@@ -363,7 +362,7 @@ func TestStreamText_ConcurrentCalls(t *testing.T) {
 				ai.Model{},
 				ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 				ai.StreamOptions{},
-			).Result()
+			).Wait()
 		}(i)
 	}
 	wg.Wait()
@@ -627,7 +626,7 @@ func TestStreamText_ForwardsThinkingEffort(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{ThinkingLevel: ai.ThinkingHigh},
-	).Result()
+	).Wait()
 
 	assert.Equal(t, "high", lastArgs().effort)
 }

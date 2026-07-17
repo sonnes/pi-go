@@ -88,7 +88,7 @@ func (p *Provider) StreamText(
 	prompt ai.Prompt,
 	opts ai.StreamOptions,
 ) *ai.EventStream {
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		params, reqOpts := buildParams(model, prompt, opts, p.baseURL)
 
 		log.Debug(
@@ -241,20 +241,10 @@ func (p *Provider) StreamText(
 		}
 
 		if err := stream.Err(); err != nil && !errors.Is(err, io.EOF) {
-			push(ai.Event{
-				Type: ai.EventError,
-				Err:  fmt.Errorf("anthropic: %w", err),
-			})
-			return
+			return nil, fmt.Errorf("anthropic: %w", err)
 		}
 
-		msg := buildMessage(model, &acc)
-
-		push(ai.Event{
-			Type:       ai.EventDone,
-			Message:    msg,
-			StopReason: msg.StopReason,
-		})
+		return buildMessage(model, &acc), nil
 	})
 }
 

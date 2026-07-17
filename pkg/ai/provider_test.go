@@ -48,10 +48,7 @@ func (f *fakeProvider) StreamText(
 	_ ai.StreamOptions,
 ) *ai.EventStream {
 	msg := f.message
-	return ai.NewEventStream(func(push func(ai.Event)) {
-		push(ai.Event{
-			Type:    ai.EventDone,
-			Message: msg,
-		})
+	return ai.NewEventStream(func(_ func(ai.Event)) (*ai.Message, error) {
+		return msg, nil
 	})
 }

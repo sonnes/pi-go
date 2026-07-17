@@ -69,7 +69,7 @@ func (p *Provider) StreamText(
 
 	reqOpts := mergeHeaders(model.Headers, opts.Headers)
 
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		stream := p.client.Chat.Completions.NewStreaming(
 			ctx,
 			*params,
@@ -196,11 +196,7 @@ func (p *Provider) StreamText(
 
 		err := stream.Err()
 		if err != nil && !errors.Is(err, io.EOF) {
-			push(ai.Event{
-				Type: ai.EventError,
-				Err:  err,
-			})
-			return
+			return nil, err
 		}
 
 		if isActiveText {
@@ -259,11 +255,7 @@ func (p *Provider) StreamText(
 			"output", usage.Output,
 		)
 
-		push(ai.Event{
-			Type:       ai.EventDone,
-			Message:    msg,
-			StopReason: stopReason,
-		})
+		return msg, nil
 	})
 }
 

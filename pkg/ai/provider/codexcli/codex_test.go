@@ -114,20 +114,21 @@ func TestStreamText_SimpleText(t *testing.T) {
 		ai.EventTextStart,
 		ai.EventTextDelta,
 		ai.EventTextEnd,
-		ai.EventDone,
 	}, aiEventTypes(events))
 
 	assert.Equal(t, "Hello!", events[2].Delta)
-	last := events[len(events)-1]
-	require.NotNil(t, last.Message)
-	assert.Equal(t, "Hello!", last.Message.Text())
-	assert.Equal(t, "codex-cli", last.Message.API)
-	assert.Equal(t, "gpt-5.4", last.Message.Model)
-	assert.Equal(t, 10, last.Message.Usage.Input)
-	assert.Equal(t, 5, last.Message.Usage.Output)
-	assert.Equal(t, 3, last.Message.Usage.CacheRead)
-	assert.Equal(t, 2, last.Message.Usage.Reasoning)
-	assert.Equal(t, 15, last.Message.Usage.Total)
+
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "Hello!", msg.Text())
+	assert.Equal(t, "codex-cli", msg.API)
+	assert.Equal(t, "gpt-5.4", msg.Model)
+	assert.Equal(t, 10, msg.Usage.Input)
+	assert.Equal(t, 5, msg.Usage.Output)
+	assert.Equal(t, 3, msg.Usage.CacheRead)
+	assert.Equal(t, 2, msg.Usage.Reasoning)
+	assert.Equal(t, 15, msg.Usage.Total)
 }
 
 func TestStreamText_CommandExecution(t *testing.T) {
@@ -166,10 +167,11 @@ func TestStreamText_CommandExecution(t *testing.T) {
 	assert.Equal(t, "/tmp/project\n", toolEnd.ToolCall.Output.Content)
 	assert.False(t, toolEnd.ToolCall.Output.IsError)
 
-	last := events[len(events)-1]
-	require.NotNil(t, last.Message)
-	assert.Equal(t, "/tmp/project", last.Message.Text())
-	require.Len(t, last.Message.Content, 2)
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "/tmp/project", msg.Text())
+	require.Len(t, msg.Content, 2)
 }
 
 func TestStreamText_EmptyPrompt(t *testing.T) {
@@ -182,7 +184,7 @@ func TestStreamText_EmptyPrompt(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no user message")
@@ -198,7 +200,7 @@ func TestStreamText_SubprocessError(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cli not found")
@@ -214,7 +216,7 @@ func TestStreamText_ModelOverride(t *testing.T) {
 		ai.Model{ID: "override"},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	assert.Equal(t, "override", lastCfg().model)
 }
@@ -359,7 +361,7 @@ func TestStreamText_ForwardsThinkingEffort(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{ThinkingLevel: ai.ThinkingXHigh},
-	).Result()
+	).Wait()
 
 	assert.Equal(t, "xhigh", lastArgs().reasoningEffort)
 }

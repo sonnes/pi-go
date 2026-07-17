@@ -56,7 +56,7 @@ func TestMock_TextGeneration(t *testing.T) {
 	msg, err := p.StreamText(context.Background(), testModel(), ai.Prompt{
 		System:   "You are helpful",
 		Messages: []ai.Message{ai.UserMessage("Say hi in Portuguese")},
-	}, ai.StreamOptions{}).Result()
+	}, ai.StreamOptions{}).Wait()
 
 	require.NoError(t, err)
 	require.NotNil(t, msg)
@@ -89,24 +89,15 @@ func TestMock_StreamEventSequence(t *testing.T) {
 		types = append(types, e.Type)
 	}
 
-	// TextStart, TextDelta, TextDelta, TextEnd, Done
-	require.GreaterOrEqual(t, len(types), 4)
+	// TextStart, TextDelta, TextDelta, TextEnd
+	require.GreaterOrEqual(t, len(types), 3)
 	assert.Equal(t, ai.EventTextStart, types[0])
 	assert.Equal(t, ai.EventTextDelta, types[1])
-	assert.Equal(t, ai.EventDone, types[len(types)-1])
+	assert.Equal(t, ai.EventTextEnd, types[len(types)-1])
 
-	// TextEnd before Done
-	textEndIdx := -1
-	doneIdx := -1
-	for i, tt := range types {
-		if tt == ai.EventTextEnd {
-			textEndIdx = i
-		}
-		if tt == ai.EventDone {
-			doneIdx = i
-		}
-	}
-	assert.Less(t, textEndIdx, doneIdx)
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg, "expected final message")
 }
 
 func TestMock_ToolCall(t *testing.T) {
@@ -124,7 +115,7 @@ func TestMock_ToolCall(t *testing.T) {
 	msg, err := p.StreamText(context.Background(), testModel(), ai.Prompt{
 		Messages: []ai.Message{ai.UserMessage("Weather in NYC?")},
 		Tools:    []ai.ToolInfo{*weatherToolSchema},
-	}, ai.StreamOptions{}).Result()
+	}, ai.StreamOptions{}).Wait()
 
 	require.NoError(t, err)
 	require.NotNil(t, msg)
@@ -162,20 +153,10 @@ func TestMock_ToolCallEventSequence(t *testing.T) {
 	assert.Contains(t, types, ai.EventToolStart)
 	assert.Contains(t, types, ai.EventToolDelta)
 	assert.Contains(t, types, ai.EventToolEnd)
-	assert.Contains(t, types, ai.EventDone)
 
-	// ToolEnd before Done
-	toolEndIdx := -1
-	doneIdx := -1
-	for i, tt := range types {
-		if tt == ai.EventToolEnd {
-			toolEndIdx = i
-		}
-		if tt == ai.EventDone {
-			doneIdx = i
-		}
-	}
-	assert.Less(t, toolEndIdx, doneIdx)
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg, "expected final message")
 }
 
 func TestMock_TextThenToolCall(t *testing.T) {
@@ -249,7 +230,7 @@ func TestMock_Reasoning(t *testing.T) {
 		Messages: []ai.Message{ai.UserMessage("What is the meaning of life?")},
 	}, ai.StreamOptions{
 		ThinkingLevel: ai.ThinkingHigh,
-	}).Result()
+	}).Wait()
 
 	require.NoError(t, err)
 	require.NotNil(t, msg)
@@ -325,7 +306,7 @@ func TestMock_IncompleteResponse(t *testing.T) {
 
 	msg, err := p.StreamText(context.Background(), testModel(), ai.Prompt{
 		Messages: []ai.Message{ai.UserMessage("write a long essay")},
-	}, ai.StreamOptions{}).Result()
+	}, ai.StreamOptions{}).Wait()
 
 	require.NoError(t, err)
 	require.NotNil(t, msg)
@@ -345,7 +326,7 @@ func TestMock_CachedTokens(t *testing.T) {
 
 	msg, err := p.StreamText(context.Background(), testModel(), ai.Prompt{
 		Messages: []ai.Message{ai.UserMessage("hi")},
-	}, ai.StreamOptions{}).Result()
+	}, ai.StreamOptions{}).Wait()
 
 	require.NoError(t, err)
 	assert.Equal(t, 100, msg.Usage.Input)
@@ -364,7 +345,7 @@ func TestMock_FailedResponse(t *testing.T) {
 
 	_, err := p.StreamText(context.Background(), testModel(), ai.Prompt{
 		Messages: []ai.Message{ai.UserMessage("fail")},
-	}, ai.StreamOptions{}).Result()
+	}, ai.StreamOptions{}).Wait()
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "response failed")
@@ -380,7 +361,7 @@ func TestMock_ErrorEvent(t *testing.T) {
 
 	_, err := p.StreamText(context.Background(), testModel(), ai.Prompt{
 		Messages: []ai.Message{ai.UserMessage("err")},
-	}, ai.StreamOptions{}).Result()
+	}, ai.StreamOptions{}).Wait()
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Bad request")
@@ -427,7 +408,7 @@ func TestMock_MultiTurnToolCallConversion(t *testing.T) {
 			),
 		},
 		Tools: []ai.ToolInfo{*weatherToolSchema},
-	}, ai.StreamOptions{}).Result()
+	}, ai.StreamOptions{}).Wait()
 
 	require.NoError(t, err)
 	assert.Equal(t, "It's 72F in NYC.", msg.Text())

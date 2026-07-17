@@ -119,7 +119,7 @@ func TestGenerateText(t *testing.T) {
 		MaxTokens: &maxTokens,
 	})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 	require.NotEmpty(t, msg.Content, "expected at least one content block")
@@ -166,21 +166,16 @@ func TestStreamText(t *testing.T) {
 	})
 
 	var text strings.Builder
-	var gotDone bool
-	var finalMsg *ai.Message
 
 	for e, err := range stream.Events() {
 		require.NoError(t, err)
-		switch e.Type {
-		case ai.EventTextDelta:
+		if e.Type == ai.EventTextDelta {
 			text.WriteString(e.Delta)
-		case ai.EventDone:
-			gotDone = true
-			finalMsg = e.Message
 		}
 	}
 
-	assert.True(t, gotDone, "expected done event")
+	finalMsg, err := stream.Wait()
+	require.NoError(t, err)
 	assert.NotEmpty(t, text.String(), "expected text output")
 	require.NotNil(t, finalMsg)
 	assert.Equal(t, ai.StopReasonStop, finalMsg.StopReason)
@@ -211,10 +206,9 @@ func TestStreamEventSequence(t *testing.T) {
 
 	require.NotEmpty(t, events, "expected events")
 
-	// Verify ordering: TextStart before TextDelta, TextEnd before Done
+	// Verify ordering: TextStart before TextEnd, and a final message.
 	textStartIdx := -1
 	textEndIdx := -1
-	doneIdx := -1
 
 	for i, et := range events {
 		switch et {
@@ -224,15 +218,15 @@ func TestStreamEventSequence(t *testing.T) {
 			}
 		case ai.EventTextEnd:
 			textEndIdx = i
-		case ai.EventDone:
-			doneIdx = i
 		}
 	}
 
 	if textStartIdx >= 0 {
 		assert.Less(t, textStartIdx, textEndIdx, "TextStart should come before TextEnd")
 	}
-	assert.Less(t, textEndIdx, doneIdx, "TextEnd should come before Done")
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg, "expected final message")
 }
 
 func TestToolCall(t *testing.T) {
@@ -253,7 +247,7 @@ func TestToolCall(t *testing.T) {
 		MaxTokens: &maxTokens,
 	})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -286,7 +280,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 		MaxTokens: &maxTokens,
 	})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 
 	toolCalls := msg.ToolCalls()
@@ -309,7 +303,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 		MaxTokens: &maxTokens,
 	})
 
-	msg, err = stream.Result()
+	msg, err = stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -335,7 +329,7 @@ func TestUsageTokens(t *testing.T) {
 		MaxTokens: &maxTokens,
 	})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -359,6 +353,6 @@ func TestContextCancellation(t *testing.T) {
 		},
 	}, ai.StreamOptions{})
 
-	_, err := stream.Result()
+	_, err := stream.Wait()
 	assert.Error(t, err)
 }

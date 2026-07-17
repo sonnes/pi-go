@@ -39,11 +39,8 @@ func (m *mockProvider) StreamText(
 	m.prompts = append(m.prompts, p)
 
 	if m.callIdx >= len(m.responses) {
-		return ai.NewEventStream(func(push func(ai.Event)) {
-			push(ai.Event{
-				Type: ai.EventError,
-				Err:  fmt.Errorf("mock: no more responses (call %d)", m.callIdx),
-			})
+		return ai.NewEventStream(func(_ func(ai.Event)) (*ai.Message, error) {
+			return nil, fmt.Errorf("mock: no more responses (call %d)", m.callIdx)
 		})
 	}
 
@@ -65,9 +62,10 @@ func registerMock(t *testing.T, responses ...*ai.EventStream) *mockProvider {
 }
 
 // textStream creates an [ai.EventStream] that streams a text response
-// using realistic provider semantics: Message is only set on EventDone.
+// using realistic provider semantics: the final message is the stream
+// result, not an event.
 func textStream(text string, usage ai.Usage) *ai.EventStream {
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		msg := &ai.Message{
 			Role:       ai.RoleAssistant,
 			Content:    []ai.Content{ai.Text{Text: text}},
@@ -77,14 +75,15 @@ func textStream(text string, usage ai.Usage) *ai.EventStream {
 		push(ai.Event{Type: ai.EventTextStart, ContentIndex: 0})
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: text})
 		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 0, Content: text})
-		push(ai.Event{Type: ai.EventDone, Message: msg, StopReason: ai.StopReasonStop})
+		return msg, nil
 	})
 }
 
 // toolCallStream creates an [ai.EventStream] that returns tool call(s)
-// using realistic provider semantics: Message is only set on EventDone.
+// using realistic provider semantics: the final message is the stream
+// result, not an event.
 func toolCallStream(calls []ai.ToolCall, usage ai.Usage) *ai.EventStream {
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		content := make([]ai.Content, len(calls))
 		for i, tc := range calls {
 			content[i] = tc
@@ -99,28 +98,22 @@ func toolCallStream(calls []ai.ToolCall, usage ai.Usage) *ai.EventStream {
 			push(ai.Event{Type: ai.EventToolStart, ContentIndex: i})
 			push(ai.Event{Type: ai.EventToolEnd, ContentIndex: i, ToolCall: &tc})
 		}
-		push(ai.Event{Type: ai.EventDone, Message: msg, StopReason: ai.StopReasonToolUse})
+		return msg, nil
 	})
 }
 
 // errorStream creates an [ai.EventStream] that immediately errors.
 func errorStream(err error) *ai.EventStream {
-	return ai.NewEventStream(func(push func(ai.Event)) {
-		push(ai.Event{
-			Type: ai.EventError,
-			Err:  err,
-		})
+	return ai.NewEventStream(func(_ func(ai.Event)) (*ai.Message, error) {
+		return nil, err
 	})
 }
 
 // blockingStream creates an [ai.EventStream] that blocks until the context is canceled.
 func blockingStream(ctx context.Context) *ai.EventStream {
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(_ func(ai.Event)) (*ai.Message, error) {
 		<-ctx.Done()
-		push(ai.Event{
-			Type: ai.EventError,
-			Err:  ctx.Err(),
-		})
+		return nil, ctx.Err()
 	})
 }
 
@@ -593,10 +586,10 @@ func (p *ctxBlockingProvider) StreamText(
 	_ ai.Prompt,
 	_ ai.StreamOptions,
 ) *ai.EventStream {
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(_ func(ai.Event)) (*ai.Message, error) {
 		p.startOnce.Do(func() { close(p.startedCh) })
 		<-ctx.Done()
-		push(ai.Event{Type: ai.EventError, Err: ctx.Err()})
+		return nil, ctx.Err()
 	})
 }
 
@@ -676,9 +669,9 @@ func TestRun_ProviderError(t *testing.T) {
 
 // Test 13: Nil/empty message from provider
 func TestRun_NilMessageFromProvider(t *testing.T) {
-	// Stream that emits Done with nil message.
-	nilMsgStream := ai.NewEventStream(func(push func(ai.Event)) {
-		push(ai.Event{Type: ai.EventDone, Message: nil})
+	// Stream whose producer completes with a nil message.
+	nilMsgStream := ai.NewEventStream(func(_ func(ai.Event)) (*ai.Message, error) {
+		return nil, nil
 	})
 	registerMock(t, nilMsgStream)
 
@@ -1101,8 +1094,8 @@ func TestRun_SequentialRuns(t *testing.T) {
 // every message_update carries a non-nil partial Message snapshot,
 // and message_end carries the final provider message.
 func TestRun_IncrementalStreamingEvents(t *testing.T) {
-	// Create a realistic multi-delta stream (Message only on EventDone).
-	stream := ai.NewEventStream(func(push func(ai.Event)) {
+	// Create a realistic multi-delta stream (final message as result).
+	stream := ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		finalMsg := &ai.Message{
 			Role:       ai.RoleAssistant,
 			Content:    []ai.Content{ai.Text{Text: "Hello world"}},
@@ -1113,7 +1106,7 @@ func TestRun_IncrementalStreamingEvents(t *testing.T) {
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: "Hello"})
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: " world"})
 		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 0, Content: "Hello world"})
-		push(ai.Event{Type: ai.EventDone, Message: finalMsg, StopReason: ai.StopReasonStop})
+		return finalMsg, nil
 	})
 	registerMock(t, stream)
 
@@ -1168,7 +1161,7 @@ func TestRun_IncrementalStreamingEvents(t *testing.T) {
 
 // Test: Multi-block streaming — thinking + text blocks accumulate correctly.
 func TestRun_MultiBlockStreaming(t *testing.T) {
-	stream := ai.NewEventStream(func(push func(ai.Event)) {
+	stream := ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		finalMsg := &ai.Message{
 			Role: ai.RoleAssistant,
 			Content: []ai.Content{
@@ -1187,7 +1180,7 @@ func TestRun_MultiBlockStreaming(t *testing.T) {
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 1, Delta: "The answer"})
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 1, Delta: " is 42"})
 		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 1, Content: "The answer is 42"})
-		push(ai.Event{Type: ai.EventDone, Message: finalMsg, StopReason: ai.StopReasonStop})
+		return finalMsg, nil
 	})
 	registerMock(t, stream)
 
@@ -1221,7 +1214,7 @@ func TestRun_MultiBlockStreaming(t *testing.T) {
 
 // Test: Message snapshots are independent copies (mutation safety).
 func TestRun_SnapshotIndependence(t *testing.T) {
-	stream := ai.NewEventStream(func(push func(ai.Event)) {
+	stream := ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		finalMsg := &ai.Message{
 			Role:       ai.RoleAssistant,
 			Content:    []ai.Content{ai.Text{Text: "ab"}},
@@ -1231,7 +1224,7 @@ func TestRun_SnapshotIndependence(t *testing.T) {
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: "a"})
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: "b"})
 		push(ai.Event{Type: ai.EventTextEnd, ContentIndex: 0, Content: "ab"})
-		push(ai.Event{Type: ai.EventDone, Message: finalMsg, StopReason: ai.StopReasonStop})
+		return finalMsg, nil
 	})
 	registerMock(t, stream)
 

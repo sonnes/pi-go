@@ -44,17 +44,14 @@
 //		if err != nil {
 //			log.Fatal(err)
 //		}
-//		switch event.Type {
-//		case ai.EventTextDelta:
+//		if event.Type == ai.EventTextDelta {
 //			fmt.Print(event.Delta)
-//		case ai.EventDone:
-//			fmt.Println()
 //		}
 //	}
 //
-// Or use Result() to block until the final message:
+// Or use Wait() to block until the final message:
 //
-//	msg, err := ai.StreamText(ctx, model, prompt).Result()
+//	msg, err := ai.StreamText(ctx, model, prompt).Wait()
 //
 // # Tool Calling
 //

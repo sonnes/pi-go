@@ -103,7 +103,7 @@ func TestOpenRouter_GenerateText(t *testing.T) {
 		},
 	}, ai.StreamOptions{MaxTokens: &maxTokens})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -138,7 +138,7 @@ func TestOpenRouter_StreamEventOrdering(t *testing.T) {
 	}
 	require.NotEmpty(t, events)
 
-	startIdx, deltaIdx, endIdx, doneIdx := -1, -1, -1, -1
+	startIdx, deltaIdx, endIdx := -1, -1, -1
 	for i, et := range events {
 		switch et {
 		case ai.EventTextStart:
@@ -151,14 +151,15 @@ func TestOpenRouter_StreamEventOrdering(t *testing.T) {
 			}
 		case ai.EventTextEnd:
 			endIdx = i
-		case ai.EventDone:
-			doneIdx = i
 		}
 	}
 	assert.GreaterOrEqual(t, startIdx, 0, "expected TextStart")
 	assert.Greater(t, deltaIdx, startIdx, "expected TextDelta after TextStart")
 	assert.Greater(t, endIdx, deltaIdx, "expected TextEnd after TextDelta")
-	assert.Greater(t, doneIdx, endIdx, "expected Done after TextEnd")
+
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg, "expected final message")
 }
 
 // TestOpenRouter_FunctionTool confirms function-tool calls are issued and
@@ -187,7 +188,7 @@ func TestOpenRouter_FunctionTool(t *testing.T) {
 		Tools: []ai.ToolInfo{weatherTool.Info()},
 	}, ai.StreamOptions{MaxTokens: &maxTokens})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -231,7 +232,7 @@ func TestOpenRouter_ServerWebSearch(t *testing.T) {
 		Tools: tools,
 	}, ai.StreamOptions{MaxTokens: &maxTokens})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -276,7 +277,7 @@ func TestOpenRouter_ServerDateTime(t *testing.T) {
 		Tools: tools,
 	}, ai.StreamOptions{MaxTokens: &maxTokens})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
@@ -306,7 +307,7 @@ func TestOpenRouter_ClaudeUnderlying(t *testing.T) {
 		},
 	}, ai.StreamOptions{MaxTokens: &maxTokens})
 
-	msg, err := stream.Result()
+	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 

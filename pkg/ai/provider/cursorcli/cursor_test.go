@@ -91,16 +91,17 @@ func TestStreamText_SimpleText(t *testing.T) {
 		ai.EventTextDelta,
 		ai.EventTextDelta,
 		ai.EventTextEnd,
-		ai.EventDone,
 	}, aiEventTypes(events))
 
 	assert.Equal(t, "Hel", events[2].Delta)
 	assert.Equal(t, "lo!", events[3].Delta)
-	last := events[len(events)-1]
-	require.NotNil(t, last.Message)
-	assert.Equal(t, "Hello!", last.Message.Text())
-	assert.Equal(t, "cursor-cli", last.Message.API)
-	assert.Equal(t, "gpt-5", last.Message.Model)
+
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "Hello!", msg.Text())
+	assert.Equal(t, "cursor-cli", msg.API)
+	assert.Equal(t, "gpt-5", msg.Model)
 }
 
 func TestStreamText_ToolCall(t *testing.T) {
@@ -139,10 +140,11 @@ func TestStreamText_ToolCall(t *testing.T) {
 	assert.Equal(t, "# Project\n", toolEnd.ToolCall.Output.Content)
 	assert.False(t, toolEnd.ToolCall.Output.IsError)
 
-	last := events[len(events)-1]
-	require.NotNil(t, last.Message)
-	assert.Equal(t, "Read it.", last.Message.Text())
-	require.Len(t, last.Message.Content, 2)
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Equal(t, "Read it.", msg.Text())
+	require.Len(t, msg.Content, 2)
 }
 
 func TestStreamText_EmptyPrompt(t *testing.T) {
@@ -155,7 +157,7 @@ func TestStreamText_EmptyPrompt(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no user message")
@@ -171,7 +173,7 @@ func TestStreamText_SubprocessError(t *testing.T) {
 		ai.Model{},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cli not found")
@@ -187,7 +189,7 @@ func TestStreamText_ModelOverride(t *testing.T) {
 		ai.Model{ID: "override"},
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 
 	assert.Equal(t, "override", lastCfg().model)
 }

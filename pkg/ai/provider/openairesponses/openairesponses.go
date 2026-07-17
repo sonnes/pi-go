@@ -139,7 +139,7 @@ func (p *Provider) StreamText(
 	// ("web_search_call", "openrouter:web_search").
 	serverToolNames := serverToolNameByType(prompt.Tools)
 
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		stream := p.client.Responses.NewStreaming(
 			ctx,
 			*params,
@@ -409,28 +409,16 @@ func (p *Provider) StreamText(
 				}
 
 			case "response.failed":
-				push(ai.Event{
-					Type: ai.EventError,
-					Err:  errors.New("openai-responses: response failed"),
-				})
-				return
+				return nil, errors.New("openai-responses: response failed")
 
 			case "error":
-				push(ai.Event{
-					Type: ai.EventError,
-					Err:  errors.New("openai-responses: " + event.Message),
-				})
-				return
+				return nil, errors.New("openai-responses: " + event.Message)
 			}
 		}
 
 		err := stream.Err()
 		if err != nil && !errors.Is(err, io.EOF) {
-			push(ai.Event{
-				Type: ai.EventError,
-				Err:  err,
-			})
-			return
+			return nil, err
 		}
 
 		if inText {
@@ -473,11 +461,7 @@ func (p *Provider) StreamText(
 			"output", usage.Output,
 		)
 
-		push(ai.Event{
-			Type:       ai.EventDone,
-			Message:    msg,
-			StopReason: stopReason,
-		})
+		return msg, nil
 	})
 }
 

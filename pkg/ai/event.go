@@ -25,18 +25,16 @@ const (
 	EventToolStart  EventType = "tool_start"
 	EventToolDelta  EventType = "tool_delta"
 	EventToolEnd    EventType = "tool_end"
-	EventDone       EventType = "done"
-	EventError      EventType = "error"
 )
 
 // Event represents a single streaming event from a model response.
+// The final [Message] and any terminal error are not events — they are
+// the [EventStream] result, returned by Wait and surfaced on the
+// Events iterator.
 type Event struct {
 	Type         EventType
 	ContentIndex int       // which content block (for start/delta/end events)
 	Delta        string    // incremental text (text/thinking/toolcall deltas)
 	Content      string    // completed text (for end events)
 	ToolCall     *ToolCall // completed tool call (for toolcall_end)
-	Message      *Message  // partial (during stream) or final (on done/error)
-	StopReason   StopReason
-	Err          error // for error events
 }

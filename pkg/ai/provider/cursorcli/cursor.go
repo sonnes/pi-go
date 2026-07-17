@@ -135,7 +135,7 @@ func (p *Provider) StreamText(
 	prompt ai.Prompt,
 	_ ai.StreamOptions,
 ) *ai.EventStream {
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		cfg := p.cfg
 		if model.ID != "" {
 			cfg.model = model.ID
@@ -143,11 +143,7 @@ func (p *Provider) StreamText(
 
 		userText := lastUserText(prompt.Messages)
 		if userText == "" {
-			push(ai.Event{
-				Type: ai.EventError,
-				Err:  errors.New("cursor: prompt has no user message"),
-			})
-			return
+			return nil, errors.New("cursor: prompt has no user message")
 		}
 
 		args := sendArgs{
@@ -156,8 +152,7 @@ func (p *Provider) StreamText(
 
 		stdout, cleanup, err := p.sendFn(ctx, cfg, args)
 		if err != nil {
-			push(ai.Event{Type: ai.EventError, Err: err})
-			return
+			return nil, err
 		}
 
 		push(ai.Event{Type: ai.EventStart})
@@ -169,13 +164,11 @@ func (p *Provider) StreamText(
 			pumpErr = cleanupErr
 		}
 		if pumpErr != nil {
-			push(ai.Event{Type: ai.EventError, Err: pumpErr, Message: final})
-			return
+			return final, pumpErr
 		}
 
 		if final == nil {
-			push(ai.Event{Type: ai.EventDone})
-			return
+			return nil, nil
 		}
 		if final.API == "" {
 			final.API = p.Provider()
@@ -187,11 +180,7 @@ func (p *Provider) StreamText(
 			final.Model = cfg.model
 		}
 
-		push(ai.Event{
-			Type:       ai.EventDone,
-			Message:    final,
-			StopReason: final.StopReason,
-		})
+		return final, nil
 	})
 }
 

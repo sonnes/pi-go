@@ -173,22 +173,17 @@ func TestStreamText(t *testing.T) {
 	)
 
 	var text strings.Builder
-	var gotDone bool
-	var finalMsg *ai.Message
 
 	for ev, err := range stream.Events() {
 		require.NoError(t, err)
 
-		switch ev.Type {
-		case ai.EventTextDelta:
+		if ev.Type == ai.EventTextDelta {
 			text.WriteString(ev.Delta)
-		case ai.EventDone:
-			gotDone = true
-			finalMsg = ev.Message
 		}
 	}
 
-	assert.True(t, gotDone, "did not receive done event")
+	finalMsg, err := stream.Wait()
+	require.NoError(t, err)
 
 	response := text.String()
 	expectedGreetings := []string{"Olá", "Oi", "olá", "oi"}
@@ -286,7 +281,6 @@ func TestToolCall(t *testing.T) {
 	var (
 		gotToolStart bool
 		gotToolEnd   bool
-		finalMsg     *ai.Message
 	)
 
 	for e, err := range stream.Events() {
@@ -300,10 +294,11 @@ func TestToolCall(t *testing.T) {
 			assert.Equal(t, "get_weather", e.ToolCall.Name)
 			assert.NotEmpty(t, e.ToolCall.ID, "tool call should have an ID")
 			assert.Contains(t, e.ToolCall.Arguments, "location")
-		case ai.EventDone:
-			finalMsg = e.Message
 		}
 	}
+
+	finalMsg, err := stream.Wait()
+	require.NoError(t, err)
 
 	assert.True(t, gotToolStart, "expected tool start event")
 	assert.True(t, gotToolEnd, "expected tool end event")
@@ -350,7 +345,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 			Tools: tools,
 		},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 	require.NoError(t, err)
 	require.Equal(t, ai.StopReasonToolUse, firstMsg.StopReason)
 
@@ -381,7 +376,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 			Tools: tools,
 		},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 	require.NoError(t, err)
 	assert.Equal(t, ai.StopReasonStop, secondMsg.StopReason)
 
@@ -421,7 +416,7 @@ func TestToolChoiceRequired(t *testing.T) {
 		ai.StreamOptions{
 			ToolChoice: ai.ToolChoiceRequired,
 		},
-	).Result()
+	).Wait()
 	require.NoError(t, err)
 	assert.Equal(t, ai.StopReasonToolUse, msg.StopReason)
 
@@ -479,8 +474,10 @@ func TestStreamEventSequence(t *testing.T) {
 	}
 	assert.Less(t, firstStart, firstDelta, "TextStart should precede TextDelta")
 
-	// Verify Done is last event.
-	assert.Equal(t, ai.EventDone, eventTypes[len(eventTypes)-1], "last event should be Done")
+	// Verify the stream completes with a final message.
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg, "expected final message")
 }
 
 func TestUsageTokens(t *testing.T) {
@@ -501,7 +498,7 @@ func TestUsageTokens(t *testing.T) {
 			},
 		},
 		ai.StreamOptions{},
-	).Result()
+	).Wait()
 	require.NoError(t, err)
 
 	assert.NotZero(t, msg.Usage.Input, "expected non-zero input tokens")
@@ -540,7 +537,6 @@ func TestThinking(t *testing.T) {
 		gotThinkDelta bool
 		gotThinkEnd   bool
 		gotTextDelta  bool
-		finalMsg      *ai.Message
 	)
 
 	for e, err := range stream.Events() {
@@ -554,10 +550,11 @@ func TestThinking(t *testing.T) {
 			gotThinkEnd = true
 		case ai.EventTextDelta:
 			gotTextDelta = true
-		case ai.EventDone:
-			finalMsg = e.Message
 		}
 	}
+
+	finalMsg, err := stream.Wait()
+	require.NoError(t, err)
 
 	assert.True(t, gotThinkStart, "expected thinking start event")
 	assert.True(t, gotThinkDelta, "expected thinking delta event")
@@ -599,6 +596,6 @@ func TestContextCancellation(t *testing.T) {
 		ai.StreamOptions{},
 	)
 
-	_, err := stream.Result()
+	_, err := stream.Wait()
 	assert.Error(t, err, "cancelled context should produce an error")
 }

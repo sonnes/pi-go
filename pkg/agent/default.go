@@ -338,17 +338,16 @@ func (a *Default) buildPrompt(ctx context.Context) (ai.Prompt, error) {
 // the pi-mono (TypeScript) behavior and lets consumers choose between
 // reading the delta ([Event.AssistantEvent]) or the snapshot ([Event.Message]).
 //
-// [EventMessageStart] fires on the first non-done event (before any
-// content arrives). [EventMessageEnd] carries the provider's final
-// authoritative message.
+// [EventMessageStart] fires on the first event (before any content
+// arrives). [EventMessageEnd] carries the provider's final
+// authoritative message, returned by the stream's Wait.
 func streamTurn(
 	push func(Event),
 	aiStream *ai.EventStream,
 ) (*ai.Message, error) {
 	var (
-		started  bool
-		finalMsg *ai.Message
-		partial  = &ai.Message{Role: ai.RoleAssistant}
+		started bool
+		partial = &ai.Message{Role: ai.RoleAssistant}
 	)
 
 	for evt, err := range aiStream.Events() {
@@ -368,23 +367,23 @@ func streamTurn(
 
 		accumulateEvent(partial, &evt)
 
-		switch evt.Type {
-		case ai.EventDone:
-			finalMsg = evt.Message
-		default:
-			if !started {
-				push(Event{
-					Type:    EventMessageStart,
-					Message: snapshotMessage(partial),
-				})
-				started = true
-			}
+		if !started {
 			push(Event{
-				Type:           EventMessageUpdate,
-				Message:        snapshotMessage(partial),
-				AssistantEvent: &evt,
+				Type:    EventMessageStart,
+				Message: snapshotMessage(partial),
 			})
+			started = true
 		}
+		push(Event{
+			Type:           EventMessageUpdate,
+			Message:        snapshotMessage(partial),
+			AssistantEvent: &evt,
+		})
+	}
+
+	finalMsg, err := aiStream.Wait()
+	if err != nil {
+		return nil, err
 	}
 
 	if started {

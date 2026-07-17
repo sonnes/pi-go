@@ -3,7 +3,7 @@ package ai
 import "context"
 
 // Provider is the core interface for message-based AI interactions.
-// Use StreamText for streaming, or StreamText(...).Result() for synchronous completion.
+// Use StreamText for streaming, or StreamText(...).Wait() for synchronous completion.
 type Provider interface {
 	// Provider returns the provider identifier (e.g. "anthropic-messages").
 	Provider() string

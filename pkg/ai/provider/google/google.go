@@ -94,7 +94,7 @@ func (p *Provider) StreamText(
 		"tools", len(prompt.Tools),
 	)
 
-	return ai.NewEventStream(func(push func(ai.Event)) {
+	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		config := &genai.GenerateContentConfig{}
 
 		if prompt.System != "" {
@@ -105,11 +105,7 @@ func (p *Provider) StreamText(
 
 		contents := convertMessages(prompt.Messages)
 		if len(contents) == 0 {
-			push(ai.Event{
-				Type: ai.EventError,
-				Err:  errors.New("google: no messages to send"),
-			})
-			return
+			return nil, errors.New("google: no messages to send")
 		}
 
 		applyOptions(config, opts)
@@ -133,11 +129,7 @@ func (p *Provider) StreamText(
 
 		chat, err := p.client.Chats.Create(ctx, model.ID, config, history)
 		if err != nil {
-			push(ai.Event{
-				Type: ai.EventError,
-				Err:  fmt.Errorf("google: %w", err),
-			})
-			return
+			return nil, fmt.Errorf("google: %w", err)
 		}
 
 		lastParts := depointerSlice(lastMessage.Parts)
@@ -158,11 +150,7 @@ func (p *Provider) StreamText(
 
 		for resp, err := range chat.SendMessageStream(ctx, lastParts...) {
 			if err != nil {
-				push(ai.Event{
-					Type: ai.EventError,
-					Err:  fmt.Errorf("google: %w", err),
-				})
-				return
+				return nil, fmt.Errorf("google: %w", err)
 			}
 
 			if len(resp.Candidates) > 0 && resp.Candidates[0].Content != nil {
@@ -444,11 +432,7 @@ func (p *Provider) StreamText(
 			"output", usage.Output,
 		)
 
-		push(ai.Event{
-			Type:       ai.EventDone,
-			Message:    finalMessage,
-			StopReason: stopReason,
-		})
+		return finalMessage, nil
 	})
 }
 
