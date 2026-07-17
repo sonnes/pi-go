@@ -101,10 +101,10 @@ func NewForCodex(opts ...option.RequestOption) *Provider {
 	return p
 }
 
-// Provider returns the provider API identifier. Both dialects share the same ID;
+// ID returns the provider API identifier. Both dialects share the same ID;
 // callers bind a specific provider per agent rather than via global registry
 // lookup.
-func (p *Provider) Provider() string {
+func (p *Provider) ID() string {
 	return providerID
 }
 

@@ -25,7 +25,7 @@ func loginDetectors() []pi.Detector {
 // authFileDetectors builds detectors for the OAuth credentials stored by
 // `pi login`, one per supported provider.
 func authFileDetectors() []pi.Detector {
-	fromFile := func(name string, build func(StoredCredential) catalog.Provider) pi.Detector {
+	fromFile := func(name string, build func(name string, sc StoredCredential) catalog.Provider) pi.Detector {
 		return pi.Detector{
 			Name:   name,
 			Source: "~/.pigo/auth.json",
@@ -38,21 +38,21 @@ func authFileDetectors() []pi.Detector {
 				if !ok {
 					return nil, false
 				}
-				return build(sc), true
+				return build(name, sc), true
 			},
 		}
 	}
 	return []pi.Detector{
-		fromFile("anthropic", func(sc StoredCredential) catalog.Provider {
+		fromFile("anthropic", func(name string, sc StoredCredential) catalog.Provider {
 			return anthropic.New(anthropic.WithOAuth(
 				sc.ClientID, sc.ToOAuthCredentials(),
-				debugBase(), persistRefresh(sc),
+				debugBase(), persistRefresh(name, sc),
 			))
 		}),
-		fromFile("openai", func(sc StoredCredential) catalog.Provider {
+		fromFile("openai", func(name string, sc StoredCredential) catalog.Provider {
 			return openairesponses.NewForCodexOAuth(
 				sc.ClientID, "", sc.ToOAuthCredentials(),
-				debugBase(), persistRefresh(sc),
+				debugBase(), persistRefresh(name, sc),
 			)
 		}),
 	}
@@ -75,31 +75,14 @@ func debugBase() oauth.TransportOption {
 }
 
 // persistRefresh returns an [oauth.TransportOption] that writes refreshed
-// tokens back to auth.json.
-func persistRefresh(sc StoredCredential) oauth.TransportOption {
+// tokens back to auth.json under the given provider name.
+func persistRefresh(name string, sc StoredCredential) oauth.TransportOption {
 	return oauth.WithOnRefresh(func(creds oauth.Credentials) error {
 		stored, err := LoadAuth()
 		if err != nil {
 			return err
 		}
-		stored[findProviderName(sc.ClientID)] = FromOAuthCredentials(
-			creds, sc.ClientID, sc.ClientSecret,
-		)
+		stored[name] = FromOAuthCredentials(creds, sc.ClientID, sc.ClientSecret)
 		return SaveAuth(stored)
 	})
-}
-
-// findProviderName returns the provider name for a given client ID by
-// scanning the auth file.
-func findProviderName(clientID string) string {
-	stored, err := LoadAuth()
-	if err != nil {
-		return ""
-	}
-	for name, sc := range stored {
-		if sc.ClientID == clientID {
-			return name
-		}
-	}
-	return ""
 }

@@ -16,8 +16,6 @@ import (
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/catalog"
-
-	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 )
 
 // Default is the process-wide catalog backing the package-level helpers.
@@ -30,15 +28,6 @@ type (
 	Prompt        = ai.Prompt
 	Message       = ai.Message
 	Catalog       = catalog.Catalog
-)
-
-// Model-info re-exports (metadata; bind via a provider or resolve by spec).
-// These track the current flagship of each family; the full generated set
-// lives in the anthropic package.
-var (
-	ClaudeOpus   = anthropic.ClaudeOpus48
-	ClaudeSonnet = anthropic.ClaudeSonnet46
-	ClaudeHaiku  = anthropic.ClaudeHaiku45
 )
 
 // Agent option re-exports for the common cases.

@@ -43,8 +43,8 @@ func New(opts ...option.RequestOption) *Provider {
 	return &Provider{client: &client}
 }
 
-// Provider returns the provider API identifier.
-func (p *Provider) Provider() string {
+// ID returns the provider API identifier.
+func (p *Provider) ID() string {
 	return providerID
 }
 

@@ -117,7 +117,7 @@ func TestCodexCLISource_Load(t *testing.T) {
 func TestNewForCodexOAuth_UsesResponsesAPI(t *testing.T) {
 	p := NewForCodexOAuth("app_test", "", oauth.Credentials{AccessToken: "test-token"})
 	require.NotNil(t, p)
-	assert.Equal(t, "openai-responses", p.Provider())
+	assert.Equal(t, "openai-responses", p.ID())
 }
 
 // TestCodexReReadRefresher_ReReads verifies the refresher returns the freshest

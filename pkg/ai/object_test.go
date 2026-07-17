@@ -39,6 +39,36 @@ func TestGenerateObject_UnsupportedProvider(t *testing.T) {
 	assert.ErrorContains(t, err, "does not support object generation")
 }
 
+// decoratedModel wraps a LanguageModel (e.g. logging middleware) and
+// forwards the ObjectModel upgrade so object generation still works.
+type decoratedModel struct {
+	ai.LanguageModel
+}
+
+func (d decoratedModel) GenerateObject(
+	ctx context.Context,
+	p ai.Prompt,
+	schema *jsonschema.Schema,
+	opts ai.StreamOptions,
+) (*ai.ObjectResponse, error) {
+	om, ok := d.LanguageModel.(ai.ObjectModel)
+	if !ok {
+		return nil, assert.AnError
+	}
+	return om.GenerateObject(ctx, p, schema, opts)
+}
+
+func TestGenerateObject_ThroughDecorator(t *testing.T) {
+	// A third-party LanguageModel wrapper keeps object support by
+	// implementing the exported ObjectModel interface and forwarding.
+	p := &fakeObjectProvider{raw: `{"name":"Ada","age":36}`}
+	lm := decoratedModel{ai.NewLanguageModel(ai.Model{ID: "obj-1"}, p)}
+
+	res, err := ai.GenerateObject[person](context.Background(), lm, ai.Prompt{})
+	require.NoError(t, err)
+	assert.Equal(t, "Ada", res.Object.Name)
+}
+
 // fakeObjectProvider implements ai.TextProvider (so it can be bound) and
 // ai.ObjectProvider (so the bound model upgrades for object generation).
 type fakeObjectProvider struct {

@@ -61,7 +61,7 @@ type fakeProvider struct {
 	gotModel ai.Model
 }
 
-func (f *fakeProvider) Provider() string { return f.api }
+func (f *fakeProvider) ID() string { return f.api }
 
 func (f *fakeProvider) StreamText(
 	_ context.Context,

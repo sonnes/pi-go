@@ -63,7 +63,7 @@ raw item payload populate `ToolCall.Arguments` (`query`, `url`,
 (`search: anthropic news`, `fetch: https://...`); the verbatim provider
 JSON always remains on `ServerToolOutput.Raw` for richer extraction.
 
-## Both dialects share `Provider() == "openai-responses"`
+## Both dialects share `ID() == "openai-responses"`
 
 The dialect is a transport-level detail, not a separate API surface. Two
 `Provider` instances may share the same provider ID; pi-go's global registry is

@@ -80,8 +80,8 @@ func New(opts ...Option) (*Provider, error) {
 	return p, nil
 }
 
-// Provider returns the provider identifier.
-func (p *Provider) Provider() string {
+// ID returns the provider identifier.
+func (p *Provider) ID() string {
 	return providerID
 }
 

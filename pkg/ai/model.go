@@ -11,13 +11,6 @@ const (
 	ModalityVideo Modality = "video"
 )
 
-// Limits describes provider-published model token limits.
-type Limits struct {
-	Context int `json:"context,omitempty"`
-	Input   int `json:"input,omitempty"`
-	Output  int `json:"output,omitempty"`
-}
-
 // Model describes an AI model and its capabilities. It is pure intrinsic
 // metadata — it carries no provider identity and no credentials, so the
 // same value can be bound to any provider that serves it (see
@@ -34,7 +27,6 @@ type Model struct {
 	Temperature      bool              `json:"temperature,omitempty"`
 	Input            []Modality        `json:"input,omitempty"`
 	Output           []Modality        `json:"output,omitempty"`
-	Limits           Limits            `json:"limits,omitzero"`
 	Cost             Cost              `json:"cost,omitzero"`
 	ContextWindow    int               `json:"context_window,omitempty"`
 	MaxTokens        int               `json:"max_tokens,omitempty"`

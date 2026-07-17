@@ -213,7 +213,6 @@ func modelLiteral(m mdModel) string {
 		f = append(f, "Output: "+out)
 	}
 	if m.Limit.Context > 0 || m.Limit.Output > 0 {
-		f = append(f, fmt.Sprintf("Limits: ai.Limits{Context: %d, Output: %d}", m.Limit.Context, m.Limit.Output))
 		f = append(f, fmt.Sprintf("ContextWindow: %d", m.Limit.Context))
 		f = append(f, fmt.Sprintf("MaxTokens: %d", m.Limit.Output))
 	}
@@ -240,7 +239,7 @@ func costLiteral(m mdModel) string {
 	var f []string
 	add := func(name string, v float64) {
 		if v != 0 {
-			f = append(f, fmt.Sprintf("%s: %s", name, trimFloat(v)))
+			f = append(f, fmt.Sprintf("%s: %g", name, v))
 		}
 	}
 	add("Input", c.Input)
@@ -312,11 +311,6 @@ func varName(id string) string {
 		name = "M" + name
 	}
 	return name
-}
-
-func trimFloat(v float64) string {
-	s := fmt.Sprintf("%g", v)
-	return s
 }
 
 func contains(ss []string, want string) bool {

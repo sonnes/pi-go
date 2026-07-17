@@ -118,8 +118,8 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// Provider returns the provider identity.
-func (p *Provider) Provider() string {
+// ID returns the provider identity.
+func (p *Provider) ID() string {
 	return providerID
 }
 
@@ -160,7 +160,7 @@ func (p *Provider) StreamText(
 
 		push(ai.Event{Type: ai.EventStart})
 
-		final, pumpErr := pumpAIEvents(push, stdout, model, p.Provider(), cfg.model)
+		final, pumpErr := pumpAIEvents(push, stdout, model, p.ID(), cfg.model)
 
 		cleanupErr := cleanup()
 		if pumpErr == nil {
@@ -174,10 +174,10 @@ func (p *Provider) StreamText(
 			return nil, nil
 		}
 		if final.API == "" {
-			final.API = p.Provider()
+			final.API = p.ID()
 		}
 		if final.Provider == "" {
-			final.Provider = p.Provider()
+			final.Provider = p.ID()
 		}
 		if final.Model == "" {
 			final.Model = cfg.model

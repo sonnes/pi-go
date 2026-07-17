@@ -73,7 +73,7 @@ func Detect(hint string) (Detection, error) {
 			continue
 		}
 		Default.RegisterProvider(p)
-		return Detection{Provider: p.Provider(), Name: d.Name, Source: d.Source}, nil
+		return Detection{Provider: p.ID(), Name: d.Name, Source: d.Source}, nil
 	}
 	if hint != "" {
 		return Detection{}, fmt.Errorf("no credentials found for provider %q", hint)

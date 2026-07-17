@@ -75,7 +75,7 @@ func New(lm ai.LanguageModel, opts ...Option) *Default {
 // the loop, streaming events on the returned [Stream].
 func (a *Default) Run(ctx context.Context, msgs ...ai.Message) *Stream {
 	if a.config.lm == nil {
-		return errStream(errors.New("agent: no model configured; pass a LanguageModel to New"))
+		return ErrStream(errors.New("agent: no model configured; pass a LanguageModel to New"))
 	}
 	return NewStream(func(push func(Event)) ([]ai.Message, error) {
 		return a.run(ctx, msgs, push)

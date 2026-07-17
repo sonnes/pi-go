@@ -31,7 +31,7 @@ type mockProvider struct {
 	callIdx   int
 }
 
-func (m *mockProvider) Provider() string { return "mock" }
+func (m *mockProvider) ID() string { return "mock" }
 
 func (m *mockProvider) StreamText(
 	_ context.Context,

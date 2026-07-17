@@ -22,7 +22,9 @@ func NewStream(fn func(push func(Event)) ([]ai.Message, error)) *Stream {
 	return stream.New(fn)
 }
 
-// errStream returns a [Stream] that immediately fails with err.
-func errStream(err error) *Stream {
+// ErrStream returns a [Stream] that immediately fails with err. Backends
+// use it to surface pre-flight errors on the stream, mirroring
+// [ai.ErrStream].
+func ErrStream(err error) *Stream {
 	return stream.Err[Event, []ai.Message](err)
 }

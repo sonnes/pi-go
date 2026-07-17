@@ -14,7 +14,7 @@ A `Provider` implements the transport layer between the SDK and an AI service.
 
 Providers register themselves by provider id (e.g. `"anthropic-messages"`, `"openai-completions"`). A model's `Provider` field determines which provider handles it at call time. This decouples model definitions from provider implementations — you can define models without importing provider packages.
 
-The core interface is intentionally small: `Provider()` for identification and `StreamText()` for execution. Everything goes through streaming — `GenerateText` is built on top by collecting the stream.
+The core capability interface is intentionally small: `StreamText()` for execution. Identity is not part of the capability — it lives on the catalog registration interface as `ID()` (e.g. `"anthropic-messages"`). Everything goes through streaming — `GenerateText` is built on top by collecting the stream.
 
 ## Optional capabilities
 
@@ -22,7 +22,7 @@ Providers can optionally implement `ImageProvider` (image generation) or `Object
 
 ## Registry
 
-`Registry` holds both providers (keyed by the id from `Provider.Provider()`) and models (keyed by their `"<provider>/<id>"` spec — see [Models](/concepts/ai/models)). A package-level default registry backs the top-level `RegisterProvider`/`GetProvider`/`RegisterModel`/`ResolveModel` functions and is typically populated at init time; `NewRegistry()` creates isolated instances for tests. `ClearProviders()` and `ClearModels()` reset the default registry.
+`catalog.Catalog` holds both providers (keyed by the id from `ID()`) and models (keyed by their `"<provider>/<id>"` spec — see [Models](/concepts/ai/models)). Registering a provider with `RegisterProvider` ingests every model it serves; `catalog.New()` creates isolated instances for tests, and `pi.Default` is the process-wide instance behind the `pi` helpers.
 
 ## How models find providers
 

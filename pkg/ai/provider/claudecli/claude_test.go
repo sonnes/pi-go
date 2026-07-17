@@ -96,7 +96,7 @@ func TestProvider_ImplementsInterfaces(t *testing.T) {
 
 func TestProvider_API(t *testing.T) {
 	p := New()
-	assert.Equal(t, "claude-cli", p.Provider())
+	assert.Equal(t, "claude-cli", p.ID())
 }
 
 // --- StreamText ---

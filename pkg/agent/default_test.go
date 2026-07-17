@@ -25,7 +25,7 @@ type mockProvider struct {
 	prompts   []ai.Prompt
 }
 
-func (m *mockProvider) Provider() string { return mockAPI }
+func (m *mockProvider) ID() string { return mockAPI }
 
 func (m *mockProvider) StreamText(
 	_ context.Context,
@@ -560,7 +560,7 @@ type ctxBlockingProvider struct {
 	startedCh chan struct{}
 }
 
-func (p *ctxBlockingProvider) Provider() string { return mockAPI }
+func (p *ctxBlockingProvider) ID() string { return mockAPI }
 
 func (p *ctxBlockingProvider) StreamText(
 	ctx context.Context,

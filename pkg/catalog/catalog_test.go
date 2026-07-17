@@ -15,7 +15,7 @@ import (
 // fakeProvider implements catalog.Provider and ai.TextProvider.
 type fakeProvider struct{ id string }
 
-func (f *fakeProvider) Provider() string { return f.id }
+func (f *fakeProvider) ID() string { return f.id }
 
 func (f *fakeProvider) Models() []ai.Model {
 	return []ai.Model{{ID: "m1", Aliases: []string{"latest"}}}
@@ -35,7 +35,7 @@ func (f *fakeProvider) StreamText(
 // textlessProvider registers models but cannot generate text.
 type textlessProvider struct{}
 
-func (textlessProvider) Provider() string   { return "textless" }
+func (textlessProvider) ID() string         { return "textless" }
 func (textlessProvider) Models() []ai.Model { return []ai.Model{{ID: "x"}} }
 
 func TestLanguageModel_ResolvesAndBinds(t *testing.T) {

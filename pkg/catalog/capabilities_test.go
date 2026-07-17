@@ -16,7 +16,7 @@ import (
 
 type fakeImageProvider struct{}
 
-func (fakeImageProvider) Provider() string   { return "img" }
+func (fakeImageProvider) ID() string         { return "img" }
 func (fakeImageProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeImageProvider) GenerateImage(
@@ -54,7 +54,7 @@ func TestImageModel_Unsupported(t *testing.T) {
 
 type fakeSpeechProvider struct{}
 
-func (fakeSpeechProvider) Provider() string   { return "tts" }
+func (fakeSpeechProvider) ID() string         { return "tts" }
 func (fakeSpeechProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeSpeechProvider) GenerateSpeech(
@@ -91,7 +91,7 @@ func TestSpeechModel_Unsupported(t *testing.T) {
 
 type fakeObjectProvider struct{ raw string }
 
-func (fakeObjectProvider) Provider() string   { return "obj" }
+func (fakeObjectProvider) ID() string         { return "obj" }
 func (fakeObjectProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeObjectProvider) StreamText(

@@ -25,8 +25,8 @@ import (
 // least one capability interface ([ai.TextProvider], [ai.ImageProvider],
 // …) for its models to resolve to something callable.
 type Provider interface {
-	// Provider returns the provider identity, e.g. "anthropic-messages".
-	Provider() string
+	// ID returns the provider identity, e.g. "anthropic-messages".
+	ID() string
 	// Models returns the models this provider serves.
 	Models() []ai.Model
 }
@@ -54,7 +54,7 @@ func New() *Catalog {
 func (c *Catalog) RegisterProvider(p Provider) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	id := p.Provider()
+	id := p.ID()
 	c.providers[id] = p
 	for _, m := range p.Models() {
 		c.registerModelLocked(id, m)
@@ -150,7 +150,7 @@ func (c *Catalog) LanguageModel(spec string) (ai.LanguageModel, error) {
 	}
 	tp, ok := p.(ai.TextProvider)
 	if !ok {
-		return nil, fmt.Errorf("catalog: provider %q does not support text generation", p.Provider())
+		return nil, fmt.Errorf("catalog: provider %q does not support text generation", p.ID())
 	}
 	return ai.NewLanguageModel(m, tp), nil
 }
@@ -191,7 +191,7 @@ func (c *Catalog) ImageModel(spec string) (ai.ImageModel, error) {
 	}
 	ip, ok := p.(ai.ImageProvider)
 	if !ok {
-		return nil, fmt.Errorf("catalog: provider %q does not support image generation", p.Provider())
+		return nil, fmt.Errorf("catalog: provider %q does not support image generation", p.ID())
 	}
 	return ai.NewImageModel(m, ip), nil
 }
@@ -219,7 +219,7 @@ func (c *Catalog) SpeechModel(spec string) (ai.SpeechModel, error) {
 	}
 	sp, ok := p.(ai.SpeechProvider)
 	if !ok {
-		return nil, fmt.Errorf("catalog: provider %q does not support speech generation", p.Provider())
+		return nil, fmt.Errorf("catalog: provider %q does not support speech generation", p.ID())
 	}
 	return ai.NewSpeechModel(m, sp), nil
 }

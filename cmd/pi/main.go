@@ -173,21 +173,24 @@ func createAPIAgent(model string, turns int, serverToolsSpec, providerHint strin
 func selectAPISpec(model, providerHint string) (string, error) {
 	register := func(p catalog.Provider, id string) string {
 		pi.Default.RegisterProvider(p)
-		pi.Default.RegisterModel(p.Provider(), ai.Model{ID: id, Name: id})
-		return p.Provider() + "/" + id
+		pi.Default.RegisterModel(p.ID(), ai.Model{ID: id, Name: id})
+		return p.ID() + "/" + id
 	}
 
-	if rest, ok := strings.CutPrefix(model, claudeCLIModelPrefix); ok {
-		fmt.Fprintln(os.Stderr, "[provider: claude-cli via subprocess]")
-		return register(claudeprov.New(claudeprov.WithModel(rest)), rest), nil
+	cliProviders := []struct {
+		prefix string
+		label  string
+		build  func(model string) catalog.Provider
+	}{
+		{claudeCLIModelPrefix, "claude-cli", func(m string) catalog.Provider { return claudeprov.New(claudeprov.WithModel(m)) }},
+		{codexCLIModelPrefix, "codex-cli", func(m string) catalog.Provider { return codexprov.New(codexprov.WithModel(m)) }},
+		{cursorCLIModelPrefix, "cursor-cli", func(m string) catalog.Provider { return cursorprov.New(cursorprov.WithModel(m)) }},
 	}
-	if rest, ok := strings.CutPrefix(model, codexCLIModelPrefix); ok {
-		fmt.Fprintln(os.Stderr, "[provider: codex-cli via subprocess]")
-		return register(codexprov.New(codexprov.WithModel(rest)), rest), nil
-	}
-	if rest, ok := strings.CutPrefix(model, cursorCLIModelPrefix); ok {
-		fmt.Fprintln(os.Stderr, "[provider: cursor-cli via subprocess]")
-		return register(cursorprov.New(cursorprov.WithModel(rest)), rest), nil
+	for _, e := range cliProviders {
+		if rest, ok := strings.CutPrefix(model, e.prefix); ok {
+			fmt.Fprintf(os.Stderr, "[provider: %s via subprocess]\n", e.label)
+			return register(e.build(rest), rest), nil
+		}
 	}
 
 	det, err := pi.Detect(providerHint)

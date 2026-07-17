@@ -35,13 +35,18 @@ type ObjectResult[T any] struct {
 	Usage  Usage
 }
 
-// objectModel is satisfied by a [LanguageModel] whose bound provider also
-// implements [ObjectProvider]. [GenerateObject] upgrades to it at runtime.
-type objectModel interface {
-	generateObject(ctx context.Context, p Prompt, schema *jsonschema.Schema, opts StreamOptions) (*ObjectResponse, error)
+// ObjectModel is the object-generation upgrade of a [LanguageModel].
+// [GenerateObject] upgrades to it at runtime. The default binding from
+// [NewLanguageModel] implements it when the bound provider is an
+// [ObjectProvider]; wrappers around a LanguageModel (middleware,
+// decorators) should implement and forward it to keep object support.
+type ObjectModel interface {
+	GenerateObject(ctx context.Context, p Prompt, schema *jsonschema.Schema, opts StreamOptions) (*ObjectResponse, error)
 }
 
-func (m languageModel) generateObject(
+// GenerateObject implements [ObjectModel] by delegating to the bound
+// provider. It errors when the provider is not an [ObjectProvider].
+func (m languageModel) GenerateObject(
 	ctx context.Context,
 	p Prompt,
 	schema *jsonschema.Schema,
@@ -63,7 +68,7 @@ func GenerateObject[T any](
 	p Prompt,
 	opts ...Option,
 ) (*ObjectResult[T], error) {
-	om, ok := lm.(objectModel)
+	om, ok := lm.(ObjectModel)
 	if !ok {
 		return nil, errors.New("ai: model does not support object generation")
 	}
@@ -73,7 +78,7 @@ func GenerateObject[T any](
 		return nil, fmt.Errorf("ai: failed to generate schema: %w", err)
 	}
 
-	resp, err := om.generateObject(ctx, p, schema, ApplyOptions(opts))
+	resp, err := om.GenerateObject(ctx, p, schema, ApplyOptions(opts))
 	if err != nil {
 		return nil, err
 	}

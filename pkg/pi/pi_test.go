@@ -15,7 +15,7 @@ import (
 // fakeProvider implements catalog.Provider + ai.TextProvider.
 type fakeProvider struct{}
 
-func (fakeProvider) Provider() string   { return "fake" }
+func (fakeProvider) ID() string         { return "fake" }
 func (fakeProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeProvider) StreamText(
@@ -65,7 +65,7 @@ func TestGenerateImage_ViaDefaultCatalog(t *testing.T) {
 // fakeImageProvider implements catalog.Provider + ai.ImageProvider.
 type fakeImageProvider struct{}
 
-func (fakeImageProvider) Provider() string   { return "img" }
+func (fakeImageProvider) ID() string         { return "img" }
 func (fakeImageProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeImageProvider) GenerateImage(
@@ -81,7 +81,7 @@ func (fakeImageProvider) GenerateImage(
 // ai.ObjectProvider.
 type fakeObjectProvider struct{}
 
-func (fakeObjectProvider) Provider() string   { return "obj" }
+func (fakeObjectProvider) ID() string         { return "obj" }
 func (fakeObjectProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeObjectProvider) StreamText(
@@ -119,7 +119,7 @@ func TestGenerateObject_ViaDefaultCatalog(t *testing.T) {
 // fakeSpeechProvider implements catalog.Provider + ai.SpeechProvider.
 type fakeSpeechProvider struct{}
 
-func (fakeSpeechProvider) Provider() string   { return "tts" }
+func (fakeSpeechProvider) ID() string         { return "tts" }
 func (fakeSpeechProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeSpeechProvider) GenerateSpeech(
@@ -137,10 +137,4 @@ func TestGenerateSpeech_ViaDefaultCatalog(t *testing.T) {
 	resp, err := pi.GenerateSpeech(context.Background(), "tts/m1", ai.Prompt{})
 	require.NoError(t, err)
 	assert.Equal(t, "audio/mp3", resp.MediaType)
-}
-
-func TestModelVarsAreReExported(t *testing.T) {
-	// Re-exported metadata is usable without a provider.
-	assert.Equal(t, "claude-sonnet-4-6", pi.ClaudeSonnet.ID)
-	assert.NotEmpty(t, pi.ClaudeOpus.ID)
 }
