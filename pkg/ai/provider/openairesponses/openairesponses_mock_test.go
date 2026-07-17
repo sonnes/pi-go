@@ -223,9 +223,8 @@ func TestMock_Reasoning(t *testing.T) {
 	defer cleanup()
 
 	msg, err := p.StreamText(context.Background(), ai.Model{
-		ID:       "o3",
-		Name:     "o3",
-		Provider: "openai-responses",
+		ID:   "o3",
+		Name: "o3",
 	}, ai.Prompt{
 		Messages: []ai.Message{ai.UserMessage("What is the meaning of life?")},
 	}, ai.StreamOptions{

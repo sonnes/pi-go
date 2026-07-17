@@ -20,17 +20,20 @@ import (
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Provider implements ai.Provider for OpenAI's chat completions API.
+// Provider implements ai.TextProvider for OpenAI's chat completions API.
 type Provider struct {
 	client *openai.Client
 }
 
 // Verify interface compliance.
 var (
-	_ ai.Provider       = (*Provider)(nil)
+	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
 	_ ai.ImageProvider  = (*Provider)(nil)
 )
+
+// providerID is the OpenAI chat completions provider identity.
+const providerID = "openai-completions"
 
 // New creates a new OpenAI provider.
 func New(opts ...option.RequestOption) *Provider {
@@ -41,7 +44,7 @@ func New(opts ...option.RequestOption) *Provider {
 
 // Provider returns the provider API identifier.
 func (p *Provider) Provider() string {
-	return "openai-completions"
+	return providerID
 }
 
 // StreamText streams a text response from the given model.
@@ -370,8 +373,8 @@ func buildFinalMessage(
 	return &ai.Message{
 		Role:       ai.RoleAssistant,
 		Content:    content,
-		API:        "openai-completions",
-		Provider:   model.Provider,
+		API:        providerID,
+		Provider:   providerID,
 		Model:      model.ID,
 		Usage:      usage,
 		StopReason: stopReason,

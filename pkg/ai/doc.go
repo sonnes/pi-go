@@ -3,23 +3,28 @@
 // tool calling, streaming, and usage tracking across multiple providers
 // (Anthropic, OpenAI, Google).
 //
-// # Providers
+// # Providers and models
 //
-// The package uses a registry of [Provider] implementations. Register a provider
-// before making any calls:
+// A [Model] is pure metadata — it holds no credentials and cannot generate on
+// its own. A provider is a credentialed [TextProvider]
+// (or [ObjectProvider], [ImageProvider], [SpeechProvider]). Bind the two into
+// a callable [LanguageModel] with [NewLanguageModel]:
 //
 //	import "github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 //
 //	p := anthropic.New(anthropic.WithAPIKey("sk-..."))
-//	ai.RegisterProvider(p.Provider(), p)
+//	lm := ai.NewLanguageModel(anthropic.ClaudeSonnet, p)
+//
+// For spec-based resolution and a default registry, see the catalog and pi
+// packages.
 //
 // # Text Generation
 //
-// Use [GenerateText] for synchronous completions:
+// Use [GenerateText] for synchronous completions from a [LanguageModel]:
 //
 //	msg, err := ai.GenerateText(
 //		ctx,
-//		model,
+//		lm,
 //		ai.Prompt{
 //			System:   "You are a helpful assistant.",
 //			Messages: []ai.Message{ai.UserMessage("Hello!")},

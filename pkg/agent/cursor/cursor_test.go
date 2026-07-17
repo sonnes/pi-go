@@ -281,14 +281,8 @@ func TestAgent_Run_NoMessages_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "not supported")
 }
 
-func TestFactory_ComposesAgentAndCursorOptions(t *testing.T) {
-	agent.RegisterAgent("cursor", New)
-	t.Cleanup(func() { agent.UnregisterAgent("cursor") })
-
-	f, ok := agent.GetAgent("cursor")
-	require.True(t, ok)
-
-	a := f(
+func TestNew_ComposesAgentAndCursorOptions(t *testing.T) {
+	ca := New(
 		ai.Model{ID: "gpt-5", Name: "gpt-5"},
 		agent.WithMaxTurns(3),
 		WithCLIPath("/bin/cursor-agent"),
@@ -297,8 +291,6 @@ func TestFactory_ComposesAgentAndCursorOptions(t *testing.T) {
 		WithSandbox("enabled"),
 	)
 
-	ca, ok := a.(*Agent)
-	require.True(t, ok)
 	assert.Equal(t, "gpt-5", ca.cfg.model)
 	assert.Equal(t, 3, ca.cfg.maxTurns)
 	assert.Equal(t, "/bin/cursor-agent", ca.cfg.cliPath)

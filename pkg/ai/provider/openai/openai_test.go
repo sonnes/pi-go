@@ -98,9 +98,8 @@ func newTestProvider(t *testing.T) (*aiopenai.Provider, func()) {
 
 func testModel() ai.Model {
 	return ai.Model{
-		ID:       testModelID,
-		Name:     testModelID,
-		Provider: "openai-completions",
+		ID:   testModelID,
+		Name: testModelID,
 		Compat: aiopenai.Compat{
 			MaxTokensField:           "max_tokens",
 			SupportsTemperature:      true,

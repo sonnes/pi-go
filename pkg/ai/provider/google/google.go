@@ -19,10 +19,13 @@ import (
 
 // Verify interface compliance.
 var (
-	_ ai.Provider       = (*Provider)(nil)
+	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
 	_ ai.ImageProvider  = (*Provider)(nil)
 )
+
+// providerID is the Google generative provider identity.
+const providerID = "google-generative"
 
 // Provider implements the Google AI (Gemini) provider.
 type Provider struct {
@@ -78,7 +81,7 @@ func New(opts ...Option) (*Provider, error) {
 
 // Provider returns the provider identifier.
 func (p *Provider) Provider() string {
-	return "google-generative"
+	return providerID
 }
 
 // StreamText streams a text response from the model.
@@ -418,8 +421,8 @@ func (p *Provider) StreamText(
 		finalMessage := &ai.Message{
 			Role:       ai.RoleAssistant,
 			Content:    finalContent,
-			API:        model.Provider,
-			Provider:   model.Provider,
+			API:        providerID,
+			Provider:   providerID,
 			Model:      model.ID,
 			Usage:      usage,
 			StopReason: stopReason,

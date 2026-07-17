@@ -1,4 +1,4 @@
-// Package cursorcli provides an [ai.Provider] implementation backed by the
+// Package cursorcli provides an [ai.TextProvider] implementation backed by the
 // `cursor-agent` CLI running in non-interactive `--print` mode.
 //
 // The provider is stateless: each call spawns a fresh subprocess. By default it

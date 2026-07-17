@@ -39,9 +39,9 @@ type Default struct {
 
 var _ Agent = (*Default)(nil)
 
-// New creates a new [Default] agent for model, configured via options.
-func New(model ai.Model, opts ...Option) *Default {
-	c := config{model: model}
+// New creates a new [Default] agent for lm, configured via options.
+func New(lm ai.LanguageModel, opts ...Option) *Default {
+	c := config{lm: lm}
 	for _, opt := range opts {
 		opt(&c)
 	}
@@ -74,8 +74,8 @@ func New(model ai.Model, opts ...Option) *Default {
 // Run implements [Agent]. It appends msgs to the history and executes
 // the loop, streaming events on the returned [Stream].
 func (a *Default) Run(ctx context.Context, msgs ...ai.Message) *Stream {
-	if a.config.provider == nil && a.config.model.Provider == "" {
-		return errStream(errors.New("agent: no model configured; pass a model or use WithProvider"))
+	if a.config.lm == nil {
+		return errStream(errors.New("agent: no model configured; pass a LanguageModel to New"))
 	}
 	return NewStream(func(push func(Event)) ([]ai.Message, error) {
 		return a.run(ctx, msgs, push)
@@ -301,19 +301,9 @@ func filterFunctionCalls(calls []ai.ToolCall) []ai.ToolCall {
 	return out
 }
 
-// streamText dispatches to the provider bound with [WithProvider] when
-// set, otherwise falls back to [ai.StreamText] which looks up the
-// provider in the global registry by [ai.Model.Provider].
+// streamText streams a turn from the bound [ai.LanguageModel].
 func (a *Default) streamText(ctx context.Context, p ai.Prompt) *ai.EventStream {
-	if a.config.provider != nil {
-		return a.config.provider.StreamText(
-			ctx,
-			a.config.model,
-			p,
-			ai.ApplyOptions(a.config.streamOpts),
-		)
-	}
-	return ai.StreamText(ctx, a.config.model, p, a.config.streamOpts...)
+	return a.config.lm.StreamText(ctx, p, a.config.streamOpts...)
 }
 
 // buildPrompt assembles an [ai.Prompt] from the system prompt and the

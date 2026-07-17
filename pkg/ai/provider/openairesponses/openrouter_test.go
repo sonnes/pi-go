@@ -83,9 +83,8 @@ func newOpenRouterTestProvider(t *testing.T) (*aior.Provider, func()) {
 
 func openRouterModel(id string) ai.Model {
 	return ai.Model{
-		ID:       id,
-		Name:     id,
-		Provider: "openai-responses",
+		ID:   id,
+		Name: id,
 	}
 }
 

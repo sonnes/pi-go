@@ -3,13 +3,14 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// ObjectProvider is an optional interface for providers that support
-// structured object generation via JSON Schema.
+// ObjectProvider is an optional capability interface for providers that
+// support structured object generation via JSON Schema.
 type ObjectProvider interface {
 	GenerateObject(
 		ctx context.Context,
@@ -27,31 +28,44 @@ type ObjectResponse struct {
 	Model string
 }
 
-// ObjectResult is the generic typed result returned by GenerateObject.
+// ObjectResult is the generic typed result returned by [GenerateObject].
 type ObjectResult[T any] struct {
 	Object T
 	Raw    string
 	Usage  Usage
 }
 
-// generateObject generates a typed object from a resolved model. T must be
-// JSON-deserializable. The exported, spec-based entry point is [GenerateObject].
-func generateObject[T any](
+// objectModel is satisfied by a [LanguageModel] whose bound provider also
+// implements [ObjectProvider]. [GenerateObject] upgrades to it at runtime.
+type objectModel interface {
+	generateObject(ctx context.Context, p Prompt, schema *jsonschema.Schema, opts StreamOptions) (*ObjectResponse, error)
+}
+
+func (m languageModel) generateObject(
 	ctx context.Context,
-	model Model,
+	p Prompt,
+	schema *jsonschema.Schema,
+	opts StreamOptions,
+) (*ObjectResponse, error) {
+	op, ok := m.prov.(ObjectProvider)
+	if !ok {
+		return nil, errors.New("ai: model's provider does not support object generation")
+	}
+	return op.GenerateObject(ctx, m.info, p, schema, opts)
+}
+
+// GenerateObject generates a typed object from lm. It requires lm's bound
+// provider to implement [ObjectProvider]; otherwise it returns an error.
+// T must be JSON-deserializable.
+func GenerateObject[T any](
+	ctx context.Context,
+	lm LanguageModel,
 	p Prompt,
 	opts ...Option,
 ) (*ObjectResult[T], error) {
-	prov, ok := GetProvider(model.Provider)
+	om, ok := lm.(objectModel)
 	if !ok {
-		return nil, fmt.Errorf("ai: no provider registered for %q", model.Provider)
-	}
-	op, ok := prov.(ObjectProvider)
-	if !ok {
-		return nil, fmt.Errorf(
-			"ai: provider %q does not support object generation",
-			model.Provider,
-		)
+		return nil, errors.New("ai: model does not support object generation")
 	}
 
 	schema, err := jsonschema.For[T](nil)
@@ -59,8 +73,7 @@ func generateObject[T any](
 		return nil, fmt.Errorf("ai: failed to generate schema: %w", err)
 	}
 
-	o := ApplyOptions(opts)
-	resp, err := op.GenerateObject(ctx, model, p, schema, o)
+	resp, err := om.generateObject(ctx, p, schema, ApplyOptions(opts))
 	if err != nil {
 		return nil, err
 	}

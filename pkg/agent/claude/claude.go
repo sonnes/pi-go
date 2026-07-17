@@ -59,10 +59,11 @@ type turnResult struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// New creates a new Claude CLI subprocess [Agent] for model. Register it for
-// string-based creation with agent.RegisterAgent("claude", claude.New). The CLI
-// owns its model catalog, so it uses the model's name/ID plus any claude-specific
-// options such as [WithCLIPath], [WithAllowedTools], or [WithSessionID].
+// New creates a new Claude CLI subprocess [Agent] for model. For spec-based
+// creation, wrap it in an [agent.Factory] and register it with the catalog
+// under the "claude" kind. The CLI owns its model catalog, so it uses the
+// model's name/ID plus any claude-specific options such as [WithCLIPath],
+// [WithAllowedTools], or [WithSessionID].
 func New(model ai.Model, opts ...agent.Option) *Agent {
 	return newFromConfig(model, agent.ApplyOptions(opts...))
 }

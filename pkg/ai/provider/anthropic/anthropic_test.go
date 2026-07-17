@@ -46,9 +46,8 @@ type testPerson struct {
 const testModelID = "claude-sonnet-4-20250514"
 
 var testModel = ai.Model{
-	ID:       testModelID,
-	Name:     "Claude Sonnet",
-	Provider: "anthropic-messages",
+	ID:   testModelID,
+	Name: "Claude Sonnet",
 }
 
 //go:generate go test -httprecord=Test
@@ -493,9 +492,8 @@ func TestThinking(t *testing.T) {
 	defer cleanup()
 
 	thinkingModel := ai.Model{
-		ID:       testModelID,
-		Name:     "Claude Sonnet",
-		Provider: "anthropic-messages",
+		ID:   testModelID,
+		Name: "Claude Sonnet",
 	}
 
 	stream := p.StreamText(

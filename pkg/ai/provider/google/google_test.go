@@ -102,18 +102,14 @@ func TestGenerateText(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
-
 	ctx := context.Background()
 	model := ai.Model{
-		ID:       testModel,
-		Provider: p.Provider(),
+		ID: testModel,
 	}
 
 	msg, err := ai.GenerateText(
 		ctx,
-		model,
+		p.LanguageModel(model),
 		ai.Prompt{
 			System: "You are a helpful assistant",
 			Messages: []ai.Message{
@@ -153,16 +149,11 @@ func TestStreamText(t *testing.T) {
 
 	ctx := context.Background()
 	model := ai.Model{
-		ID:       testModel,
-		Provider: p.Provider(),
+		ID: testModel,
 	}
 
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
-
-	stream := ai.StreamText(
+	stream := p.LanguageModel(model).StreamText(
 		ctx,
-		model,
 		ai.Prompt{
 			System: "You are a helpful assistant",
 			Messages: []ai.Message{
@@ -205,15 +196,11 @@ func TestGenerateObject(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
-
 	schema, err := jsonschema.For[testPerson](nil)
 	require.NoError(t, err)
 
 	model := ai.Model{
-		ID:       testModel,
-		Provider: p.Provider(),
+		ID: testModel,
 	}
 
 	maxTokens := 4000
@@ -246,17 +233,13 @@ func TestGenerateObject(t *testing.T) {
 
 func testModelDef() ai.Model {
 	return ai.Model{
-		ID:       testModel,
-		Provider: "google-generative",
+		ID: testModel,
 	}
 }
 
 func TestToolCall(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
-
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	stream := p.StreamText(
@@ -320,9 +303,6 @@ func TestToolCall(t *testing.T) {
 func TestToolCallMultiTurn(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
-
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	tools := []ai.ToolInfo{
@@ -393,9 +373,6 @@ func TestToolChoiceRequired(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
-
 	model := testModelDef()
 	msg, err := p.StreamText(
 		context.Background(),
@@ -433,9 +410,6 @@ func TestToolChoiceRequired(t *testing.T) {
 func TestStreamEventSequence(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
-
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	stream := p.StreamText(
@@ -484,9 +458,6 @@ func TestUsageTokens(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
-
 	model := testModelDef()
 	msg, err := p.StreamText(
 		context.Background(),
@@ -510,12 +481,8 @@ func TestThinking(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
 
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
-
 	model := ai.Model{
-		ID:       "gemini-2.5-flash-thinking",
-		Provider: "google-generative",
+		ID: "gemini-2.5-flash-thinking",
 	}
 
 	stream := p.StreamText(
@@ -576,9 +543,6 @@ func TestThinking(t *testing.T) {
 func TestContextCancellation(t *testing.T) {
 	p, cleanup := newTestProvider(t)
 	defer cleanup()
-
-	ai.RegisterProvider(p.Provider(), p)
-	defer ai.UnregisterProvider(p.Provider())
 
 	model := testModelDef()
 	ctx, cancel := context.WithCancel(context.Background())

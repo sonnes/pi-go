@@ -18,12 +18,14 @@ type Limits struct {
 	Output  int `json:"output,omitempty"`
 }
 
-// Model describes an AI model and its capabilities.
+// Model describes an AI model and its capabilities. It is pure intrinsic
+// metadata — it carries no provider identity and no credentials, so the
+// same value can be bound to any provider that serves it (see
+// [NewLanguageModel]).
 type Model struct {
 	ID               string            `json:"id"`
 	Name             string            `json:"name"`
 	Aliases          []string          `json:"aliases,omitempty"`
-	Provider         string            `json:"provider"`
 	BaseURL          string            `json:"base_url,omitempty"`
 	Reasoning        bool              `json:"reasoning,omitempty"`
 	ThinkingLevels   []ThinkingLevel   `json:"thinking_levels,omitempty"`
@@ -80,4 +82,29 @@ func CalculateCost(model Model, usage Usage) UsageCost {
 		c.InputAudio +
 		c.OutputAudio
 	return c
+}
+
+// Usage contains token usage statistics for a model response.
+type Usage struct {
+	Input       int
+	Output      int
+	CacheRead   int
+	CacheWrite  int
+	Reasoning   int
+	InputAudio  int
+	OutputAudio int
+	Total       int
+	Cost        UsageCost
+}
+
+// UsageCost contains cost breakdown in USD.
+type UsageCost struct {
+	Input       float64
+	Output      float64
+	CacheRead   float64
+	CacheWrite  float64
+	Reasoning   float64
+	InputAudio  float64
+	OutputAudio float64
+	Total       float64
 }

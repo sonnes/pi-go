@@ -10,9 +10,12 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-var _ ai.Provider = (*Provider)(nil)
+var _ ai.TextProvider = (*Provider)(nil)
 
-// Provider implements [ai.Provider] by delegating each call to a fresh
+// providerID is the Cursor CLI provider identity.
+const providerID = "cursor-cli"
+
+// Provider implements [ai.TextProvider] by delegating each call to a fresh
 // `cursor-agent --print` subprocess.
 type Provider struct {
 	cfg config
@@ -115,9 +118,9 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// Provider returns the provider identifier used by [ai.RegisterProvider].
+// Provider returns the provider identity.
 func (p *Provider) Provider() string {
-	return "cursor-cli"
+	return providerID
 }
 
 // StreamText runs a one-shot `cursor-agent --print` subprocess and streams

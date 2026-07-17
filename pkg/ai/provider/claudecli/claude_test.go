@@ -89,7 +89,7 @@ func userSchema(t *testing.T) *jsonschema.Schema {
 
 func TestProvider_ImplementsInterfaces(t *testing.T) {
 	var (
-		_ ai.Provider       = (*Provider)(nil)
+		_ ai.TextProvider   = (*Provider)(nil)
 		_ ai.ObjectProvider = (*Provider)(nil)
 	)
 }
@@ -412,14 +412,11 @@ func TestGenerateObject_ViaGenericHelper(t *testing.T) {
 	_, _, restore := stubSend(p, objectResultNDJSON, nil)
 	defer restore()
 
-	ai.RegisterProvider("claude-cli-test", p)
-	defer ai.UnregisterProvider("claude-cli-test")
-	ai.RegisterModel(ai.Model{Provider: "claude-cli-test", ID: "obj"})
-	defer ai.UnregisterModel("claude-cli-test/obj")
+	lm := p.LanguageModel(ai.Model{ID: "obj"})
 
 	result, err := ai.GenerateObject[user](
 		context.Background(),
-		"claude-cli-test/obj",
+		lm,
 		ai.Prompt{Messages: []ai.Message{ai.UserMessage("give me a user")}},
 	)
 	require.NoError(t, err)

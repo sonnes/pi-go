@@ -43,15 +43,9 @@ func Prompt(ctx context.Context, a Agent, input string) (*ai.Message, error) {
 	return nil, errors.New("agent: run produced no assistant message")
 }
 
-// CreateFunc creates an [Agent] from a required model and options.
-// Register one under a provider/kind name with [RegisterAgent]; [Create]
-// looks it up by the spec's provider prefix.
-type CreateFunc func(model ai.Model, opts ...Option) Agent
-
 // config holds all configuration for the agent loop.
 type config struct {
-	model        ai.Model
-	provider     ai.Provider
+	lm           ai.LanguageModel
 	tools        []ai.Tool
 	history      []ai.Message
 	systemPrompt string
@@ -63,15 +57,6 @@ type config struct {
 
 // Option configures an [Agent].
 type Option func(*config)
-
-// WithProvider sets the [ai.Provider] instance the agent uses for
-// inference. When set, [Default] calls the provider directly and skips
-// the global [ai.GetProvider] lookup keyed by [ai.Model.Provider]. This lets
-// callers wire a provider per-agent without registering it in the
-// process-wide registry.
-func WithProvider(p ai.Provider) Option {
-	return func(c *config) { c.provider = p }
-}
 
 // WithExtension stores a sub-package configuration value under key.
 // Factories read [Config.Extensions] to pull out their own slot.

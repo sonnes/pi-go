@@ -81,7 +81,7 @@ func userSchema(t *testing.T) *jsonschema.Schema {
 
 func TestProvider_ImplementsInterfaces(t *testing.T) {
 	var (
-		_ ai.Provider       = (*Provider)(nil)
+		_ ai.TextProvider   = (*Provider)(nil)
 		_ ai.ObjectProvider = (*Provider)(nil)
 	)
 }

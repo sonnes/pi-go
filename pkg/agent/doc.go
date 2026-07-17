@@ -8,18 +8,15 @@
 // whole ([Stream.Wait]). [Prompt] wraps Run+Wait for the common
 // send-text-get-answer case.
 //
-// [New] takes the model as its first argument; the rest of the
-// configuration flows through [Option] values. [Default] resolves the
-// provider from the global [ai] registry by [ai.Model.Provider], or
-// [WithProvider] binds an [ai.Provider] instance directly and skips the
-// lookup.
+// [New] takes an [ai.LanguageModel] as its first argument — a model
+// already bound to a provider — and the rest of the configuration flows
+// through [Option] values.
 //
-// Alternative [Agent] implementations register under string names via
-// [RegisterAgent]. Callers look one up by name with [GetAgent], or
-// build an agent from a "<provider>/<model>" spec with [Create].
-// Sub-packages (e.g. pkg/agent/claude) attach their own configuration
-// via [WithExtension] and [WithExtensionMutator]; see [Config.Extensions]
-// for the key convention.
+// Alternative [Agent] implementations (e.g. the subprocess CLIs) are
+// exposed as an [agent.Factory] and registered with the catalog, which
+// routes "<kind>/<model>" specs to them. Sub-packages (e.g. pkg/agent/claude)
+// attach their own configuration via [WithExtension] and
+// [WithExtensionMutator]; see [Config.Extensions] for the key convention.
 //
 // The loop is extensible via lifecycle hooks registered with [WithHook].
 // Five [HookEvent] values cover the full lifecycle: [HookBeforeCall],

@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/sonnes/pi-go/pkg/stream"
 )
@@ -16,28 +15,20 @@ type EventStream = stream.Stream[Event, *Message]
 
 // NewEventStream creates a stream. The producer runs in a goroutine,
 // pushes events via the callback, and returns the final message. It is
-// the entry point for [Provider] implementations.
+// the entry point for [TextProvider] implementations.
 func NewEventStream(fn func(push func(Event)) (*Message, error)) *EventStream {
 	return stream.New(fn)
 }
 
-// StreamText streams a text response from the model.
-func StreamText(ctx context.Context, model Model, p Prompt, opts ...Option) *EventStream {
-	prov, ok := GetProvider(model.Provider)
-	if !ok {
-		return errStream(fmt.Errorf("ai: no provider registered for %q", model.Provider))
-	}
-	o := ApplyOptions(opts)
-	return prov.StreamText(ctx, model, p, o)
+// GenerateText streams a text response from lm and blocks for the final
+// message. Convenience wrapper around lm.StreamText(...).Wait().
+func GenerateText(ctx context.Context, lm LanguageModel, p Prompt, opts ...Option) (*Message, error) {
+	return lm.StreamText(ctx, p, opts...).Wait()
 }
 
-// GenerateText generates a text response synchronously.
-// Convenience wrapper around StreamText(...).Wait().
-func GenerateText(ctx context.Context, model Model, p Prompt, opts ...Option) (*Message, error) {
-	return StreamText(ctx, model, p, opts...).Wait()
-}
-
-// errStream returns an [EventStream] that immediately fails with err.
-func errStream(err error) *EventStream {
+// ErrStream returns an [EventStream] that immediately fails with err. Use
+// it to surface a pre-flight error on the stream instead of a separate
+// error return.
+func ErrStream(err error) *EventStream {
 	return stream.Err[Event, *Message](err)
 }

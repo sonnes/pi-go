@@ -1,12 +1,9 @@
 package ai
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
-// ImageProvider is an optional interface for providers that support
-// image generation.
+// ImageProvider is an optional capability interface for providers that
+// support image generation. Bind it with [NewImageModel].
 type ImageProvider interface {
 	GenerateImage(ctx context.Context, model Model, p Prompt, opts StreamOptions) (*ImageResponse, error)
 }
@@ -23,18 +20,25 @@ type GeneratedImage struct {
 	URL       string
 }
 
-// generateImage generates images from a resolved model. The exported,
-// spec-based entry point is [GenerateImage].
-func generateImage(ctx context.Context, model Model, p Prompt, opts ...Option) (*ImageResponse, error) {
-	prov, ok := GetProvider(model.Provider)
-	if !ok {
-		return nil, fmt.Errorf("ai: no provider registered for %q", model.Provider)
-	}
-	ip, ok := prov.(ImageProvider)
-	if !ok {
-		return nil, fmt.Errorf("ai: provider %q does not support image generation", model.Provider)
-	}
+// ImageModel is a [Model] bound to an [ImageProvider]. Create one with
+// [NewImageModel].
+type ImageModel interface {
+	Model() Model
+	GenerateImage(ctx context.Context, p Prompt, opts ...Option) (*ImageResponse, error)
+}
 
-	o := ApplyOptions(opts)
-	return ip.GenerateImage(ctx, model, p, o)
+// NewImageModel binds model metadata to an image provider.
+func NewImageModel(info Model, p ImageProvider) ImageModel {
+	return imageModel{info: info, prov: p}
+}
+
+type imageModel struct {
+	info Model
+	prov ImageProvider
+}
+
+func (m imageModel) Model() Model { return m.info }
+
+func (m imageModel) GenerateImage(ctx context.Context, p Prompt, opts ...Option) (*ImageResponse, error) {
+	return m.prov.GenerateImage(ctx, m.info, p, ApplyOptions(opts))
 }

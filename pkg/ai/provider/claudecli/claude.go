@@ -1,4 +1,4 @@
-// Package claudecli provides an [ai.Provider] and [ai.ObjectProvider]
+// Package claudecli provides an [ai.TextProvider] and [ai.ObjectProvider]
 // implementation backed by the `claude` CLI (Claude Code) running
 // in one-shot `--print --no-session-persistence` mode.
 //
@@ -7,9 +7,9 @@
 // is safe for concurrent use. Authentication follows the CLI's normal
 // resolution order (OAuth session, ANTHROPIC_API_KEY, apiKeyHelper).
 //
-// Registration:
+// Bind a model to the provider with [Provider.LanguageModel]:
 //
-//	ai.RegisterProvider("claude-cli", claudecli.New(claudecli.WithModel("sonnet")))
+//	lm := claudecli.New(claudecli.WithModel("sonnet")).LanguageModel(claudecli.ClaudeSonnet)
 package claudecli
 
 import (
@@ -27,11 +27,14 @@ import (
 
 // Compile-time interface checks.
 var (
-	_ ai.Provider       = (*Provider)(nil)
+	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
 )
 
-// Provider implements [ai.Provider] and [ai.ObjectProvider] by
+// providerID is the Claude CLI provider identity.
+const providerID = "claude-cli"
+
+// Provider implements [ai.TextProvider] and [ai.ObjectProvider] by
 // delegating each call to a fresh `claude --print` subprocess.
 type Provider struct {
 	cfg config
@@ -123,9 +126,9 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// Provider returns the provider identifier used by [ai.RegisterProvider].
+// Provider returns the provider identity.
 func (p *Provider) Provider() string {
-	return "claude-cli"
+	return providerID
 }
 
 // StreamText runs a one-shot `claude --print` subprocess and streams

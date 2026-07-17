@@ -24,11 +24,14 @@ import (
 
 // Compile-time interface checks.
 var (
-	_ ai.Provider       = (*Provider)(nil)
+	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
 )
 
-// Provider implements ai.Provider for the Anthropic Messages API.
+// providerID is the Anthropic Messages provider identity.
+const providerID = "anthropic-messages"
+
+// Provider implements [ai.TextProvider] for the Anthropic Messages API.
 type Provider struct {
 	client  anthropic.Client
 	baseURL string
@@ -78,7 +81,7 @@ func New(opts ...Option) *Provider {
 
 // Provider returns the provider API identifier.
 func (p *Provider) Provider() string {
-	return "anthropic-messages"
+	return providerID
 }
 
 // StreamText streams a text response from the Anthropic Messages API.
@@ -403,8 +406,8 @@ func buildMessage(model ai.Model, acc *anthropic.Message) *ai.Message {
 	return &ai.Message{
 		Role:       ai.RoleAssistant,
 		Content:    content,
-		API:        model.Provider,
-		Provider:   model.Provider,
+		API:        providerID,
+		Provider:   providerID,
 		Model:      model.ID,
 		Usage:      usage,
 		StopReason: mapStopReason(string(acc.StopReason)),

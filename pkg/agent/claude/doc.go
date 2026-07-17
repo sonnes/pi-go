@@ -31,13 +31,12 @@
 // to the subprocess as `--system-prompt`; use [WithAppendSystemPrompt] to
 // append to the default system prompt instead.
 //
-// Agent registration:
+// Construction:
 //
-//	// Register once at startup, then construct by name.
-//	agent.RegisterAgent("claude", claude.New)
+//	a := claude.New(ai.Model{ID: "sonnet", Name: "sonnet"})
 //
-//	f, _ := agent.GetAgent("claude")
-//	a := f(ai.Model{ID: "sonnet", Name: "sonnet"})
+// For spec-based creation, register an [agent.Factory] wrapping New with the
+// catalog under the "claude" kind.
 //
 // Rich content (images, multi-block messages) is supported by
 // [Agent.SendMessages] — the last user message in the batch is

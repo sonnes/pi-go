@@ -1,4 +1,4 @@
-// Package codexcli provides an [ai.Provider] and [ai.ObjectProvider]
+// Package codexcli provides an [ai.TextProvider] and [ai.ObjectProvider]
 // implementation backed by the `codex` CLI running in non-interactive
 // `exec --json` mode.
 package codexcli
@@ -19,11 +19,14 @@ import (
 )
 
 var (
-	_ ai.Provider       = (*Provider)(nil)
+	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
 )
 
-// Provider implements [ai.Provider] and [ai.ObjectProvider] by delegating
+// providerID is the Codex CLI provider identity.
+const providerID = "codex-cli"
+
+// Provider implements [ai.TextProvider] and [ai.ObjectProvider] by delegating
 // each call to a fresh `codex exec --json` subprocess.
 type Provider struct {
 	cfg config
@@ -137,9 +140,9 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// Provider returns the provider identifier used by [ai.RegisterProvider].
+// Provider returns the provider identity.
 func (p *Provider) Provider() string {
-	return "codex-cli"
+	return providerID
 }
 
 // StreamText runs a one-shot `codex exec --json --ephemeral` subprocess

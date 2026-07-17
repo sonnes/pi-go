@@ -9,46 +9,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// registerForTest installs the claude factory under "claude" and removes it
-// when the test completes. Registration is explicit (not via init()) so the
-// pkg/agent package stays decoupled from concrete implementations.
-func registerForTest(t *testing.T) {
-	t.Helper()
-	agent.RegisterAgent("claude", New)
-	t.Cleanup(func() { agent.UnregisterAgent("claude") })
-}
-
-func TestClaudeFactory_Registered(t *testing.T) {
-	registerForTest(t)
-
-	f, ok := agent.GetAgent("claude")
-	require.True(t, ok)
-
-	a := f(ai.Model{ID: "sonnet", Name: "sonnet"})
+func TestClaudeNew_BuildsAgent(t *testing.T) {
+	a := New(ai.Model{ID: "sonnet", Name: "sonnet"})
 	require.NotNil(t, a)
-
-	ca, ok := a.(*Agent)
-	require.True(t, ok)
-	assert.Equal(t, "sonnet", ca.cfg.model)
+	assert.Equal(t, "sonnet", a.cfg.model)
 }
 
-func TestClaudeFactory_UsesModelID(t *testing.T) {
-	registerForTest(t)
-
+func TestClaudeNew_UsesModelID(t *testing.T) {
 	// The CLI agent uses Model.Name, falling back to Model.ID when Name
 	// is empty, as the model name it forwards to the subprocess.
-	f, _ := agent.GetAgent("claude")
-	a := f(ai.Model{ID: "claude-sonnet-4-5"})
-	ca := a.(*Agent)
-	assert.Equal(t, "claude-sonnet-4-5", ca.cfg.model)
+	a := New(ai.Model{ID: "claude-sonnet-4-5"})
+	assert.Equal(t, "claude-sonnet-4-5", a.cfg.model)
 }
 
-func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
-	registerForTest(t)
-
+func TestClaudeNew_ComposesAgentAndClaudeOptions(t *testing.T) {
 	// Agent-level and claude-specific options flow through a single slice.
-	f, _ := agent.GetAgent("claude")
-	a := f(
+	a := New(
 		ai.Model{ID: "sonnet", Name: "sonnet"},
 		agent.WithMaxTurns(7),
 		WithCLIPath("/usr/local/bin/claude"),
@@ -57,23 +33,17 @@ func TestClaudeFactory_ComposesAgentAndClaudeOptions(t *testing.T) {
 		WithThinkingLevel(ai.ThinkingHigh),
 		WithMCPConfig(`{"mcpServers":{"lw":{"type":"http","url":"http://127.0.0.1:0/mcp"}}}`),
 	)
-	ca := a.(*Agent)
 
-	assert.Equal(t, "sonnet", ca.cfg.model)
-	assert.Equal(t, ai.ThinkingHigh, ca.cfg.thinkingLevel)
-	assert.Equal(t, 7, ca.cfg.maxTurns)
-	assert.Equal(t, "/usr/local/bin/claude", ca.cfg.cliPath)
-	assert.Equal(t, []string{"Read", "Edit"}, ca.cfg.allowedTools)
-	assert.Equal(t, "sess-xyz", ca.cfg.sessionID)
-	assert.Equal(t, `{"mcpServers":{"lw":{"type":"http","url":"http://127.0.0.1:0/mcp"}}}`, ca.cfg.mcpConfig)
+	assert.Equal(t, "sonnet", a.cfg.model)
+	assert.Equal(t, ai.ThinkingHigh, a.cfg.thinkingLevel)
+	assert.Equal(t, 7, a.cfg.maxTurns)
+	assert.Equal(t, "/usr/local/bin/claude", a.cfg.cliPath)
+	assert.Equal(t, []string{"Read", "Edit"}, a.cfg.allowedTools)
+	assert.Equal(t, "sess-xyz", a.cfg.sessionID)
+	assert.Equal(t, `{"mcpServers":{"lw":{"type":"http","url":"http://127.0.0.1:0/mcp"}}}`, a.cfg.mcpConfig)
 }
 
-func TestClaudeFactory_ConsumesTopLevelSystemPrompt(t *testing.T) {
-	registerForTest(t)
-
-	f, _ := agent.GetAgent("claude")
-	a := f(ai.Model{}, agent.WithSystemPrompt("You are a helper.\n\nBe concise."))
-	ca := a.(*Agent)
-
-	assert.Equal(t, "You are a helper.\n\nBe concise.", ca.cfg.systemPrompt)
+func TestClaudeNew_ConsumesTopLevelSystemPrompt(t *testing.T) {
+	a := New(ai.Model{}, agent.WithSystemPrompt("You are a helper.\n\nBe concise."))
+	assert.Equal(t, "You are a helper.\n\nBe concise.", a.cfg.systemPrompt)
 }

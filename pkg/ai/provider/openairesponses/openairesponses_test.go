@@ -96,9 +96,8 @@ func newTestProvider(t *testing.T) (*aior.Provider, func()) {
 
 func testModel() ai.Model {
 	return ai.Model{
-		ID:       testModelID,
-		Name:     testModelID,
-		Provider: "openai-responses",
+		ID:   testModelID,
+		Name: testModelID,
 	}
 }
 

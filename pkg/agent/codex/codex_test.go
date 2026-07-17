@@ -341,14 +341,8 @@ func TestAgent_Run_NoMessages_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "not supported")
 }
 
-func TestFactory_ComposesAgentAndCodexOptions(t *testing.T) {
-	agent.RegisterAgent("codex", New)
-	t.Cleanup(func() { agent.UnregisterAgent("codex") })
-
-	f, ok := agent.GetAgent("codex")
-	require.True(t, ok)
-
-	a := f(
+func TestNew_ComposesAgentAndCodexOptions(t *testing.T) {
+	ca := New(
 		ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"},
 		agent.WithMaxTurns(3),
 		WithCLIPath("/bin/codex"),
@@ -357,8 +351,6 @@ func TestFactory_ComposesAgentAndCodexOptions(t *testing.T) {
 		WithThinkingLevel(ai.ThinkingHigh),
 	)
 
-	ca, ok := a.(*Agent)
-	require.True(t, ok)
 	assert.Equal(t, "gpt-5.4", ca.cfg.model)
 	assert.Equal(t, 3, ca.cfg.maxTurns)
 	assert.Equal(t, "/bin/codex", ca.cfg.cliPath)

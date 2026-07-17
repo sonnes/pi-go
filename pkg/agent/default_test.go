@@ -17,7 +17,7 @@ import (
 
 const mockAPI = "mock-test"
 
-// mockProvider implements [ai.Provider] with a scripted sequence of responses.
+// mockProvider implements [ai.TextProvider] with a scripted sequence of responses.
 type mockProvider struct {
 	mu        sync.Mutex
 	responses []*ai.EventStream
@@ -49,15 +49,19 @@ func (m *mockProvider) StreamText(
 	return resp
 }
 
-func testModel() ai.Model {
-	return ai.Model{ID: "test-model", Provider: mockAPI}
+// currentMock is the provider that [testModel] binds into a
+// [ai.LanguageModel]. registerMock sets it for the duration of a test.
+var currentMock *mockProvider
+
+func testModel() ai.LanguageModel {
+	return ai.NewLanguageModel(ai.Model{ID: "test-model"}, currentMock)
 }
 
 func registerMock(t *testing.T, responses ...*ai.EventStream) *mockProvider {
 	t.Helper()
 	m := &mockProvider{responses: responses}
-	ai.RegisterProvider(mockAPI, m)
-	t.Cleanup(ai.ClearProviders)
+	currentMock = m
+	t.Cleanup(func() { currentMock = nil })
 	return m
 }
 
@@ -222,26 +226,8 @@ func blockingTool(name string) ai.Tool {
 
 // --- Constructor tests ---
 
-func TestWithProvider_BypassesGlobalRegistry(t *testing.T) {
-	// Do not call registerMock — the global registry must stay empty so
-	// the test proves routing went through WithProvider instead.
-	t.Cleanup(ai.ClearProviders)
-
-	m := &mockProvider{responses: []*ai.EventStream{textStream("hi", ai.Usage{})}}
-	a := New(
-		ai.Model{ID: "test-model"}, // no API set — provider is bound directly
-		WithProvider(m),
-	)
-
-	msgs, err := runAndWait(t, a, "hello")
-	require.NoError(t, err)
-	require.NotEmpty(t, msgs)
-
-	assert.Len(t, m.prompts, 1, "bound provider must receive the call")
-}
-
 func TestRun_NoModelOrProvider(t *testing.T) {
-	a := New(ai.Model{})
+	a := New(nil)
 	_, err := a.Run(t.Context(), ai.UserMessage("hi")).Wait()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no model configured")
@@ -249,10 +235,10 @@ func TestRun_NoModelOrProvider(t *testing.T) {
 
 func TestNewDefault_Defaults(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	a := New(model)
+	a := New(ai.NewLanguageModel(model, &mockProvider{}))
 
 	assert.Empty(t, a.Messages())
-	assert.Equal(t, model, a.config.model)
+	assert.Equal(t, model, a.config.lm.Model())
 	assert.Empty(t, a.config.tools)
 	assert.Equal(t, 0, a.config.maxTurns)
 }
@@ -267,7 +253,7 @@ func TestNewDefault_WithTools(t *testing.T) {
 		},
 	)
 
-	a := New(model, WithTools(tool))
+	a := New(ai.NewLanguageModel(model, &mockProvider{}), WithTools(tool))
 
 	assert.Len(t, a.config.tools, 1)
 }
@@ -278,7 +264,7 @@ func TestNewDefault_WithServerTool_NotInToolMap(t *testing.T) {
 		ServerType: ai.ServerToolWebSearch,
 	})
 
-	a := New(model, WithTools(srv))
+	a := New(ai.NewLanguageModel(model, &mockProvider{}), WithTools(srv))
 
 	// ToolInfo is advertised to the model so it shows up in c.tools and
 	// in the toolInfo slice.
@@ -314,7 +300,7 @@ func TestNewDefault_WithHistory(t *testing.T) {
 		ai.AssistantMessage(ai.Text{Text: "hi"}),
 	}
 
-	a := New(model, WithHistory(msgs...))
+	a := New(ai.NewLanguageModel(model, &mockProvider{}), WithHistory(msgs...))
 
 	assert.Equal(t, msgs, a.Messages())
 }
@@ -323,7 +309,7 @@ func TestNewDefault_WithHistory_IsCopied(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 	msgs := []ai.Message{ai.UserMessage("hello")}
 
-	a := New(model, WithHistory(msgs...))
+	a := New(ai.NewLanguageModel(model, &mockProvider{}), WithHistory(msgs...))
 
 	// Mutate original — should not affect agent state.
 	msgs[0] = ai.UserMessage("modified")
@@ -334,7 +320,7 @@ func TestNewDefault_WithHistory_IsCopied(t *testing.T) {
 
 func TestNewDefault_WithMaxTurns(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
-	a := New(model, WithMaxTurns(5))
+	a := New(ai.NewLanguageModel(model, &mockProvider{}), WithMaxTurns(5))
 
 	assert.Equal(t, 5, a.config.maxTurns)
 }
@@ -342,7 +328,7 @@ func TestNewDefault_WithMaxTurns(t *testing.T) {
 func TestNewDefault_WithSystemPrompt(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 
-	a := New(model, WithSystemPrompt("be helpful"))
+	a := New(ai.NewLanguageModel(model, &mockProvider{}), WithSystemPrompt("be helpful"))
 
 	assert.Equal(t, "be helpful", a.config.systemPrompt)
 }
@@ -351,7 +337,7 @@ func TestNewDefault_WithStreamOpts(t *testing.T) {
 	model := ai.Model{ID: "test-model"}
 	opts := []ai.Option{ai.WithMaxTokens(100)}
 
-	a := New(model, WithStreamOpts(opts...))
+	a := New(ai.NewLanguageModel(model, &mockProvider{}), WithStreamOpts(opts...))
 
 	assert.Len(t, a.config.streamOpts, 1)
 }
@@ -368,7 +354,7 @@ func TestNewDefault_MultipleOptions(t *testing.T) {
 	msgs := []ai.Message{ai.UserMessage("hello")}
 
 	a := New(
-		model,
+		ai.NewLanguageModel(model, &mockProvider{}),
 		WithTools(tool),
 		WithHistory(msgs...),
 		WithMaxTurns(10),
@@ -555,11 +541,7 @@ func TestRun_ContextCanceledBeforeFirstTurn(t *testing.T) {
 func TestRun_ContextCanceledMidStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 
-	mock := &mockProvider{
-		responses: []*ai.EventStream{blockingStream(ctx)},
-	}
-	ai.RegisterProvider(mockAPI, mock)
-	t.Cleanup(ai.ClearProviders)
+	registerMock(t, blockingStream(ctx))
 
 	a := New(testModel())
 	s := a.Run(ctx, ai.UserMessage("hi"))
@@ -597,7 +579,7 @@ func (p *ctxBlockingProvider) StreamText(
 // with context.Canceled and the agent stays reusable.
 func TestRun_CancelAbortsRun(t *testing.T) {
 	prov := &ctxBlockingProvider{startedCh: make(chan struct{})}
-	a := New(testModel(), WithProvider(prov))
+	a := New(ai.NewLanguageModel(ai.Model{ID: "test-model"}, prov))
 
 	ctx, cancel := context.WithCancel(t.Context())
 	s := a.Run(ctx, ai.UserMessage("hi"))
@@ -620,11 +602,7 @@ func TestRun_AlreadyRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	mock := &mockProvider{
-		responses: []*ai.EventStream{blockingStream(ctx)},
-	}
-	ai.RegisterProvider(mockAPI, mock)
-	t.Cleanup(ai.ClearProviders)
+	registerMock(t, blockingStream(ctx))
 
 	a := New(testModel())
 	first := a.Run(ctx, ai.UserMessage("first"))
@@ -638,17 +616,6 @@ func TestRun_AlreadyRunning(t *testing.T) {
 	cancel()
 	_, err = first.Wait()
 	assert.Error(t, err)
-}
-
-// Test 11: No provider registered
-func TestRun_NoProviderRegistered(t *testing.T) {
-	// Don't register any provider.
-	ai.ClearProviders()
-
-	a := New(testModel())
-	_, err := a.Run(t.Context(), ai.UserMessage("hi")).Wait()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no provider")
 }
 
 // Test 12: Provider returns error event — the stream fails, no agent_end.

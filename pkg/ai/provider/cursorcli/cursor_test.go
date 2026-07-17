@@ -59,7 +59,7 @@ func stubSend(
 }
 
 func TestProvider_ImplementsProvider(t *testing.T) {
-	var _ ai.Provider = (*Provider)(nil)
+	var _ ai.TextProvider = (*Provider)(nil)
 }
 
 func TestProvider_API(t *testing.T) {

@@ -1,7 +1,6 @@
 package ai_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -104,45 +103,6 @@ func TestEventStream_WaitAfterAbandonedEvents(t *testing.T) {
 	}
 
 	msg, err := stream.Wait()
-	require.NoError(t, err)
-	assert.Equal(t, expected, msg)
-}
-
-func TestStreamText_UnregisteredProvider(t *testing.T) {
-	ai.ClearProviders()
-	defer ai.ClearProviders()
-
-	model := ai.Model{Provider: "nonexistent"}
-	_, err := ai.StreamText(
-		context.Background(),
-		model,
-		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
-	).Wait()
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no provider registered")
-}
-
-func TestGenerateText_WithFakeProvider(t *testing.T) {
-	ai.ClearProviders()
-	defer ai.ClearProviders()
-
-	expected := &ai.Message{
-		Role:    ai.RoleAssistant,
-		Content: []ai.Content{ai.Text{Text: "response"}},
-	}
-
-	p := &fakeProvider{
-		api:     "fake",
-		message: expected,
-	}
-	ai.RegisterProvider("fake", p)
-
-	msg, err := ai.GenerateText(
-		context.Background(),
-		ai.Model{Provider: "fake"},
-		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
-	)
 	require.NoError(t, err)
 	assert.Equal(t, expected, msg)
 }
