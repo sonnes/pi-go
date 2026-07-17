@@ -30,23 +30,14 @@ import (
 	"github.com/sonnes/pi-go/pkg/pi"
 )
 
-// cliAgentFactory adapts a subprocess-agent constructor into an
-// [agent.Factory] the default catalog dispatches by kind prefix.
-func cliAgentFactory[A agent.Agent](newFn func(ai.Model, ...agent.Option) A) agent.Factory {
-	return func(spec string, opts ...agent.Option) (agent.Agent, error) {
-		_, rest, _ := strings.Cut(spec, "/")
-		return newFn(ai.Model{ID: rest, Name: rest}, opts...), nil
-	}
-}
-
 // init wires the CLI-subprocess agents so pi.Default routes "claude/…",
 // "codex/…", and "cursor/…" specs to them, and registers the pi-CLI
 // credential detectors (stored `pi login` credentials and reused
 // official-CLI logins) ahead of pkg/pi's built-in environment detectors.
 func init() {
-	pi.Default.RegisterAgent("claude", cliAgentFactory(claude.New))
-	pi.Default.RegisterAgent("codex", cliAgentFactory(codexagent.New))
-	pi.Default.RegisterAgent("cursor", cliAgentFactory(cursoragent.New))
+	pi.Default.RegisterAgent("claude", claude.Factory())
+	pi.Default.RegisterAgent("codex", codexagent.Factory())
+	pi.Default.RegisterAgent("cursor", cursoragent.Factory())
 	pi.AddDetector(loginDetectors()...)
 }
 

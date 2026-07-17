@@ -35,8 +35,10 @@
 //
 //	a := claude.New(ai.Model{ID: "sonnet", Name: "sonnet"})
 //
-// For spec-based creation, register an [agent.Factory] wrapping New with the
-// catalog under the "claude" kind.
+// For spec-based creation, register [Factory] with the catalog under the
+// "claude" kind:
+//
+//	cat.RegisterAgent("claude", claude.Factory())
 //
 // Rich content (images, multi-block messages) is supported by
 // [Agent.SendMessages] — the last user message in the batch is

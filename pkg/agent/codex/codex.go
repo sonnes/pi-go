@@ -28,9 +28,8 @@ type Agent struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// New creates a new Codex CLI [Agent] for model. Register it for string-based
-// creation, register an [agent.Factory] wrapping New with the catalog under
-// the "codex" kind.
+// New creates a new Codex CLI [Agent] for model. For spec-based creation,
+// register [Factory] with the catalog under the "codex" kind.
 func New(model ai.Model, opts ...agent.Option) *Agent {
 	return newFromConfig(model, agent.ApplyOptions(opts...))
 }
