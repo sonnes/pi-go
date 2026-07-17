@@ -1,7 +1,7 @@
 // Package catalog is the public registry for the pi SDK. It holds
 // providers, their models, and custom agent factories, and resolves
-// "<provider>/<model>" specs to callable [ai.LanguageModel]s and
-// [agent.Agent]s.
+// "<provider>/<model>" specs — or bare model IDs when unambiguous — to
+// callable [ai.LanguageModel]s and [agent.Agent]s.
 //
 // A [Catalog] is the single home for provider identity and routing —
 // the [ai] capability interfaces (TextProvider, ImageProvider, …) carry
@@ -12,6 +12,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -83,22 +84,61 @@ func (c *Catalog) RegisterAgent(kind string, f agent.Factory) {
 }
 
 // resolve looks up the model metadata and its registered provider for a
-// "<provider>/<model>" spec. Capability (text/image/object) is asserted by
-// the caller against the returned provider.
+// spec. A full "<provider>/<model>" spec is looked up directly; a bare
+// model ID (or alias) resolves when exactly one registered provider
+// serves it, and errors listing the full specs when several do.
+// Capability (text/image/object) is asserted by the caller against the
+// returned provider.
 func (c *Catalog) resolve(spec string) (ai.Model, Provider, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	m, ok := c.models[spec]
-	if !ok {
-		return ai.Model{}, nil, fmt.Errorf("catalog: unknown model %q", spec)
+	if m, ok := c.models[spec]; ok {
+		providerID, _, _ := strings.Cut(spec, "/")
+		p, ok := c.providers[providerID]
+		if !ok {
+			return ai.Model{}, nil, fmt.Errorf("catalog: no provider registered for %q", providerID)
+		}
+		return m, p, nil
 	}
-	providerID, _, _ := strings.Cut(spec, "/")
-	p, ok := c.providers[providerID]
-	if !ok {
-		return ai.Model{}, nil, fmt.Errorf("catalog: no provider registered for %q", providerID)
+	return c.resolveBareLocked(spec)
+}
+
+// resolveBareLocked resolves a spec with no provider prefix by scanning
+// every registered key for a matching model ID or alias.
+func (c *Catalog) resolveBareLocked(id string) (ai.Model, Provider, error) {
+	var (
+		matches []string
+		found   ai.Model
+		foundP  Provider
+	)
+	seen := map[string]bool{}
+	for key, m := range c.models {
+		providerID, modelID, _ := strings.Cut(key, "/")
+		if modelID != id || seen[providerID] {
+			continue
+		}
+		p, ok := c.providers[providerID]
+		if !ok {
+			continue
+		}
+		seen[providerID] = true
+		matches = append(matches, key)
+		found, foundP = m, p
 	}
-	return m, p, nil
+	switch len(matches) {
+	case 0:
+		return ai.Model{}, nil, fmt.Errorf("catalog: unknown model %q", id)
+	case 1:
+		return found, foundP, nil
+	default:
+		sort.Strings(matches)
+		return ai.Model{}, nil, fmt.Errorf(
+			"catalog: ambiguous model %q: use a full spec (%s)",
+			id,
+			strings.Join(matches, ", "),
+		)
+	}
 }
 
 // LanguageModel resolves a spec to a bound [ai.LanguageModel]. It errors if

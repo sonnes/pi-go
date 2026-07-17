@@ -62,6 +62,34 @@ func TestLanguageModel_Errors(t *testing.T) {
 	assert.ErrorContains(t, err, "does not support text generation")
 }
 
+func TestLanguageModel_BareModelID(t *testing.T) {
+	c := catalog.New()
+	c.RegisterProvider(&fakeProvider{id: "fake"})
+
+	// A spec without a provider prefix resolves when exactly one
+	// registered provider serves the model.
+	lm, err := c.LanguageModel("m1")
+	require.NoError(t, err)
+	assert.Equal(t, "m1", lm.Model().ID)
+
+	// Bare aliases resolve too.
+	_, err = c.LanguageModel("latest")
+	require.NoError(t, err)
+}
+
+func TestLanguageModel_BareModelID_Ambiguous(t *testing.T) {
+	c := catalog.New()
+	c.RegisterProvider(&fakeProvider{id: "alpha"})
+	c.RegisterProvider(&fakeProvider{id: "beta"})
+
+	_, err := c.LanguageModel("m1")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "ambiguous")
+	// The error names the full specs so the caller can disambiguate.
+	assert.ErrorContains(t, err, "alpha/m1")
+	assert.ErrorContains(t, err, "beta/m1")
+}
+
 func TestGenerateText_ViaCatalog(t *testing.T) {
 	c := catalog.New()
 	c.RegisterProvider(&fakeProvider{id: "fake"})

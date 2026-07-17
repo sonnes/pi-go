@@ -25,6 +25,8 @@ Provider identity lives in `catalog.Catalog`, not on the model: registering a pr
 
 `catalog.GenerateText(ctx, "anthropic-messages/claude-sonnet-4-6", prompt)` resolves the spec to a bound model and runs it, so callers can name a model by string instead of constructing one. `StreamText`, `GenerateObject[T]`, `GenerateImage`, and `GenerateSpeech` share the same spec-first form, so every modality is reached the same way — both on a `Catalog` and as package-level helpers in `pi`.
 
+A bare model ID (`"claude-sonnet-4-6"`) also resolves when exactly one registered provider serves it; when several do, the error lists the full specs to pick from. This keeps the happy path free of internal provider identities like `"anthropic-messages"`.
+
 ## Modalities
 
 `Input` and `Output` describe what the model accepts and produces (`text`, `image`). These are advisory — providers may reject unsupported modality combinations at call time.

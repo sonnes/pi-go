@@ -64,7 +64,8 @@ func ensureProviders() {
 	})
 }
 
-// StreamText resolves a "<provider>/<model>" spec against the default
+// StreamText resolves a "<provider>/<model>" spec — or a bare model ID
+// when exactly one registered provider serves it — against the default
 // catalog and streams a text response. A resolution error surfaces on the
 // stream; block for the final message with Wait().
 func StreamText(ctx context.Context, spec string, p Prompt, opts ...ai.Option) *ai.EventStream {
