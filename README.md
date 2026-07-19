@@ -4,84 +4,52 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/sonnes/pi-go)](https://goreportcard.com/report/github.com/sonnes/pi-go)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A provider-agnostic SDK for building AI agents in Go.
+A provider-agnostic SDK for building AI agents in Go — from a single completion call to durable, session-backed agents that survive process restarts.
 
-Pi supports text generation, structured output, image generation, tool calling, streaming, and usage tracking across multiple providers (Anthropic, OpenAI, Google, and local CLI-backed agents). It is a Go port of [Mario Zechner](https://github.com/badlogic)'s [pi](https://github.com/badlogic/pi-mono) project.
+Pi supports text generation, structured output, image and speech generation, tool calling, streaming, usage tracking, and persistent sessions across multiple providers (Anthropic, OpenAI, Google, OpenRouter, and local CLI-backed agents).
 
-## Design differences from pi-mono
+## Origins
 
-Pi-go is a ground-up rewrite, not a transliteration. The core abstractions (messages, content blocks, events, tool calling) are aligned with pi-mono, but several architectural choices diverge to take advantage of Go's type system and concurrency model.
+Pi-go started as a Go port of [Mario Zechner](https://github.com/badlogic)'s [pi](https://github.com/badlogic/pi-mono). The core vocabulary — messages, content blocks, streaming events, tool calling, the agentic loop — still traces back to pi-mono, and the two projects remain conceptually close. The API is now shaped by Go's type system and concurrency model rather than by the TypeScript original:
 
-**Immutable construction.** Agent configuration is frozen at `New()`. There are no `setModel()` or `setTools()` setters. This eliminates data races when multiple goroutines observe the same agent and removes an entire class of "config changed mid-run" bugs. Pi-mono keeps agent state mutable with setters for model, tools, system prompt, and thinking level.
+- **Typed generics instead of runtime schemas.** `DefineTool` and `GenerateObject[T]` derive JSON schemas from Go types at init time. If a type can't be schematized, the constructor panics — you find out at startup, not mid-conversation.
+- **Immutable construction instead of setters.** Agent configuration is frozen at `New()`. No `setModel()`, no `setTools()`, no "config changed mid-run" bugs when multiple goroutines observe the same agent.
+- **Run-scoped streams instead of a subscription broker.** A single verb drives the loop: `Run` appends messages and returns the run's `Stream`. Consume it event by event with `Events()` (a Go range-over-func iterator) or block on the result with `Wait()`. Errors — including pre-flight ones — surface on the stream, never as a panic or a lost run.
+- **Interface-based agents.** `agent.Agent` is a contract, not a class. Subprocess CLIs (`claude`, `codex`, `cursor-agent`) plug in as first-class agents that work with subscription logins rather than API keys, and mocks are trivial.
+- **Unified hooks and per-tool parallelism.** Five lifecycle events share one `Hook` signature, and each tool declares whether it is safe for parallel execution instead of a single global mode.
 
-**Typed generics for tools.** `DefineTool[In, Out]` derives JSON schemas from Go types at init time using reflection. If a type can't be schematized, the constructor panics — you find out at startup, not mid-conversation. Pi-mono uses TypeBox schemas constructed at runtime with manual validation via AJV.
+The newest layer, durable agents, is inspired by [Flue](https://github.com/withastro/flue), the Astro team's open agent framework and its durable-execution model: record every step of a session in a durable log, and any process can pick the conversation up exactly where it left off. Pi-go adapts that idea to Go — an append-only transcript tree behind a small `Store` interface, with branching, forking, and compaction all derived from a single leaf-pointer mechanism.
 
-**Unified hook system.** A single `Hook` callback signature covers five lifecycle events (`BeforeCall`, `BeforeTool`, `AfterTool`, `AfterTurn`, `BeforeStop`). Multiple hooks per event chain in registration order with event-specific merging semantics. Pi-mono uses separate callback fields on the agent config, each with a different function signature.
+## Pick your layer
 
-**Per-tool parallel control.** Each tool declares whether it's safe for parallel execution via a `Parallel` flag. When all tools in a batch are marked parallel, they run concurrently; otherwise they run sequentially. Pi-mono uses a single global mode (`"sequential"` or `"parallel"`) for all tools.
+The SDK is a stack. Start at the top; drop down when you need control.
 
-**Pull-based event streaming with replay.** Agent events flow through a `pubsub.Broker` with a ring buffer. Multiple goroutines subscribe independently, and late subscribers replay buffered events via `After(seq)`. Pi-mono uses push-based `subscribe(fn)` callbacks.
+| Layer      | Package                      | Use it for                                                            |
+| ---------- | ---------------------------- | --------------------------------------------------------------------- |
+| Front door | `pkg/pi`                     | One import; providers auto-wired from environment credentials          |
+| Registry   | `pkg/catalog`                | Own your catalog: providers, models, agent factories, spec resolution  |
+| Agent loop | `pkg/agent`                  | Tools, hooks, turn management, run streams                             |
+| Direct LLM | `pkg/ai`                     | Single calls: text, structured objects, images, speech                 |
+| Durability | `pkg/durable`, `pkg/session` | Agents that survive restarts; branch, fork, compact                    |
 
-**Streaming-first with dual consumption.** Every LLM call returns an `EventStream` that supports both patterns: iterate events with `Events()`, or block on the final message with `Result()`. `GenerateText` is literally `StreamText(...).Result()`. Pi-mono has separate `stream()` and `streamSimple()` methods with an async iterable plus a `.result()` promise.
+`pkg/pi` owns a default catalog and auto-wires providers from environment credentials (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`, ...) on first use. Model specs are `"<provider>/<model>"`, or a bare model ID when exactly one registered provider serves it. For explicit control — multiple credentials, no globals, custom base URLs — construct providers directly and register them with your own `catalog.Catalog`.
 
-**Interface-based agent.** The `Agent` interface defines the contract; `Default` is the standard implementation. The primary motivation was supporting CLI-based agents — wrapping tools like `claude`, `codex`, and `cursor-agent` as subprocess agents that work with subscription CLIs rather than API keys. The interface also makes it straightforward to test with mock agents or build alternative implementations. Pi-mono has a single concrete class.
+## Quick start
 
-## Two-layer architecture
-
-You can independently use the low-level `ai` package for direct LLM access, or the high-level `agent` package for an agentic loop.
-
-### `ai` package — Direct LLM access
-
-Provider-agnostic functions for text generation, structured output, image generation, and tool calling. Use this when you want full control over the conversation loop.
-
-```go
-import "github.com/sonnes/pi-go/pkg/ai"
-
-msg, err := ai.GenerateText(ctx, model, ai.Prompt{
-    System:   "You are a helpful assistant.",
-    Messages: []ai.Message{ai.UserMessage("Hello!")},
-})
-```
-
-### `agent` package — Agentic loop
-
-Manages turn-based conversation, tool execution, event streaming, and lifecycle hooks. Use this for autonomous agents that call tools and make decisions over multiple turns.
-
-```go
-import "github.com/sonnes/pi-go/pkg/agent"
-
-a := agent.New(
-    agent.WithModel(model),
-    agent.WithTools(weatherTool, searchTool),
-    agent.WithSystemPrompt(myPrompt),
-    agent.WithMaxTurns(10),
-)
-```
-
-The agent is configured entirely via `agent.Option` values — `WithModel` (full `ai.Model`), `WithProvider` (bind an `ai.Provider` directly, bypassing the global registry), `WithModelName` (string only, for CLI-style agents that own their own model catalog), plus the standard `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, and `WithHook`.
-
-### Agent factory registry
-
-Agents can be constructed by string name through a small factory registry, mirroring the `ai.Provider` registry. Register once at startup, resolve anywhere:
+Generate text with one import:
 
 ```go
 import (
-    "github.com/sonnes/pi-go/pkg/agent"
-    "github.com/sonnes/pi-go/pkg/agent/claude"
+    "github.com/sonnes/pi-go/pkg/ai"
+    "github.com/sonnes/pi-go/pkg/pi"
 )
 
-agent.RegisterFactory("claude", claude.Factory)
-
-f, _ := agent.GetFactory("claude")
-a := f(
-    agent.WithModelName("sonnet"),
-    claude.WithAllowedTools("Read", "Edit"),
-)
+msg, err := pi.GenerateText(ctx, "claude-sonnet-4-5", ai.Prompt{
+    Messages: []ai.Message{ai.UserMessage("Write a haiku about Go.")},
+})
 ```
 
-Sub-package options (`claude.WithAllowedTools`, `claude.WithCLIPath`, ...) return `agent.Option` values, so agent-level and sub-package options compose in a single slice. Sub-package config lives under `agent.Config.Extensions` keyed by the sub-package name.
-
-## Quick start
+Run an agent with a typed tool and stream its events:
 
 ```go
 package main
@@ -91,13 +59,11 @@ import (
     "fmt"
     "log"
 
-    "github.com/sonnes/pi-go/pkg/ai"
-    "github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
     "github.com/sonnes/pi-go/pkg/agent"
-    "github.com/sonnes/pi-go/pkg/pubsub"
+    "github.com/sonnes/pi-go/pkg/ai"
+    "github.com/sonnes/pi-go/pkg/pi"
 )
 
-// Define a typed tool.
 type WeatherInput struct {
     City string `json:"city"`
 }
@@ -106,7 +72,7 @@ type WeatherOutput struct {
     Temp string `json:"temp"`
 }
 
-var weatherTool = ai.DefineTool[WeatherInput, WeatherOutput](
+var weatherTool = ai.DefineTool(
     "get_weather",
     "Get current weather for a city",
     func(ctx context.Context, in WeatherInput) (WeatherOutput, error) {
@@ -117,52 +83,70 @@ var weatherTool = ai.DefineTool[WeatherInput, WeatherOutput](
 func main() {
     ctx := context.Background()
 
-    // Register a provider.
-    p := anthropic.New(anthropic.WithAPIKey("sk-..."))
-    ai.RegisterProvider(p.API(), p)
-
-    model := ai.Model{
-        ID:  "claude-sonnet-4-20250514",
-        API: "anthropic-messages",
-    }
-
-    // Create an agent with tools.
-    a := agent.New(
-        agent.WithModel(model),
-        agent.WithTools(weatherTool),
-        agent.WithMaxTurns(5),
+    a, err := pi.Agent(
+        "claude-sonnet-4-5",
+        pi.WithTools(weatherTool),
+        pi.WithMaxTurns(5),
     )
-    defer a.Close()
-
-    // Subscribe to events in a goroutine.
-    go func() {
-        ch := a.Subscribe(ctx)
-        for pe := range ch {
-            evt := pe.Payload()
-            switch evt.Type {
-            case agent.EventMessageUpdate:
-                if evt.AssistantEvent != nil && evt.AssistantEvent.Type == ai.EventTextDelta {
-                    fmt.Print(evt.AssistantEvent.Delta)
-                }
-            case agent.EventAgentEnd:
-                fmt.Println()
-            }
-        }
-    }()
-
-    // Send a message and wait for completion.
-    if err := a.Send(ctx, "What's the weather in Paris?"); err != nil {
-        log.Fatal(err)
-    }
-
-    msgs, err := a.Wait(ctx)
     if err != nil {
         log.Fatal(err)
     }
+    defer a.Close()
 
-    fmt.Printf("Agent produced %d messages\n", len(msgs))
+    s := a.Run(ctx, ai.UserMessage("What's the weather in Paris?"))
+    for e, err := range s.Events() {
+        if err != nil {
+            log.Fatal(err)
+        }
+        if e.Type == agent.EventMessageUpdate && e.AssistantEvent != nil {
+            fmt.Print(e.AssistantEvent.Delta)
+        }
+    }
+    fmt.Println()
 }
 ```
+
+The same spec routes to different backends: `"claude/sonnet"` runs a Claude Code subprocess agent, `"codex/gpt-5-codex"` a Codex one, and a plain model ID runs the in-process loop against the provider's API.
+
+## Durable agents
+
+`pkg/durable` turns the agent loop into an agent that survives process restarts. The session ID is the memory boundary — the application decides what it means (a ticket number, a user ID, a thread key). The same ID always resumes the same conversation:
+
+```go
+// ChatState is whatever the app tracks per session; changes are
+// logged in the transcript like everything else.
+type ChatState struct {
+    Title string
+}
+
+store := session.NewMemoryStore[ChatState]() // or fs.New (JSONL files), or your own Store
+
+// Monday, process A.
+da, err := pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
+    durable.WithStore(store),
+    durable.WithSessionID("user-42"),
+)
+_, _ = da.Run(ctx, ai.UserMessage("My name is Ravi. Remember it.")).Wait()
+da.Close()
+
+// Thursday, process B. Same ID — same conversation.
+da, _ = pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
+    durable.WithStore(store),
+    durable.WithSessionID("user-42"),
+)
+msgs, _ := da.Run(ctx, ai.UserMessage("What's my name?")).Wait()
+```
+
+Following Flue's durable-execution model, persistence is per message: run input is persisted before the run starts, and every message the loop produces is persisted when it completes. Run events double as durability receipts — a `message_end` is forwarded only after its entries are in the store, so anything a consumer has seen complete survives a crash. If a crash leaves an assistant tool call without its results, the model view repairs it on resume by synthesizing interrupted tool results.
+
+The transcript is an append-only tree with a leaf pointer marking the active position. History is never mutated or deleted, and one mechanism covers a family of operations:
+
+- **`Branch`** moves the leaf to an earlier entry; the next turn grows a sibling. Edit, retry, and rewind are all branches.
+- **`Fork`** lifts the active path into a separate session for what-if exploration.
+- **`Compact`** appends a summary entry that shrinks the model context — nothing is deleted, rewind still works.
+- **`Append`** persists application-defined entries (artifacts, UI state) in the tree without ever sending them to the model.
+
+Sessions carry typed application state (`Session[T]` — a title, active model, whatever the app tracks), and the `Store` contract is small: implement it over your database, or use the built-in memory and filesystem (JSONL) stores.
 
 ## Providers
 
@@ -170,24 +154,23 @@ func main() {
 | ----------------------- | --------------------------------- | -------------------- |
 | Anthropic Messages      | `pkg/ai/provider/anthropic`       | `anthropic-messages` |
 | OpenAI Chat Completions | `pkg/ai/provider/openai`          | `openai-completions` |
+| OpenAI Responses        | `pkg/ai/provider/openairesponses` | `openai-responses`   |
 | Google Gemini           | `pkg/ai/provider/google`          | `google-generative`  |
 | Claude CLI              | `pkg/ai/provider/claudecli`       | `claude-cli`         |
 | Codex CLI               | `pkg/ai/provider/codexcli`        | `codex-cli`          |
 | Cursor CLI              | `pkg/ai/provider/cursorcli`       | `cursor-cli`         |
-| Gemini CLI              | `pkg/ai/provider/geminicli`       | `gemini-cli`         |
-| OpenAI Responses        | `pkg/ai/provider/openairesponses` | `openai-responses`   |
 
-Each provider is a separate Go module, so you only import (and depend on) the SDKs you use.
+OpenRouter is served by the Responses adapter through a dialect flag. Each provider is a separate Go module, so you only import (and depend on) the SDKs you use. OAuth login flows — including reusing an existing Claude Code or Codex CLI subscription login — are documented in [docs/concepts/auth/oauth.md](docs/concepts/auth/oauth.md).
 
 ## Core concepts
 
-**[Tools](docs/concepts/ai/tools.md)** — Define typed tools with `DefineTool[In, Out]`. JSON schemas are generated automatically from Go types. Tool errors become results the model can reason about, not Go errors.
+**[Tools](docs/concepts/ai/tools.md)** — Define typed tools with `DefineTool`. JSON schemas are generated automatically from Go types. Tool errors become results the model can reason about, not Go errors.
 
-**[Streaming](docs/concepts/agent/streaming.md)** — All operations stream by default. `EventStream` supports both iteration (`Events()`) and blocking (`Result()`). Agent events flow through a pub/sub broker with multi-subscriber support and replay.
+**[Streaming](docs/concepts/agent/streaming.md)** — All operations stream by default. Every LLM call returns an `EventStream` and every agent run returns a `Stream`; both support iteration (`Events()`) and blocking (`Wait()`). `GenerateText` is literally `StreamText(...).Wait()`.
 
 **[Hooks](docs/concepts/agent/agent.md)** — Five lifecycle hooks (`BeforeCall`, `BeforeTool`, `AfterTool`, `AfterTurn`, `BeforeStop`) let you transform messages, deny tool execution, modify results, compact history, or inject follow-up messages without modifying the core loop.
 
-**[Messages & content](docs/concepts/ai/messages.md)** — Three roles (`User`, `Assistant`, `ToolResult`) and five content types (`Text`, `Thinking`, `Image`, `File`, `ToolCall`). `ToolCall` covers both client-executed function tools and provider-hosted [server tools](docs/capabilities/server-tools.md) (web search, code execution). The agent layer adds extensible `CustomMessage` types via embedding.
+**[Messages & content](docs/concepts/ai/messages.md)** — Three roles (`User`, `Assistant`, `ToolResult`) and five content types (`Text`, `Thinking`, `Image`, `File`, `ToolCall`). `ToolCall` covers both client-executed function tools and provider-hosted [server tools](docs/capabilities/server-tools.md) (web search, code execution).
 
 **[Structured output](docs/concepts/ai/content.md)** — `GenerateObject[T]` produces typed objects with automatic JSON schema derivation. Providers that support structured output implement the `ObjectProvider` interface.
 
@@ -197,9 +180,18 @@ Each provider is a separate Go module, so you only import (and depend on) the SD
 
 ```
 pkg/
-├── ai/              # Core SDK: messages, streaming, tools, providers
-│   └── provider/    # Provider implementations (anthropic, openai, google, ...)
-├── agent/           # Agentic loop, hooks, event streaming
-├── pubsub/          # Generic pub/sub broker with event replay
-└── buffer/          # Generic ring buffer
+├── pi/          # Batteries-included front door: env auto-wiring, one-import helpers
+├── catalog/     # Registry: providers, models, agent factories, spec resolution
+├── agent/       # Agentic loop, hooks, run streams
+│   ├── claude/  # Claude Code subprocess agent
+│   ├── codex/   # Codex CLI subprocess agent
+│   └── cursor/  # Cursor CLI subprocess agent
+├── durable/     # Session-backed agents: resume, branch, fork, compact
+├── session/     # Persistence primitives: Session, Entry tree, Store contract, fs store
+├── stream/      # Generic push stream with iterator and blocking consumption
+└── ai/          # Core SDK: messages, content, streaming, tools, capability interfaces
+    └── provider/  # anthropic, openai, openairesponses, google, claudecli, codexcli, cursorcli
+cmd/pi/          # CLI: provider login, interactive chat, agent test-drive
 ```
+
+This is a Go workspace with a separate `go.mod` per provider and for `pkg/pi`. Run `make tidy` to update all modules.
