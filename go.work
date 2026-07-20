@@ -14,4 +14,6 @@ use (
 	./pkg/ai/provider/openai
 	./pkg/ai/provider/openairesponses
 	./pkg/pi
+	./pkg/tool/find
+	./pkg/tool/grep
 )

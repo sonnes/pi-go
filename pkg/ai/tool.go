@@ -168,9 +168,17 @@ func DefineTool[In, Out any](
 	if err != nil {
 		panic(fmt.Sprintf("failed to generate input schema for tool %s: %v", name, err))
 	}
-	outputSchema, err := jsonschema.For[Out](nil)
-	if err != nil {
-		panic(fmt.Sprintf("failed to generate output schema for tool %s: %v", name, err))
+
+	// A tool whose Out is [ToolResult] produces rich results (media,
+	// images) that vary per call, so its output schema would be
+	// meaningless — skip it and let the fn return results directly.
+	var outputSchema *jsonschema.Schema
+	var zero Out
+	if _, raw := any(zero).(ToolResult); !raw {
+		outputSchema, err = jsonschema.For[Out](nil)
+		if err != nil {
+			panic(fmt.Sprintf("failed to generate output schema for tool %s: %v", name, err))
+		}
 	}
 
 	return &ToolDef[In, Out]{
@@ -198,6 +206,19 @@ func DefineParallelTool[In, Out any](
 // description is still passed to the model via the tool schema.
 func (t *ToolDef[In, Out]) WithUseWhen(s string) *ToolDef[In, Out] {
 	t.useWhen = s
+	return t
+}
+
+// WithOutputDescription sets a human-readable description on the tool's
+// generated output schema, documenting what the tool returns. It copies
+// the schema before mutating so shared generated schemas are not affected,
+// and returns the def for chaining.
+func (t *ToolDef[In, Out]) WithOutputDescription(s string) *ToolDef[In, Out] {
+	if t.outputSchema != nil {
+		schema := *t.outputSchema
+		schema.Description = s
+		t.outputSchema = &schema
+	}
 	return t
 }
 
@@ -231,6 +252,12 @@ func (t *ToolDef[In, Out]) Run(ctx context.Context, call ToolCallReq) (ToolResul
 // marshalToolOutput converts typed output to [ToolResult].
 func marshalToolOutput[Out any](callID string, output Out) ToolResult {
 	switch v := any(output).(type) {
+	case ToolResult:
+		// A tool that builds its own rich result (media, images). Stamp
+		// the call ID — any value the tool set is overwritten — and pass
+		// it through untouched.
+		v.CallID = callID
+		return v
 	case string:
 		return NewTextResult(callID, v)
 	case []byte:

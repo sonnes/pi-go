@@ -107,6 +107,39 @@ func TestToolDef_Run_StringOutput(t *testing.T) {
 	assert.False(t, result.IsError)
 }
 
+func TestToolDef_Run_ToolResultOutput(t *testing.T) {
+	// A typed tool whose Out is ai.ToolResult returns rich results
+	// (media/image) directly; the framework stamps CallID and skips
+	// generating a meaningless output schema.
+	imgTool := ai.DefineTool[addInput, ai.ToolResult](
+		"img",
+		"returns media",
+		func(_ context.Context, _ addInput) (ai.ToolResult, error) {
+			return ai.ToolResult{
+				CallID:    "ignored",
+				Type:      "image",
+				Data:      []byte("pixels"),
+				MediaType: "image/png",
+			}, nil
+		},
+	)
+
+	assert.Nil(t, imgTool.Info().OutputSchema, "ToolResult output schema is skipped")
+	assert.NotNil(t, imgTool.Info().InputSchema)
+
+	result, err := imgTool.Run(context.Background(), ai.ToolCallReq{
+		ID:    "call-1",
+		Name:  "img",
+		Input: `{"a": 1, "b": 2}`,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "call-1", result.CallID, "CallID stamped by the framework")
+	assert.Equal(t, "image", result.Type)
+	assert.Equal(t, []byte("pixels"), result.Data)
+	assert.Equal(t, "image/png", result.MediaType)
+	assert.False(t, result.IsError)
+}
+
 func TestToolDef_Run_Error(t *testing.T) {
 	fail := ai.DefineTool[addInput, string](
 		"fail",
@@ -195,4 +228,15 @@ func TestDefineServerTool(t *testing.T) {
 		assert.True(t, res.IsError)
 		assert.Contains(t, res.Content, "provider-executed")
 	})
+}
+
+func TestWithOutputDescription(t *testing.T) {
+	type in struct{}
+	base := ai.DefineTool("t", "d", func(_ context.Context, _ in) (string, error) {
+		return "", nil
+	})
+
+	described := base.WithOutputDescription("what it returns")
+	require.NotNil(t, described.Info().OutputSchema)
+	assert.Equal(t, "what it returns", described.Info().OutputSchema.Description)
 }

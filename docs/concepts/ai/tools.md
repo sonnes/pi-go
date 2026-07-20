@@ -54,7 +54,9 @@ For server tools, the provider executes the call inline and returns the result o
 
 ## Output serialization
 
-`string` → text result. `[]byte` → media result. Everything else → JSON-marshaled text.
+`string` → text result. `[]byte` → media result. `ai.ToolResult` → passed through unchanged (the framework stamps the call ID). Everything else → JSON-marshaled text.
+
+**Rich results skip the output schema.** A tool whose output type is `ai.ToolResult` produces results that vary per call — images, PDFs, mixed text-and-media — so `DefineTool` generates no output schema for it. This lets a tool return media through the same typed `DefineTool` path as a plain string tool, instead of implementing the `Tool` interface by hand.
 
 ## Related
 
