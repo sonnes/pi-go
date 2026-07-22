@@ -39,6 +39,9 @@ type fakeTransport struct {
 	stdinWrites  [][]byte
 	pendingWrite chan struct{} // unblocks a goroutine waiting to observe a write
 
+	controlWrites  [][]byte
+	controlWritten chan struct{} // signals a captured control response
+
 	stdoutR *io.PipeReader
 	stdoutW *io.PipeWriter
 
@@ -53,11 +56,12 @@ type fakeTransport struct {
 func newFakeTransport() *fakeTransport {
 	r, w := io.Pipe()
 	return &fakeTransport{
-		pendingWrite:  make(chan struct{}, 16),
-		stdoutR:       r,
-		stdoutW:       w,
-		exitedCh:      make(chan struct{}),
-		interruptedCh: make(chan struct{}),
+		pendingWrite:   make(chan struct{}, 16),
+		controlWritten: make(chan struct{}, 16),
+		stdoutR:        r,
+		stdoutW:        w,
+		exitedCh:       make(chan struct{}),
+		interruptedCh:  make(chan struct{}),
 	}
 }
 
@@ -92,6 +96,28 @@ func (f *fakeTransport) writeUserMessage(line []byte) error {
 	default:
 	}
 	return nil
+}
+
+func (f *fakeTransport) writeControlResponse(line []byte) error {
+	f.mu.Lock()
+	f.controlWrites = append(f.controlWrites, append([]byte(nil), line...))
+	f.mu.Unlock()
+	select {
+	case f.controlWritten <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// controlResponses returns a copy of captured control response writes.
+func (f *fakeTransport) controlResponses() [][]byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([][]byte, len(f.controlWrites))
+	for i, w := range f.controlWrites {
+		out[i] = append([]byte(nil), w...)
+	}
+	return out
 }
 
 func (f *fakeTransport) stdout() io.Reader       { return f.stdoutR }
@@ -245,6 +271,180 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 	require.Len(t, last.Messages, 2)
 	assert.Equal(t, ai.StopReasonToolUse, last.Messages[0].StopReason)
 	assert.Equal(t, "The file says hello.", last.Messages[1].Text())
+}
+
+// permissionNDJSON opens a turn whose Bash call requires approval: the
+// CLI (launched with --permission-prompt-tool stdio) emits a
+// control_request with subtype can_use_tool and blocks until the
+// control_response arrives on stdin.
+const permissionRequestNDJSON = `{"type":"system","subtype":"init","session_id":"sess-p"}
+{"type":"control_request","request_id":"cr-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"tu-1"}}
+`
+
+const permissionResultNDJSON = `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done."}],"stop_reason":"end_turn"}}
+{"type":"result","subtype":"success","result":"Done.","session_id":"sess-p"}
+`
+
+// newPermissionTestAgent wires an Agent whose fake CLI asks for
+// permission, waits for the agent's control_response, then finishes
+// the turn — mirroring the real CLI's blocking behavior.
+func newPermissionTestAgent(t *testing.T, hook agent.Hook) (*Agent, *fakeTransport) {
+	t.Helper()
+	ft := newFakeTransport()
+	a := New(ai.Model{}, agent.WithHook(agent.HookBeforeTool, hook))
+	a.newTransport = func(context.Context, config) (transportIface, error) {
+		return ft, nil
+	}
+	go func() {
+		select {
+		case <-ft.pendingWrite:
+		case <-ft.exitedCh:
+			return
+		}
+		ft.emit(permissionRequestNDJSON)
+		select {
+		case <-ft.controlWritten:
+		case <-ft.exitedCh:
+			return
+		}
+		ft.emit(permissionResultNDJSON)
+	}()
+	return a, ft
+}
+
+func TestAgent_Run_CanUseToolAllow(t *testing.T) {
+	var gotCall ai.ToolCall
+	hook := func(_ context.Context, in *agent.HookInput) (*agent.HookOutput, error) {
+		if in.ToolCall != nil {
+			gotCall = *in.ToolCall
+		}
+		return nil, nil
+	}
+
+	a, ft := newPermissionTestAgent(t, hook)
+	defer a.Close()
+
+	_, err := a.Run(context.Background(), ai.UserMessage("run ls")).Wait()
+	require.NoError(t, err)
+
+	// The hook saw the CLI's tool call.
+	assert.Equal(t, "Bash", gotCall.Name)
+	assert.Equal(t, "tu-1", gotCall.ID)
+	assert.Equal(t, map[string]any{"command": "ls"}, gotCall.Arguments)
+
+	// The agent answered allow, echoing the input.
+	responses := ft.controlResponses()
+	require.Len(t, responses, 1)
+	var resp struct {
+		Type     string `json:"type"`
+		Response struct {
+			Subtype   string `json:"subtype"`
+			RequestID string `json:"request_id"`
+			Response  struct {
+				Behavior     string         `json:"behavior"`
+				UpdatedInput map[string]any `json:"updatedInput"`
+			} `json:"response"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(bytes.TrimRight(responses[0], "\n"), &resp))
+	assert.Equal(t, "control_response", resp.Type)
+	assert.Equal(t, "cr-1", resp.Response.RequestID)
+	assert.Equal(t, "allow", resp.Response.Response.Behavior)
+	assert.Equal(t, map[string]any{"command": "ls"}, resp.Response.Response.UpdatedInput)
+}
+
+func TestAgent_Run_CanUseToolDeny(t *testing.T) {
+	hook := func(context.Context, *agent.HookInput) (*agent.HookOutput, error) {
+		return &agent.HookOutput{Deny: true, DenyReason: "denied by user"}, nil
+	}
+
+	a, ft := newPermissionTestAgent(t, hook)
+	defer a.Close()
+
+	_, err := a.Run(context.Background(), ai.UserMessage("run ls")).Wait()
+	require.NoError(t, err, "a denied tool still completes the turn")
+
+	responses := ft.controlResponses()
+	require.Len(t, responses, 1)
+	var resp struct {
+		Response struct {
+			RequestID string `json:"request_id"`
+			Response  struct {
+				Behavior string `json:"behavior"`
+				Message  string `json:"message"`
+			} `json:"response"`
+		} `json:"response"`
+	}
+	require.NoError(t, json.Unmarshal(bytes.TrimRight(responses[0], "\n"), &resp))
+	assert.Equal(t, "cr-1", resp.Response.RequestID)
+	assert.Equal(t, "deny", resp.Response.Response.Behavior)
+	assert.Equal(t, "denied by user", resp.Response.Response.Message)
+}
+
+// A hook error denies execution with the error text — mirroring the
+// Default agent's before_tool semantics.
+func TestAgent_Run_CanUseToolHookError(t *testing.T) {
+	hook := func(context.Context, *agent.HookInput) (*agent.HookOutput, error) {
+		return nil, errors.New("gate exploded")
+	}
+
+	a, ft := newPermissionTestAgent(t, hook)
+	defer a.Close()
+
+	_, err := a.Run(context.Background(), ai.UserMessage("run ls")).Wait()
+	require.NoError(t, err)
+
+	responses := ft.controlResponses()
+	require.Len(t, responses, 1)
+	assert.Contains(t, string(responses[0]), `"behavior":"deny"`)
+	assert.Contains(t, string(responses[0]), "gate exploded")
+}
+
+// streamingNDJSON mirrors --include-partial-messages output: stream_event
+// lines with content-block deltas interleaved with the assistant line.
+const streamingNDJSON = `{"type":"system","subtype":"init","session_id":"sess-s"}
+{"type":"stream_event","event":{"type":"message_start","message":{"role":"assistant","content":[]}}}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo!"}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello!"}],"stop_reason":"end_turn"}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"stream_event","event":{"type":"message_stop"}}
+{"type":"result","subtype":"success","result":"Hello!","session_id":"sess-s","usage":{"input_tokens":10,"output_tokens":5}}
+`
+
+func TestAgent_Run_StreamingDeltas(t *testing.T) {
+	a, _ := newTestAgent(t, nil, emitString(streamingNDJSON))
+	defer a.Close()
+
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("hi")))
+	require.NoError(t, err)
+
+	types := eventTypes(events)
+	assert.Equal(t, []agent.EventType{
+		agent.EventAgentStart,
+		agent.EventTurnStart,
+		agent.EventMessageStart, // empty message, opened by content_block_start
+		agent.EventMessageUpdate,
+		agent.EventMessageUpdate,
+		agent.EventMessageEnd,
+		agent.EventTurnEnd,
+		agent.EventAgentEnd,
+	}, types)
+
+	var streamed string
+	for _, e := range events {
+		if e.Type == agent.EventMessageUpdate {
+			require.NotNil(t, e.AssistantEvent)
+			streamed += e.AssistantEvent.Delta
+		}
+	}
+	assert.Equal(t, "Hello!", streamed,
+		"concatenated deltas must reproduce the final text")
+
+	last := events[len(events)-1]
+	require.Len(t, last.Messages, 1)
+	assert.Equal(t, "Hello!", last.Messages[0].Text())
 }
 
 // Canceling the Run context interrupts the in-flight turn (writes the

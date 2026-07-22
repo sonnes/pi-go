@@ -14,6 +14,7 @@ type Config struct {
 	SystemPrompt string
 	StreamOpts   []ai.Option
 	MaxTurns     int
+	Hooks        map[HookEvent][]Hook
 	Extensions   map[string]any
 }
 
@@ -30,6 +31,7 @@ func ApplyOptions(opts ...Option) Config {
 		SystemPrompt: c.systemPrompt,
 		StreamOpts:   c.streamOpts,
 		MaxTurns:     c.maxTurns,
+		Hooks:        c.hooks,
 		Extensions:   c.extensions,
 	}
 }

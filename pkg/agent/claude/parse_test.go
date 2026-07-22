@@ -788,6 +788,181 @@ func TestMapper_UsageOnResultCreatedMessage(t *testing.T) {
 	assert.Equal(t, 15, last.Message.Usage.Total)
 }
 
+// --- stream_event (partial message) tests ---
+
+// makeStreamEventLine builds a type:"stream_event" rawLine whose
+// embedded event is the given Anthropic SSE event JSON.
+func makeStreamEventLine(t *testing.T, event string) rawLine {
+	t.Helper()
+	return rawLine{Type: "stream_event", Event: json.RawMessage(event)}
+}
+
+// With --include-partial-messages the CLI interleaves stream_event
+// lines with the per-block assistant lines. content_block_start opens
+// the message bracket early (empty message), deltas become
+// message_update events, and the assistant line supplies the final
+// content without re-emitting turn_start/message_start.
+func TestMapper_StreamEventTextDeltas(t *testing.T) {
+	m := &parser{}
+	var all []agent.Event
+	collect := func(line rawLine) {
+		all = append(all, m.handleLine(line)...)
+	}
+
+	collect(makeStreamEventLine(t, `{"type":"message_start","message":{"role":"assistant","content":[]}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo!"}}`))
+	collect(makeAssistantLine(t, "Hello!", "end_turn"))
+	collect(makeStreamEventLine(t, `{"type":"content_block_stop","index":0}`))
+	collect(rawLine{Type: "result", Subtype: "success", Result: "Hello!"})
+
+	types := make([]agent.EventType, len(all))
+	for i, e := range all {
+		types[i] = e.Type
+	}
+	assert.Equal(t, []agent.EventType{
+		agent.EventTurnStart,
+		agent.EventMessageStart, // empty message, opened by content_block_start
+		agent.EventMessageUpdate,
+		agent.EventMessageUpdate,
+		agent.EventMessageEnd, // flushed by the result line
+		agent.EventTurnEnd,
+	}, types)
+
+	start := all[1]
+	require.NotNil(t, start.Message)
+	assert.Equal(t, ai.RoleAssistant, start.Message.Role)
+	assert.Empty(t, start.Message.Text(),
+		"message_start opens with an empty message; deltas stream separately")
+
+	upd := all[2]
+	require.NotNil(t, upd.AssistantEvent)
+	assert.Equal(t, ai.EventTextDelta, upd.AssistantEvent.Type)
+	assert.Equal(t, "Hel", upd.AssistantEvent.Delta)
+	assert.Equal(t, 0, upd.AssistantEvent.ContentIndex)
+
+	end := all[4]
+	require.NotNil(t, end.Message)
+	assert.Equal(t, "Hello!", end.Message.Text())
+}
+
+func TestMapper_StreamEventThinkingDeltas(t *testing.T) {
+	m := &parser{}
+	var all []agent.Event
+	collect := func(line rawLine) {
+		all = append(all, m.handleLine(line)...)
+	}
+
+	collect(makeStreamEventLine(t, `{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"pondering"}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig=="}}`))
+
+	types := make([]agent.EventType, len(all))
+	for i, e := range all {
+		types[i] = e.Type
+	}
+	assert.Equal(t, []agent.EventType{
+		agent.EventTurnStart,
+		agent.EventMessageStart,
+		agent.EventMessageUpdate,
+		// signature_delta is ignored
+	}, types)
+
+	upd := all[2]
+	require.NotNil(t, upd.AssistantEvent)
+	assert.Equal(t, ai.EventThinkDelta, upd.AssistantEvent.Type)
+	assert.Equal(t, "pondering", upd.AssistantEvent.Delta)
+}
+
+// Per-block assistant lines: the CLI emits one assistant line per
+// completed content block. Each content_block_start after an assistant
+// line opens a new message bracket, flushing any buffered end events.
+func TestMapper_StreamEventToolUseFlow(t *testing.T) {
+	m := &parser{}
+	var all []agent.Event
+	collect := func(line rawLine) {
+		all = append(all, m.handleLine(line)...)
+	}
+
+	// Block 0: text.
+	collect(makeStreamEventLine(t, `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me check."}}`))
+	collect(makeAssistantLine(t, "Let me check.", ""))
+	collect(makeStreamEventLine(t, `{"type":"content_block_stop","index":0}`))
+
+	// Block 1: tool_use.
+	collect(makeStreamEventLine(t, `{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"t1","name":"Read"}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":"}}`))
+	collect(makeAssistantWithToolLine(t, "Let me check.", "Read", "tool_use"))
+
+	// Tool result comes back inside the open turn.
+	collect(makeUserToolResultLine(t, "t1", "package main"))
+
+	// Final text message.
+	collect(makeStreamEventLine(t, `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`))
+	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"It's Go."}}`))
+	collect(makeAssistantLine(t, "It's Go.", "end_turn"))
+	collect(rawLine{Type: "result", Subtype: "success", Result: "It's Go."})
+
+	types := make([]agent.EventType, len(all))
+	for i, e := range all {
+		types[i] = e.Type
+	}
+	assert.Equal(t, []agent.EventType{
+		// Block 0 (text message).
+		agent.EventTurnStart,
+		agent.EventMessageStart,
+		agent.EventMessageUpdate,
+		// Block 1 boundary flushes the buffered text message.
+		agent.EventMessageEnd,
+		agent.EventTurnEnd,
+		agent.EventTurnStart,
+		agent.EventMessageStart,
+		agent.EventMessageUpdate, // input_json_delta
+		// Assistant tool_use line: message ends, tool starts, turn stays open.
+		agent.EventMessageEnd,
+		agent.EventToolExecutionStart,
+		// Tool result inside the open turn.
+		agent.EventToolExecutionEnd,
+		agent.EventMessageStart,
+		agent.EventMessageEnd,
+		// Final message boundary closes the tool turn.
+		agent.EventTurnEnd,
+		agent.EventTurnStart,
+		agent.EventMessageStart,
+		agent.EventMessageUpdate,
+		// Result flushes the buffered final message.
+		agent.EventMessageEnd,
+		agent.EventTurnEnd,
+	}, types)
+
+	toolUpd := all[7]
+	require.NotNil(t, toolUpd.AssistantEvent)
+	assert.Equal(t, ai.EventToolDelta, toolUpd.AssistantEvent.Type)
+	assert.Equal(t, `{"file_path":`, toolUpd.AssistantEvent.Delta)
+
+	// The tool turn's turn_end carries the tool results.
+	toolTurnEnd := all[13]
+	require.Len(t, toolTurnEnd.ToolResults, 1)
+	assert.Equal(t, "t1", toolTurnEnd.ToolResults[0].ToolCallID)
+}
+
+func TestMapper_StreamEventIgnoredTypes(t *testing.T) {
+	m := &parser{}
+
+	for _, event := range []string{
+		`{"type":"message_start","message":{}}`,
+		`{"type":"message_delta","delta":{"stop_reason":"end_turn"}}`,
+		`{"type":"message_stop"}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{not json}`,
+	} {
+		events := m.handleLine(makeStreamEventLine(t, event))
+		assert.Empty(t, events, "event %s should produce no events", event)
+	}
+}
+
 // --- helpers ---
 
 // makeAssistantLine builds a type:"assistant" rawLine whose embedded

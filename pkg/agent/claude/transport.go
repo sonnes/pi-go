@@ -22,6 +22,9 @@ import (
 type transportIface interface {
 	// writeUserMessage writes a single SDKUserMessage NDJSON line to stdin.
 	writeUserMessage(line []byte) error
+	// writeControlResponse writes a control_response NDJSON line to stdin,
+	// answering a CLI-initiated control_request (e.g. can_use_tool).
+	writeControlResponse(line []byte) error
 	// interrupt asks the CLI to abort the in-flight turn without killing the
 	// subprocess, by writing a stream-json control_request line to stdin.
 	interrupt() error
@@ -134,6 +137,17 @@ func (t *transport) waitLoop() {
 // writeUserMessage writes a single SDKUserMessage NDJSON line to stdin.
 // The write is serialized so concurrent Sends cannot interleave frames.
 func (t *transport) writeUserMessage(line []byte) error {
+	return t.writeLine(line)
+}
+
+// writeControlResponse writes a control_response NDJSON line to stdin.
+func (t *transport) writeControlResponse(line []byte) error {
+	return t.writeLine(line)
+}
+
+// writeLine writes a single NDJSON line to stdin. Writes are
+// serialized so concurrent writers cannot interleave frames.
+func (t *transport) writeLine(line []byte) error {
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
 
@@ -201,6 +215,55 @@ func buildInterruptControl(requestID string) ([]byte, error) {
 	return append(b, '\n'), nil
 }
 
+// controlResponse is the stream-json reply to a CLI-initiated
+// control_request (mirrors the Agent SDK's success envelope).
+type controlResponse struct {
+	Type     string              `json:"type"`
+	Response controlResponseBody `json:"response"`
+}
+
+type controlResponseBody struct {
+	Subtype   string           `json:"subtype"`
+	RequestID string           `json:"request_id"`
+	Response  permissionResult `json:"response"`
+}
+
+// permissionResult is the can_use_tool decision payload. Allow echoes
+// the tool input back as updatedInput; deny carries the reason.
+type permissionResult struct {
+	Behavior     string         `json:"behavior"`
+	UpdatedInput map[string]any `json:"updatedInput,omitempty"`
+	Message      string         `json:"message,omitempty"`
+}
+
+// buildPermissionResponse encodes a newline-terminated control_response
+// line answering a can_use_tool request. The CLI blocks the tool call
+// until this line arrives on stdin.
+func buildPermissionResponse(
+	requestID string,
+	allow bool,
+	input map[string]any,
+	denyReason string,
+) ([]byte, error) {
+	result := permissionResult{Behavior: "deny", Message: denyReason}
+	if allow {
+		result = permissionResult{Behavior: "allow", UpdatedInput: input}
+	}
+
+	b, err := json.Marshal(controlResponse{
+		Type: "control_response",
+		Response: controlResponseBody{
+			Subtype:   "success",
+			RequestID: requestID,
+			Response:  result,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
+}
+
 // close shuts down the subprocess. Closing stdin gives the CLI a chance to
 // drain; if it doesn't exit within 3 s, [gracefulShutdown] escalates to
 // SIGINT then SIGKILL.
@@ -232,6 +295,10 @@ func buildArgs(cfg config) []string {
 		"--input-format", "stream-json",
 		"--output-format", "stream-json",
 		"--verbose",
+		// Stream content-block deltas as stream_event lines so the
+		// parser can emit message_update events between message_start
+		// and message_end.
+		"--include-partial-messages",
 	}
 
 	if cfg.model != "" {
@@ -267,13 +334,22 @@ func buildArgs(cfg config) []string {
 		}
 	}
 	if cfg.systemPrompt != "" {
-		a = append(a, "--system-prompt", cfg.systemPrompt)
-	}
-	if cfg.appendSystemPrompt != "" {
-		a = append(a, "--append-system-prompt", cfg.appendSystemPrompt)
+		flag := "--append-system-prompt"
+		if cfg.replacePrompt {
+			flag = "--system-prompt"
+		}
+		a = append(a, flag, cfg.systemPrompt)
 	}
 	if cfg.sessionID != "" {
 		a = append(a, "--resume", cfg.sessionID)
+	}
+	if len(cfg.beforeTool) > 0 {
+		// Route the CLI's tool-approval questions to this process as
+		// can_use_tool control requests instead of auto-deciding.
+		a = append(a, "--permission-prompt-tool", "stdio")
+	}
+	if cfg.permissionMode != "" {
+		a = append(a, "--permission-mode", cfg.permissionMode)
 	}
 
 	return a

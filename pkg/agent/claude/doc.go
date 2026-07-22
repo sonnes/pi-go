@@ -27,9 +27,11 @@
 // [agent.WithMaxTurns], [agent.WithHistory], [agent.WithSystemPrompt])
 // and claude-specific options (e.g. [WithCLIPath], [WithAllowedTools],
 // [WithSessionID]) — satisfy the [agent.Option] type and pass through the
-// same slice. [agent.WithSystemPrompt] is rendered to a string and passed
-// to the subprocess as `--system-prompt`; use [WithAppendSystemPrompt] to
-// append to the default system prompt instead.
+// same slice. [agent.WithSystemPrompt] is rendered to a string and, by
+// default, passed to the subprocess as `--append-system-prompt`,
+// layering onto Claude Code's own base prompt; use
+// [WithAppendPrompt](false) to pass it as `--system-prompt` and replace
+// the base prompt instead.
 //
 // Construction:
 //
@@ -60,17 +62,25 @@
 // system prompts, and multi-turn state are managed internally by the
 // CLI rather than by this package. As a result:
 //
-//   - Lifecycle hooks registered via [agent.WithHook] are NOT invoked.
-//     [agent.HookBeforeCall], [agent.HookBeforeTool], [agent.HookAfterTool],
-//     [agent.HookAfterTurn], and [agent.HookBeforeStop] all have no
-//     effect when used with this agent. Use the [agent.Default] agent
-//     if you need hooks.
+//   - Of the lifecycle hooks registered via [agent.WithHook], only
+//     [agent.HookBeforeTool] is invoked: it answers the CLI's
+//     can_use_tool permission requests (the subprocess is launched
+//     with `--permission-prompt-tool stdio` whenever such hooks are
+//     registered; pair with [WithPermissionMode] to control which
+//     calls the CLI asks about). A hook error or Deny blocks the tool
+//     call. [agent.HookBeforeCall], [agent.HookAfterTool],
+//     [agent.HookAfterTurn], and [agent.HookBeforeStop] have no
+//     effect — the CLI owns those lifecycle points. Use the
+//     [agent.Default] agent if you need them.
 //   - [agent.Agent.Continue] is not supported in stream-json mode; pair
 //     [WithSessionID] with [Agent.Send] to resume a prior conversation.
 //   - Tool execution events do not carry [agent.Event.PartialResult] —
 //     the CLI does not surface in-flight tool progress over its stdout
 //     protocol, so [agent.EventToolExecutionUpdate] is never emitted.
-//   - [agent.EventMessageUpdate] is not emitted: each NDJSON assistant
-//     line is a complete message, so the lifecycle goes directly from
-//     message_start to message_end with no intermediate updates.
+//   - [agent.EventMessageUpdate] carries only the delta
+//     ([agent.Event.AssistantEvent]); the accumulated
+//     [agent.Event.Message] snapshot the Default agent attaches to each
+//     update is not populated. The subprocess streams content-block
+//     deltas (via --include-partial-messages) and the complete message
+//     arrives on the assistant line that ends the block.
 package claude

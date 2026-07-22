@@ -27,6 +27,10 @@ type rawLine struct {
 	IsError   bool             `json:"is_error,omitempty"`
 	CostUSD   float64          `json:"cost_usd,omitempty"`
 	Usage     *anthropic.Usage `json:"usage,omitempty"`
+
+	// control_request lines (CLI → client, e.g. can_use_tool).
+	RequestID string          `json:"request_id,omitempty"`
+	Request   json.RawMessage `json:"request,omitempty"`
 }
 
 // userMessage is the wire format for type:"user" lines, which carry
@@ -171,6 +175,12 @@ type parser struct {
 	// attaches the final usage via [lastAssistantMsg].
 	pending          []agent.Event
 	lastAssistantMsg *ai.Message
+
+	// streamOpen is true when a stream_event content_block_start has
+	// already emitted the turn_start/message_start bracket for the
+	// in-flight message, so the following assistant line must not
+	// re-emit it. Cleared by that assistant line (or the result line).
+	streamOpen bool
 }
 
 // handleLine processes a single NDJSON line and returns zero or more
@@ -192,6 +202,118 @@ func (m *parser) handleLine(line rawLine) []agent.Event {
 	case "result":
 		return m.handleResult(line)
 
+	case "stream_event":
+		return m.handleStreamEvent(line)
+
+	default:
+		return nil
+	}
+}
+
+// --- stream_event handling (--include-partial-messages) ---
+
+// streamEvent is the Anthropic SSE event embedded in a stream_event
+// line. Only content_block_start and content_block_delta drive agent
+// events; everything else (message_start, message_delta, message_stop,
+// content_block_stop, ping) is ignored.
+type streamEvent struct {
+	Type  string       `json:"type"`
+	Index int          `json:"index"`
+	Delta *streamDelta `json:"delta,omitempty"`
+}
+
+// streamDelta is a content_block_delta payload. The Type field selects
+// which of the value fields is populated.
+type streamDelta struct {
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	Thinking    string `json:"thinking,omitempty"`
+	PartialJSON string `json:"partial_json,omitempty"`
+}
+
+// handleStreamEvent processes a stream_event line. content_block_start
+// opens the message bracket early (empty message) so that the deltas
+// that follow stream as [agent.EventMessageUpdate] between
+// message_start and message_end — matching the Default agent's
+// lifecycle. The assistant line that completes each block carries the
+// authoritative content and closes the bracket via [handleAssistant].
+func (m *parser) handleStreamEvent(line rawLine) []agent.Event {
+	var ev streamEvent
+	if err := json.Unmarshal(line.Event, &ev); err != nil {
+		return nil
+	}
+
+	switch ev.Type {
+	case "content_block_start":
+		return m.openStreamMessage()
+
+	case "content_block_delta":
+		if !m.streamOpen || ev.Delta == nil {
+			return nil
+		}
+		aiEvt := mapStreamDelta(ev.Index, *ev.Delta)
+		if aiEvt == nil {
+			return nil
+		}
+		return []agent.Event{{
+			Type:           agent.EventMessageUpdate,
+			AssistantEvent: aiEvt,
+		}}
+
+	default:
+		return nil
+	}
+}
+
+// openStreamMessage emits the turn_start/message_start bracket for a
+// streamed message. The CLI emits one assistant line per completed
+// content block, so each content_block_start after an assistant line
+// begins a new message: any buffered end events flush and any open
+// tool-use turn closes first — the same boundary [handleAssistant]
+// applies on the non-streamed path.
+func (m *parser) openStreamMessage() []agent.Event {
+	if m.streamOpen {
+		return nil
+	}
+
+	var events []agent.Event
+	events = append(events, m.flushPending()...)
+	if m.inTurn {
+		events = append(events, m.closeTurn())
+	}
+
+	m.streamOpen = true
+	empty := ai.Message{Role: ai.RoleAssistant}
+	events = append(events,
+		agent.Event{Type: agent.EventTurnStart},
+		agent.Event{Type: agent.EventMessageStart, Message: &empty},
+	)
+	return events
+}
+
+// mapStreamDelta converts a content_block_delta into the [ai.Event]
+// carried by message_update. signature_delta (and unknown delta types)
+// return nil — they carry nothing renderable.
+func mapStreamDelta(index int, d streamDelta) *ai.Event {
+	switch d.Type {
+	case "text_delta":
+		return &ai.Event{
+			Type:         ai.EventTextDelta,
+			ContentIndex: index,
+			Delta:        d.Text,
+		}
+	case "thinking_delta":
+		return &ai.Event{
+			Type:         ai.EventThinkDelta,
+			ContentIndex: index,
+			Delta:        d.Thinking,
+		}
+	case "input_json_delta":
+		return &ai.Event{
+			Type:         ai.EventToolDelta,
+			ContentIndex: index,
+			Delta:        d.PartialJSON,
+		}
 	default:
 		return nil
 	}
@@ -237,21 +359,31 @@ func (m *parser) handleAssistant(line rawLine) []agent.Event {
 
 	var events []agent.Event
 
-	// A new assistant line means the previous pending buffer (if any)
-	// won't receive result-line usage — flush it now without attaching.
-	events = append(events, m.flushPending()...)
+	// When stream events already opened this message's bracket, the
+	// boundary (pending flush, turn close, turn_start, message_start)
+	// was emitted at content_block_start — don't repeat it here.
+	streamed := m.streamOpen
+	m.streamOpen = false
 
-	// Close any prior open turn before starting a new one.
-	if m.inTurn {
-		events = append(events, m.closeTurn())
+	if !streamed {
+		// A new assistant line means the previous pending buffer (if any)
+		// won't receive result-line usage — flush it now without attaching.
+		events = append(events, m.flushPending()...)
+
+		// Close any prior open turn before starting a new one.
+		if m.inTurn {
+			events = append(events, m.closeTurn())
+		}
 	}
 
 	m.messages = append(m.messages, aiMsg)
 
-	events = append(events,
-		agent.Event{Type: agent.EventTurnStart},
-		agent.Event{Type: agent.EventMessageStart, Message: &aiMsg},
-	)
+	if !streamed {
+		events = append(events,
+			agent.Event{Type: agent.EventTurnStart},
+			agent.Event{Type: agent.EventMessageStart, Message: &aiMsg},
+		)
+	}
 
 	toolCalls := aiMsg.ToolCalls()
 
@@ -358,6 +490,11 @@ func (m *parser) handleUser(line rawLine) []agent.Event {
 // assistant message (the common case) or a new message synthesized from
 // line.Result when the assistant emitted only thinking.
 func (m *parser) handleResult(line rawLine) []agent.Event {
+	// An interrupted turn can leave a streamed message bracket open
+	// with no assistant line to close it; the result line ends the
+	// turn regardless.
+	m.streamOpen = false
+
 	// Capture usage.
 	if line.Usage != nil {
 		m.usage = usageFromAnthropic(line.Usage)

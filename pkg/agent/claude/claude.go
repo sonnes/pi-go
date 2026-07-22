@@ -3,6 +3,7 @@ package claude
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -32,6 +33,9 @@ type Agent struct {
 	// turnDone receives the end-of-turn signal from the reader for the
 	// active run.
 	turnDone chan turnResult
+	// runCtx is the active run's context, passed to before_tool hooks
+	// answering can_use_tool control requests; nil when idle.
+	runCtx context.Context
 
 	// expectAgentStart signals the readLoop to publish [agent.EventAgentStart]
 	// just before its next batch of parser events. runTurn sets this true
@@ -93,6 +97,9 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	}
 	if ac.SystemPrompt != "" {
 		cfg.systemPrompt = ac.SystemPrompt
+	}
+	if hooks := ac.Hooks[agent.HookBeforeTool]; len(hooks) > 0 {
+		cfg.beforeTool = hooks
 	}
 
 	var msgs []ai.Message
@@ -209,6 +216,7 @@ func (a *Agent) runTurn(
 	a.messages = append(a.messages, msgs...)
 	a.push = push
 	a.turnDone = turnCh
+	a.runCtx = ctx
 	a.mu.Unlock()
 
 	defer func() {
@@ -216,6 +224,7 @@ func (a *Agent) runTurn(
 		a.running = false
 		a.push = nil
 		a.turnDone = nil
+		a.runCtx = nil
 		a.mu.Unlock()
 	}()
 
@@ -364,6 +373,15 @@ func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 			continue
 		}
 
+		if line.Type == "control_request" {
+			// CLI-initiated request (can_use_tool when launched with
+			// --permission-prompt-tool stdio). The CLI blocks the tool
+			// call until the response is written, so answering inline
+			// here cannot deadlock the turn.
+			a.handleControlRequest(t, line)
+			continue
+		}
+
 		if line.Type == "system" && line.Subtype == "init" {
 			// Subprocess startup — capture the session ID so the turn's
 			// agent_start (and SessionID()) can carry it. Session
@@ -403,6 +421,70 @@ func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 	if err := scanner.Err(); err != nil {
 		a.deliverTurn(turnResult{err: err})
 	}
+}
+
+// canUseToolRequest is the payload of a CLI-initiated can_use_tool
+// control_request, emitted before each tool call the CLI's own
+// permission policy would ask about.
+type canUseToolRequest struct {
+	Subtype   string         `json:"subtype"`
+	ToolName  string         `json:"tool_name"`
+	Input     map[string]any `json:"input"`
+	ToolUseID string         `json:"tool_use_id"`
+}
+
+// handleControlRequest answers a CLI-initiated control_request line.
+// Only can_use_tool is handled: the call runs through the registered
+// [agent.HookBeforeTool] hooks — the same semantics as the Default
+// agent, where a hook error or Deny blocks execution — and the
+// decision is written back as a control_response. Unknown subtypes
+// are ignored.
+func (a *Agent) handleControlRequest(t transportIface, line rawLine) {
+	var req canUseToolRequest
+	if err := json.Unmarshal(line.Request, &req); err != nil {
+		return
+	}
+	if req.Subtype != "can_use_tool" {
+		return
+	}
+
+	a.mu.Lock()
+	ctx := a.runCtx
+	msgs := make([]ai.Message, len(a.messages))
+	copy(msgs, a.messages)
+	a.mu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	allow := true
+	var reason string
+	tc := ai.ToolCall{
+		ID:        req.ToolUseID,
+		Name:      req.ToolName,
+		Arguments: req.Input,
+	}
+	for _, hook := range a.cfg.beforeTool {
+		out, err := hook(ctx, &agent.HookInput{
+			Event:    agent.HookBeforeTool,
+			Messages: msgs,
+			ToolCall: &tc,
+		})
+		if err != nil {
+			allow, reason = false, err.Error()
+			break
+		}
+		if out != nil && out.Deny {
+			allow, reason = false, out.DenyReason
+			break
+		}
+	}
+
+	resp, err := buildPermissionResponse(line.RequestID, allow, req.Input, reason)
+	if err != nil {
+		return
+	}
+	_ = t.writeControlResponse(resp)
 }
 
 // deliverTurn forwards a turn result to the currently-waiting Run, if any.

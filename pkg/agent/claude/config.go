@@ -11,24 +11,31 @@ const extensionKey = "claude"
 
 // config holds all configuration for a Claude CLI subprocess agent.
 type config struct {
-	cliPath            string
-	workDir            string
-	addDirs            []string
-	env                []string
-	sessionID          string
-	allowedTools       []string
-	tools              []string
-	toolsSet           bool
-	disallowedTools    []string
-	maxTurns           int
-	model              string
-	thinkingLevel      ai.ThinkingLevel
-	agent              string
-	agents             map[string]AgentDef
-	systemPrompt       string
-	appendSystemPrompt string
-	mcpConfig          string
-	history            []ai.Message
+	cliPath         string
+	workDir         string
+	addDirs         []string
+	env             []string
+	sessionID       string
+	allowedTools    []string
+	tools           []string
+	toolsSet        bool
+	disallowedTools []string
+	maxTurns        int
+	model           string
+	thinkingLevel   ai.ThinkingLevel
+	agent           string
+	agents          map[string]AgentDef
+	systemPrompt    string
+	replacePrompt   bool
+	mcpConfig       string
+	permissionMode  string
+	history         []ai.Message
+
+	// beforeTool holds the [agent.HookBeforeTool] hooks registered via
+	// [agent.WithHook]. When non-empty the subprocess is launched with
+	// `--permission-prompt-tool stdio` so the CLI asks this process for
+	// tool approval via can_use_tool control requests.
+	beforeTool []agent.Hook
 }
 
 // mutate returns an [agent.Option] that applies fn to the claude-scoped
@@ -141,12 +148,14 @@ func WithAgents(agents map[string]AgentDef) agent.Option {
 	return mutate(func(c *config) { c.agents = agents })
 }
 
-// WithAppendSystemPrompt appends to the default system prompt via --append-system-prompt.
-// To replace the default system prompt instead, use the top-level
-// [agent.WithSystemPrompt] — the claude factory renders it to a string and
-// passes it via --system-prompt.
-func WithAppendSystemPrompt(prompt string) agent.Option {
-	return mutate(func(c *config) { c.appendSystemPrompt = prompt })
+// WithAppendPrompt controls how the system prompt (set via the
+// top-level [agent.WithSystemPrompt]) reaches the CLI: true (the
+// default) passes it as --append-system-prompt, layering onto Claude
+// Code's own base prompt; false passes it as --system-prompt,
+// replacing it. One prompt, one switch — there is no second prompt
+// channel.
+func WithAppendPrompt(append bool) agent.Option {
+	return mutate(func(c *config) { c.replacePrompt = !append })
 }
 
 // WithMCPConfig sets --mcp-config to spec, which the Claude CLI accepts
@@ -154,4 +163,13 @@ func WithAppendSystemPrompt(prompt string) agent.Option {
 // servers to connect to. Empty string disables the flag entirely.
 func WithMCPConfig(spec string) agent.Option {
 	return mutate(func(c *config) { c.mcpConfig = spec })
+}
+
+// WithPermissionMode sets --permission-mode for the session (e.g.
+// "manual", "acceptEdits", "plan", "bypassPermissions"). The mode
+// decides which tool calls the CLI's own policy asks about; pair it
+// with an [agent.HookBeforeTool] hook to receive those questions as
+// can_use_tool control requests. Empty string omits the flag.
+func WithPermissionMode(mode string) agent.Option {
+	return mutate(func(c *config) { c.permissionMode = mode })
 }

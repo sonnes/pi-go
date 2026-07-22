@@ -1,8 +1,10 @@
 package claude
 
 import (
+	"context"
 	"testing"
 
+	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,12 +21,46 @@ func TestBuildInterruptControl(t *testing.T) {
 	)
 }
 
+// Pin the control_response wire format for can_use_tool permission
+// replies. The CLI blocks tool execution until this line arrives on
+// stdin; a drift here deadlocks the subprocess.
+func TestBuildPermissionResponse(t *testing.T) {
+	t.Run("allow echoes input", func(t *testing.T) {
+		line, err := buildPermissionResponse(
+			"req-1",
+			true,
+			map[string]any{"command": "ls"},
+			"",
+		)
+		require.NoError(t, err)
+		assert.Equal(t,
+			`{"type":"control_response","response":{"subtype":"success","request_id":"req-1","response":{"behavior":"allow","updatedInput":{"command":"ls"}}}}`+"\n",
+			string(line),
+		)
+	})
+
+	t.Run("deny carries message", func(t *testing.T) {
+		line, err := buildPermissionResponse(
+			"req-2",
+			false,
+			nil,
+			"denied by user",
+		)
+		require.NoError(t, err)
+		assert.Equal(t,
+			`{"type":"control_response","response":{"subtype":"success","request_id":"req-2","response":{"behavior":"deny","message":"denied by user"}}}`+"\n",
+			string(line),
+		)
+	})
+}
+
 func TestBuildArgs(t *testing.T) {
 	base := []string{
 		"--print",
 		"--input-format", "stream-json",
 		"--output-format", "stream-json",
 		"--verbose",
+		"--include-partial-messages",
 	}
 
 	tests := []struct {
@@ -98,14 +134,31 @@ func TestBuildArgs(t *testing.T) {
 			want: append(append([]string{}, base...), "--resume", "sess-123"),
 		},
 		{
+			name: "before-tool hooks enable the stdio permission prompt",
+			cfg: config{
+				cliPath: "claude",
+				beforeTool: []agent.Hook{
+					func(context.Context, *agent.HookInput) (*agent.HookOutput, error) {
+						return nil, nil
+					},
+				},
+			},
+			want: append(append([]string{}, base...), "--permission-prompt-tool", "stdio"),
+		},
+		{
+			name: "with permission mode",
+			cfg:  config{cliPath: "claude", permissionMode: "manual"},
+			want: append(append([]string{}, base...), "--permission-mode", "manual"),
+		},
+		{
 			name: "with agent",
 			cfg:  config{cliPath: "claude", agent: "reviewer"},
 			want: append(append([]string{}, base...), "--agent", "reviewer"),
 		},
 		{
-			name: "with system prompt",
+			name: "with system prompt appends by default",
 			cfg:  config{cliPath: "claude", systemPrompt: "be terse"},
-			want: append(append([]string{}, base...), "--system-prompt", "be terse"),
+			want: append(append([]string{}, base...), "--append-system-prompt", "be terse"),
 		},
 		{
 			name: "with agents",
@@ -118,27 +171,26 @@ func TestBuildArgs(t *testing.T) {
 			),
 		},
 		{
-			name: "with append system prompt",
-			cfg:  config{cliPath: "claude", appendSystemPrompt: "also be kind"},
-			want: append(append([]string{}, base...), "--append-system-prompt", "also be kind"),
+			name: "replace prompt switches the flag",
+			cfg:  config{cliPath: "claude", systemPrompt: "also be kind", replacePrompt: true},
+			want: append(append([]string{}, base...), "--system-prompt", "also be kind"),
 		},
 		{
 			name: "all options",
 			cfg: config{
-				cliPath:            "claude",
-				model:              "sonnet",
-				thinkingLevel:      ai.ThinkingXHigh,
-				allowedTools:       []string{"Read"},
-				tools:              []string{"Bash", "Edit"},
-				disallowedTools:    []string{"Write"},
-				maxTurns:           3,
-				addDirs:            []string{"/extra"},
-				agent:              "reviewer",
-				agents:             map[string]AgentDef{"x": {Description: "xd", Prompt: "xp"}},
-				systemPrompt:       "sys",
-				appendSystemPrompt: "more",
-				sessionID:          "sess-abc",
-				mcpConfig:          `{"mcpServers":{}}`,
+				cliPath:         "claude",
+				model:           "sonnet",
+				thinkingLevel:   ai.ThinkingXHigh,
+				allowedTools:    []string{"Read"},
+				tools:           []string{"Bash", "Edit"},
+				disallowedTools: []string{"Write"},
+				maxTurns:        3,
+				addDirs:         []string{"/extra"},
+				agent:           "reviewer",
+				agents:          map[string]AgentDef{"x": {Description: "xd", Prompt: "xp"}},
+				systemPrompt:    "sys",
+				sessionID:       "sess-abc",
+				mcpConfig:       `{"mcpServers":{}}`,
 			},
 			want: append(append([]string{}, base...),
 				"--model", "sonnet",
@@ -151,8 +203,7 @@ func TestBuildArgs(t *testing.T) {
 				"--add-dir", "/extra",
 				"--agent", "reviewer",
 				"--agents", `{"x":{"description":"xd","prompt":"xp"}}`,
-				"--system-prompt", "sys",
-				"--append-system-prompt", "more",
+				"--append-system-prompt", "sys",
 				"--resume", "sess-abc",
 			),
 		},
