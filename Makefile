@@ -1,5 +1,6 @@
 .PHONY: test test-pkg check tidy run build install gen \
-	site-install site-dev site-build site-preview site-check
+	site-install site-dev site-build site-preview site-check \
+	site-wasm site-wasm-test
 
 # Regenerate per-provider models.go from the models.dev catalog.
 gen:
@@ -26,6 +27,7 @@ test:
 	go test ./pkg/tool/find/...
 	go test ./pkg/tool/grep/...
 	go test ./cmd/pi/...
+	go test ./cmd/piwasm/...
 
 check:
 	go vet ./...
@@ -43,6 +45,7 @@ check:
 	go vet ./pkg/tool/find/...
 	go vet ./pkg/tool/grep/...
 	go vet ./cmd/pi/...
+	go vet ./cmd/piwasm/...
 	gofmt -l .
 
 build:
@@ -57,6 +60,7 @@ run:
 tidy:
 	go mod tidy
 	cd cmd/pi && go mod tidy
+	cd cmd/piwasm && go mod tidy
 	cd pkg/agent/claude && go mod tidy
 	cd pkg/agent/codex && go mod tidy
 	cd pkg/agent/cursor && go mod tidy
@@ -81,7 +85,8 @@ site-install:
 site-dev:
 	cd web && pnpm dev
 
-site-build:
+# The demo module is a build input, not a checked-in artifact.
+site-build: site-wasm
 	cd web && pnpm build
 
 site-preview:
@@ -89,3 +94,23 @@ site-preview:
 
 site-check:
 	cd web && pnpm check
+
+# Build the browser demo (agent loop + session tree) to WebAssembly and
+# copy the matching wasm_exec.js, so the loader can never drift from the
+# toolchain that produced the module. The budget is a guard against the
+# module quietly growing past what a landing page should download.
+WASM_BUDGET_BYTES ?= 25000000
+
+site-wasm:
+	GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o web/public/pi-demo.wasm ./cmd/piwasm
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" web/public/wasm_exec.js
+	@size=$$(wc -c < web/public/pi-demo.wasm); \
+		echo "pi-demo.wasm: $$size bytes (budget $(WASM_BUDGET_BYTES))"; \
+		if [ "$$size" -gt "$(WASM_BUDGET_BYTES)" ]; then \
+			echo "pi-demo.wasm exceeds the budget — split the live provider out or raise WASM_BUDGET_BYTES deliberately"; \
+			exit 1; \
+		fi
+
+# Drive the built module the way the page does and assert the loop ran.
+site-wasm-test: site-wasm
+	node web/scripts/wasm-smoke.mjs web/public/pi-demo.wasm "$$(pwd)/web/public/wasm_exec.js"

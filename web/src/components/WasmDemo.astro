@@ -1,0 +1,450 @@
+---
+// The durable-session demo: the real agent loop, typed tool dispatch
+// and session tree, compiled to WebAssembly and running in the reader's
+// browser.
+//
+// Progressive enhancement in three tiers. Without JavaScript the static
+// tree diagram beside this is all there is. With it, a click loads the
+// module and everything runs against a scripted provider — no keys, no
+// network, same output every time. A second, optional click swaps that
+// provider for OpenRouter using a key the visitor owns.
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<div
+  class="demo"
+  data-demo
+  data-wasm={`${base}/pi-demo.wasm`}
+  data-exec={`${base}/wasm_exec.js`}
+>
+  <div class="demo-head">
+    <span class="micro">Runs in your browser</span>
+    <span class="demo-mode micro" data-mode>scripted</span>
+  </div>
+
+  <div class="demo-start" data-start-panel>
+    <button class="btn btn--primary" data-start>Run it here</button>
+    <p class="note">
+      2.7&nbsp;MB of WebAssembly, fetched only when you click. The model's replies are
+      scripted; the loop, the tool call and the session tree are the real ones.
+    </p>
+  </div>
+
+  <div class="demo-panel" data-panel hidden>
+    <div class="cast">
+      <div class="cast-bar"><i></i><i></i><i></i><span data-status>scripted</span></div>
+      <pre data-out></pre>
+    </div>
+
+    <div class="demo-controls">
+      <button class="btn" data-cmd="run">Run</button>
+      <button class="btn" data-cmd="compact">Compact</button>
+      <button class="btn" data-cmd="reset">Reset</button>
+      <span class="micro demo-hint">click any entry below to rewind there</span>
+    </div>
+
+    <div class="demo-tree" data-tree></div>
+
+    <div class="demo-live">
+      <span class="micro">Use a real model</span>
+      <div class="demo-live-actions">
+        <button class="btn" data-connect>Connect OpenRouter</button>
+        <button class="btn" data-paste>Paste a key</button>
+      </div>
+      <p class="note">
+        Your key, your credits, your account — it goes into the WebAssembly module in this tab
+        and nowhere else, is held in <code>sessionStorage</code> until you close the tab, and the
+        demo runs a free model by default.
+      </p>
+    </div>
+  </div>
+</div>
+
+<style>
+  .demo {
+    border: 1px solid var(--line-strong);
+    background: var(--panel);
+    margin-top: 1.5rem;
+  }
+  .demo-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-soft);
+  }
+  .demo-mode {
+    margin-left: auto;
+    color: var(--warm);
+  }
+  .demo-start {
+    padding: 1.1rem 1.05rem 1.25rem;
+  }
+  .demo-start .note {
+    margin-top: 0.8rem;
+  }
+  .demo-panel {
+    padding: 1rem 1.05rem 1.15rem;
+  }
+  .demo-panel .cast pre {
+    min-height: 9rem;
+    max-height: 18rem;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .demo-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.9rem;
+  }
+  .demo-hint {
+    margin-left: auto;
+  }
+  .demo-tree {
+    font-family: var(--font-mono);
+    font-size: 0.73rem;
+    line-height: 1.85;
+    border: 1px solid var(--line);
+    background: var(--panel-soft);
+    padding: 0.75rem 0.85rem;
+    margin-top: 0.9rem;
+    overflow-x: auto;
+  }
+  .demo-tree:empty::before {
+    content: "the transcript tree appears here";
+    color: var(--muted-soft);
+  }
+  /* The tree's rows are built by the module at runtime, so they never
+     carry Astro's scoping attribute — these have to be global. */
+  .demo-tree :global(button) {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0 0.2rem;
+    white-space: pre;
+  }
+  .demo-tree :global(button:hover) {
+    color: var(--text);
+    background: var(--accent-faint);
+  }
+  .demo-tree :global(button[data-leaf]) {
+    color: var(--text);
+  }
+  .demo-tree :global(.role) {
+    color: var(--accent-ink);
+  }
+  .demo-live {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--line-strong);
+  }
+  .demo-live-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.6rem 0 0.7rem;
+    flex-wrap: wrap;
+  }
+  /* likewise for the lines the module writes into the terminal */
+  .cast :global(.out-tool) {
+    color: var(--warm);
+  }
+  .cast :global(.out-status) {
+    color: var(--muted);
+  }
+  .cast :global(.out-error) {
+    color: var(--red);
+  }
+</style>
+
+<script>
+  interface DemoTool {
+    name: string;
+    args?: Record<string, unknown>;
+    result?: string;
+  }
+
+  interface DemoNode {
+    id: string;
+    role: string;
+    text: string;
+    children?: DemoNode[];
+  }
+
+  interface DemoEvent {
+    kind: "status" | "delta" | "tool" | "tree" | "error" | "done";
+    text?: string;
+    tool?: DemoTool;
+    tree?: DemoNode[];
+    leafId?: string;
+    mode?: "scripted" | "live";
+    model?: string;
+  }
+
+  interface DemoCommand {
+    kind: "run" | "branch" | "compact" | "reset" | "key";
+    text?: string;
+    entryId?: string;
+    key?: string;
+    model?: string;
+  }
+
+  declare global {
+    interface Window {
+      Go: new () => { env: Record<string, string>; argv: string[]; importObject: WebAssembly.Imports; run(i: WebAssembly.Instance): void };
+      piDemo?: { start(onEvent: (json: string) => void): void; send(json: string): void };
+    }
+  }
+
+  const AUTH_URL = "https://openrouter.ai/auth";
+  const KEYS_URL = "https://openrouter.ai/api/v1/auth/keys";
+  const VERIFIER = "pi-openrouter-verifier";
+  const KEY = "pi-openrouter-key";
+
+  const root = document.querySelector<HTMLElement>("[data-demo]");
+  if (root) setup(root);
+
+  function setup(root: HTMLElement) {
+    const out = root.querySelector<HTMLPreElement>("[data-out]")!;
+    const treeEl = root.querySelector<HTMLElement>("[data-tree]")!;
+    const statusEl = root.querySelector<HTMLElement>("[data-status]")!;
+    const modeEl = root.querySelector<HTMLElement>("[data-mode]")!;
+    const panel = root.querySelector<HTMLElement>("[data-panel]")!;
+    const startPanel = root.querySelector<HTMLElement>("[data-start-panel]")!;
+
+    let ready: Promise<void> | null = null;
+
+    root.querySelector("[data-start]")!.addEventListener("click", () => void boot());
+
+    root.querySelectorAll<HTMLButtonElement>("[data-cmd]").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        await boot();
+        if (btn.dataset.cmd === "run") out.textContent = "";
+        send({ kind: btn.dataset.cmd as DemoCommand["kind"] });
+      }),
+    );
+
+    root.querySelector("[data-connect]")!.addEventListener("click", () => void connect());
+    root.querySelector("[data-paste]")!.addEventListener("click", async () => {
+      const key = prompt("OpenRouter API key (kept in this tab only)");
+      if (!key) return;
+      sessionStorage.setItem(KEY, key.trim());
+      await boot();
+      goLive();
+    });
+
+    // Returning from the OpenRouter consent screen.
+    const code = new URLSearchParams(location.search).get("code");
+    if (code) void exchange(code);
+    else if (sessionStorage.getItem(KEY)) void boot().then(goLive);
+
+    /** Load the module once, on demand. */
+    function boot(): Promise<void> {
+      if (ready) return ready;
+
+      startPanel.hidden = true;
+      panel.hidden = false;
+      // The static diagram beside this becomes the fallback, not a duplicate.
+      document.querySelectorAll("[data-static-tree]").forEach((el) => el.setAttribute("hidden", ""));
+      line("loading the module\u2026", "out-status");
+
+      ready = (async () => {
+        // wasm_exec.js is a classic script that assigns globalThis.Go —
+        // not a module, so it goes in as a tag rather than an import().
+        await loadScript(root.dataset.exec!);
+
+        const go = new window.Go();
+        go.env = {};
+        go.argv = ["piwasm"];
+
+        const { instance } = await WebAssembly.instantiateStreaming(
+          fetch(root.dataset.wasm!),
+          go.importObject,
+        );
+        go.run(instance);
+
+        window.piDemo!.start(onEvent);
+        out.textContent = "";
+        line("ready — scripted provider, no network", "out-status");
+      })().catch((err: unknown) => {
+        line(`could not load the demo: ${message(err)}`, "out-error");
+        throw err;
+      });
+
+      return ready;
+    }
+
+    function loadScript(src: string): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const el = document.createElement("script");
+        el.src = src;
+        el.onload = () => resolve();
+        el.onerror = () => reject(new Error(`could not load ${src}`));
+        document.head.append(el);
+      });
+    }
+
+    function send(cmd: DemoCommand) {
+      window.piDemo?.send(JSON.stringify(cmd));
+    }
+
+    function onEvent(json: string) {
+      const e: DemoEvent = JSON.parse(json);
+      switch (e.kind) {
+        case "delta":
+          append(e.text ?? "");
+          break;
+        case "tool":
+          line(
+            e.tool?.result
+              ? `  ${e.tool.name} → ${e.tool.result}`
+              : `  ${e.tool?.name}(${JSON.stringify(e.tool?.args ?? {})})`,
+            "out-tool",
+          );
+          break;
+        case "status":
+          line(e.text ?? "", "out-status");
+          break;
+        case "error":
+          line(e.text ?? "", "out-error");
+          break;
+        case "tree":
+          renderTree(e);
+          break;
+        case "done":
+          append("\n");
+          break;
+      }
+    }
+
+    function renderTree(e: DemoEvent) {
+      if (e.mode) {
+        modeEl.textContent = e.mode === "live" ? `live · ${e.model}` : "scripted";
+        statusEl.textContent = e.mode === "live" ? (e.model ?? "live") : "scripted";
+      }
+
+      treeEl.replaceChildren();
+      walk(e.tree ?? [], "", e.leafId);
+
+      function walk(nodes: DemoNode[], prefix: string, leafId?: string) {
+        nodes.forEach((node, i) => {
+          const last = i === nodes.length - 1;
+          const btn = document.createElement("button");
+          if (node.id === leafId) btn.dataset.leaf = "";
+          btn.title = "rewind to this entry";
+
+          const role = document.createElement("span");
+          role.className = "role";
+          role.textContent = node.role;
+
+          btn.append(
+            `${prefix}${prefix ? (last ? "└─ " : "├─ ") : ""}`,
+            role,
+            `  ${trim(node.text)}${node.id === leafId ? "  ← leaf" : ""}`,
+          );
+          btn.addEventListener("click", () => {
+            out.textContent = "";
+            send({ kind: "branch", entryId: node.id });
+          });
+
+          treeEl.append(btn);
+          walk(node.children ?? [], prefix + (prefix ? (last ? "   " : "│  ") : "  "), leafId);
+        });
+      }
+    }
+
+    function trim(text: string) {
+      const flat = (text ?? "").replace(/\s+/g, " ").trim();
+      return flat.length > 56 ? `${flat.slice(0, 56)}…` : flat;
+    }
+
+    function append(text: string) {
+      out.append(text);
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function line(text: string, cls: string) {
+      const span = document.createElement("span");
+      span.className = cls;
+      span.textContent = `${text}\n`;
+      out.append(span);
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function goLive() {
+      const key = sessionStorage.getItem(KEY);
+      if (!key) return;
+      out.textContent = "";
+      line("switching to your OpenRouter account\u2026", "out-status");
+      send({ kind: "key", key });
+    }
+
+    /** PKCE: no client secret, no registration — the flow is designed
+     *  for pages exactly like this one. */
+    async function connect() {
+      const verifier = random(64);
+      sessionStorage.setItem(VERIFIER, verifier);
+
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+      const challenge = base64url(new Uint8Array(digest));
+      const callback = location.origin + location.pathname;
+
+      location.href =
+        `${AUTH_URL}?callback_url=${encodeURIComponent(callback)}` +
+        `&code_challenge=${challenge}&code_challenge_method=S256`;
+    }
+
+    async function exchange(code: string) {
+      history.replaceState({}, "", location.pathname + location.hash);
+      const verifier = sessionStorage.getItem(VERIFIER);
+      sessionStorage.removeItem(VERIFIER);
+      if (!verifier) return;
+
+      await boot();
+      line("exchanging the authorization code\u2026", "out-status");
+
+      try {
+        const res = await fetch(KEYS_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            code,
+            code_verifier: verifier,
+            code_challenge_method: "S256",
+          }),
+        });
+        if (!res.ok) throw new Error(`OpenRouter returned ${res.status}`);
+
+        const { key } = (await res.json()) as { key?: string };
+        if (!key) throw new Error("no key in the response");
+
+        sessionStorage.setItem(KEY, key);
+        goLive();
+      } catch (err: unknown) {
+        line(`could not connect: ${message(err)}`, "out-error");
+      }
+    }
+
+    function message(err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+
+    function random(bytes: number) {
+      return base64url(crypto.getRandomValues(new Uint8Array(bytes)));
+    }
+
+    function base64url(buf: Uint8Array) {
+      return btoa(String.fromCharCode(...buf))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    }
+  }
+</script>

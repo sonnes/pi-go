@@ -1,6 +1,7 @@
 ---
 import Landing from "../layouts/Landing.astro";
 import CodeFrame from "../components/CodeFrame.astro";
+import WasmDemo from "../components/WasmDemo.astro";
 
 const base = import.meta.env.BASE_URL;
 const docs = `${base.replace(/\/$/, "")}/docs/`;
@@ -399,7 +400,7 @@ const notBuilt = [
       </p>
     </div>
     <div>
-      <div class="tree">
+      <div class="tree" data-static-tree>
         <span class="d">session</span> user-42<br />
         ├─ <b>e1</b> user &nbsp;&nbsp;&nbsp;"My name is Ravi."<br />
         ├─ <b>e2</b> assistant "Noted."<br />
@@ -408,7 +409,10 @@ const notBuilt = [
         └─ <b>e3'</b> user &nbsp;&nbsp;"Actually, call me R." <i>← Branch(e2)</i><br />
         &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <b>e4'</b> assistant "Got it, R."
       </div>
-      <figcaption><b>Fig. 01</b> Entry tree after one branch</figcaption>
+      <figcaption data-static-tree><b>Fig. 01</b> Entry tree after one branch</figcaption>
+
+      <WasmDemo />
+
       <div class="grid grid--2" style="margin-top:1.5rem">
         <div class="card">
           <h3 style="font-size:1.02rem">Branch</h3>
