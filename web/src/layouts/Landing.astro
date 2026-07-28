@@ -1,0 +1,119 @@
+---
+import "../styles/tokens.css";
+import "../styles/landing.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const docs = `${base.replace(/\/$/, "")}/docs/`;
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script is:inline>
+      // Match Starlight's storage key so the docs and the landing page
+      // agree on the theme across navigations.
+      const stored = localStorage.getItem("starlight-theme");
+      if (stored === "dark" || stored === "light") {
+        document.documentElement.dataset.theme = stored;
+      } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site-nav">
+      <div class="site-nav-inner">
+        <a class="brand" href={base}>
+          <span class="brand-mark">p<em>i</em></span>
+          <span class="brand-suffix">go</span>
+        </a>
+        <nav class="site-nav-links">
+          <a href={base} aria-current="page">Home</a>
+          <a href={docs}>Docs</a>
+          <a href={`${docs}capabilities/`}>Capabilities</a>
+          <a href="https://pkg.go.dev/github.com/sonnes/pi-go">pkg.go.dev</a>
+          <a href="https://github.com/sonnes/pi-go">GitHub</a>
+        </nav>
+        <div class="theme-toggle" id="theme">
+          <button data-theme-set="light">Light</button>
+          <button data-theme-set="dark">Dark</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="foot">
+        <span class="brand-mark" style="font-size:1.15rem">p<em>i</em></span>
+        <span class="micro">MIT License · Ravi Atluri &amp; contributors</span>
+        <div class="foot-links">
+          <a class="micro" href={docs}>Docs</a>
+          <a class="micro" href="https://github.com/sonnes/pi-go">GitHub</a>
+          <a class="micro" href="https://pkg.go.dev/github.com/sonnes/pi-go">pkg.go.dev</a>
+        </div>
+      </div>
+    </footer>
+
+    <script is:inline>
+      // Theme toggle, panel switchers (install / hero / layers / ship),
+      // and copy buttons. No other JavaScript ships on this page.
+      const root = document.documentElement;
+      const syncTheme = () => {
+        document.querySelectorAll("[data-theme-set]").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b.dataset.themeSet === root.dataset.theme));
+        });
+      };
+      document.querySelectorAll("[data-theme-set]").forEach((b) =>
+        b.addEventListener("click", () => {
+          root.dataset.theme = b.dataset.themeSet;
+          localStorage.setItem("starlight-theme", b.dataset.themeSet);
+          syncTheme();
+        }),
+      );
+      syncTheme();
+
+      document.querySelectorAll("[data-tabs]").forEach((group) => {
+        const name = group.dataset.tabs;
+        const tabs = group.querySelectorAll("[data-tab]");
+        tabs.forEach((tab) =>
+          tab.addEventListener("click", () => {
+            tabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+            document.querySelectorAll(`[data-panel="${name}"]`).forEach((p) => {
+              p.hidden = p.dataset.for !== tab.dataset.tab;
+            });
+          }),
+        );
+      });
+
+      document.querySelectorAll("[data-copy]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const scope = btn.closest(".codeframe, .install-row");
+          const src = scope.querySelector("pre code, pre, code:not([hidden])");
+          navigator.clipboard?.writeText(src.textContent.trim());
+          const was = btn.textContent;
+          btn.textContent = "Copied";
+          setTimeout(() => (btn.textContent = was), 1200);
+        });
+      });
+    </script>
+  </body>
+</html>

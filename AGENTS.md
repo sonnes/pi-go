@@ -55,6 +55,10 @@ Write vertical, readable Go code. Favor more lines over longer lines:
 | `make install` | Install CLI binary to `$GOPATH/bin` |
 | `make run`     | Run CLI via `go run` (`ARGS=...`)   |
 | `make tidy`    | Run `go mod tidy` in all modules    |
+| `make site-install` | Install site dependencies (`web/`) |
+| `make site-dev`     | Run the site dev server            |
+| `make site-build`   | Build the static site to `web/dist` |
+| `make site-check`   | Type-check the site                |
 
 ## Project Structure
 

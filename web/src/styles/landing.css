@@ -1,0 +1,576 @@
+/* Landing-page components. Tokens come from tokens.css. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+a {
+  color: inherit;
+}
+
+body {
+  font-size: 1rem;
+  line-height: 1.62;
+}
+
+p {
+  color: var(--copy);
+  max-width: 62ch;
+}
+p + p {
+  margin-top: 0.9rem;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: 1.14;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+p code,
+li code,
+td code {
+  color: var(--accent-ink);
+  background: #b0492a0f;
+  padding: 0.05em 0.3em;
+}
+:root[data-theme="dark"] p code,
+:root[data-theme="dark"] li code,
+:root[data-theme="dark"] td code {
+  background: #dd8a5e1a;
+}
+::selection {
+  background: #b0492a26;
+}
+
+/* ---------- sheets ---------- */
+main {
+  padding-block: var(--sheet-gap);
+}
+
+section.band {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  margin-inline: auto;
+  margin-block-end: var(--sheet-gap);
+  max-width: var(--shell);
+  padding-inline: var(--shell-pad);
+  padding-block: clamp(2.25rem, 3.5vw, 3.25rem);
+}
+section.band::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--accent) 0 0) 0 0 / 10px 1px no-repeat,
+    linear-gradient(var(--accent) 0 0) 0 0 / 1px 10px no-repeat,
+    linear-gradient(var(--accent) 0 0) 100% 0 / 10px 1px no-repeat,
+    linear-gradient(var(--accent) 0 0) 100% 0 / 1px 10px no-repeat,
+    linear-gradient(var(--accent) 0 0) 0 100% / 10px 1px no-repeat,
+    linear-gradient(var(--accent) 0 0) 0 100% / 1px 10px no-repeat,
+    linear-gradient(var(--accent) 0 0) 100% 100% / 10px 1px no-repeat,
+    linear-gradient(var(--accent) 0 0) 100% 100% / 1px 10px no-repeat;
+  opacity: 0.5;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: var(--split);
+  gap: var(--split-gap);
+  align-items: start;
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-bottom: 1.3rem;
+}
+.kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line-strong);
+}
+.kicker .num {
+  color: var(--warm);
+}
+
+/* ---------- hero ---------- */
+.hero {
+  padding-block: clamp(2.5rem, 5vw, 4rem) clamp(2.25rem, 4vw, 3rem);
+}
+.hero h1 {
+  font-size: clamp(1.5rem, 3.1vw, 2.3rem);
+  max-width: 30ch;
+  line-height: 1.2;
+}
+.hero h1 em {
+  font-style: normal;
+  color: var(--warm);
+}
+.hero-sub {
+  font-size: clamp(1rem, 1.3vw, 1.14rem);
+  margin-top: 1.1rem;
+  max-width: 54ch;
+}
+.hero-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+.install {
+  margin-top: 1.9rem;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-soft);
+  max-width: 40rem;
+}
+.install-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.77rem;
+}
+.install-row .sig {
+  color: var(--warm);
+}
+.install-row code {
+  color: var(--text);
+  background: none;
+  padding: 0;
+  font-size: 0.77rem;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+.install-row .copy {
+  margin-left: auto;
+}
+
+/* ---------- tabs ---------- */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line-strong);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0.5rem 0.8rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--warm);
+}
+
+/* ---------- code frame ---------- */
+.codeframe {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  overflow: hidden;
+}
+.codeframe::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--accent);
+  z-index: 1;
+}
+.frame-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.85rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-soft);
+}
+.frame-path {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.frame-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--green);
+}
+.frame-badge .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.copy {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  background: none;
+  padding: 0.18rem 0.4rem;
+  cursor: pointer;
+}
+.copy:hover {
+  color: var(--accent-ink);
+  border-color: var(--accent-ink);
+}
+/* The frame's own edge is the sheet's; Expressive Code draws none.
+   With frame="none" EC never sets --ecGtrBrdWd, which its code padding
+   subtracts in a calc() — undefined there means no padding at all, so
+   the first column would sit under the build stripe. */
+.codeframe .expressive-code .ec-line .code {
+  padding-inline-start: calc(var(--ecIndent, 0ch) + 1.05rem);
+}
+.codeframe .expressive-code pre {
+  border-width: 0;
+  margin: 0;
+}
+/* the frame header already carries a Copy button */
+.codeframe .expressive-code .copy {
+  display: none;
+}
+.frame-out {
+  border-top: 1px dashed var(--line-strong);
+  background: var(--bg-canvas);
+  padding: 0.75rem 1.05rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.frame-out .stream {
+  color: var(--text);
+}
+.frame-out .d {
+  color: var(--muted-soft);
+}
+.caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  background: var(--warm);
+  vertical-align: text-bottom;
+  animation: blink 1.05s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------- cards ---------- */
+.grid {
+  display: grid;
+  gap: 1px;
+  background: var(--line-strong);
+  border: 1px solid var(--line-strong);
+}
+.grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.grid--4 .card p {
+  max-width: 38ch;
+}
+.card {
+  background: var(--panel);
+  padding: 1.3rem 1.4rem 1.5rem;
+}
+.card:hover {
+  background: var(--panel-soft);
+}
+.card h3 {
+  font-size: 1.14rem;
+  margin: 0.5rem 0 0.45rem;
+}
+.card p {
+  font-size: 0.93rem;
+  max-width: 46ch;
+}
+.card .idx {
+  font-family: var(--font-mono);
+  font-size: var(--micro-size);
+  letter-spacing: 0.14em;
+  color: var(--warm);
+}
+
+/* ---------- layer stack ---------- */
+.layers {
+  border: 1px solid var(--line-strong);
+}
+.layer {
+  display: grid;
+  grid-template-columns: 9.5rem 1fr;
+  gap: 1rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.8rem 1.05rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  background: var(--panel);
+  cursor: pointer;
+}
+.layer:last-child {
+  border-bottom: 0;
+}
+.layer:hover {
+  background: var(--panel-soft);
+}
+.layer.is-active {
+  background: var(--accent-faint);
+}
+.layer.is-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--warm);
+}
+.layer-name {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text);
+}
+.layer-use {
+  font-size: 0.93rem;
+  color: var(--copy);
+}
+.layer-tag {
+  font-family: var(--font-mono);
+  font-size: var(--micro-size);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted-soft);
+  display: block;
+}
+
+/* ---------- table ---------- */
+table.matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.matrix th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--micro-size);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 400;
+  color: var(--muted);
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid var(--line-strong);
+}
+.matrix td {
+  padding: 0.52rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--copy);
+}
+.matrix tr:hover td {
+  background: var(--panel-soft);
+}
+.matrix td.mono {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+/* ---------- terminal cast (dark in both themes) ---------- */
+.cast {
+  background: #14171a;
+  border: 1px solid var(--line-strong);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.75;
+}
+.cast-bar {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid #ffffff14;
+}
+.cast-bar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffffff2b;
+  display: block;
+}
+.cast-bar span {
+  margin-left: auto;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7c8286;
+}
+.cast pre {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  color: #ccd0d2;
+  overflow-x: auto;
+}
+.cast .p {
+  color: #8fbf9f;
+}
+.cast .t {
+  color: #dd8a5e;
+}
+.cast .d {
+  color: #7c8286;
+}
+
+figcaption {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  margin-top: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: var(--micro-size);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+}
+figcaption b {
+  color: var(--warm);
+  font-weight: 400;
+}
+
+/* ---------- tree, chips, notes ---------- */
+.tree {
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+  line-height: 1.9;
+  color: var(--muted);
+  background: var(--panel-soft);
+  border: 1px solid var(--line-strong);
+  padding: 0.95rem 1.05rem;
+  overflow-x: auto;
+}
+.tree b {
+  color: var(--text);
+  font-weight: 500;
+}
+.tree i {
+  color: var(--warm);
+  font-style: normal;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1.2rem 0 0.9rem;
+}
+.chips span {
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  color: var(--muted-strong);
+  border: 1px solid var(--line-strong);
+  padding: 0.2rem 0.45rem;
+}
+.chips span.is-lit {
+  color: var(--panel);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.note {
+  font-size: 0.88rem;
+  color: var(--muted);
+  border-left: 2px solid var(--warm);
+  padding-left: 0.8rem;
+  max-width: 52ch;
+}
+
+/* ---------- what we didn't build ---------- */
+.nb {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line-strong);
+  border: 1px solid var(--line-strong);
+}
+.nb-item {
+  background: var(--panel);
+  padding: 1.05rem 1.15rem 1.2rem;
+}
+.nb-item h4 {
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
+}
+.nb-item h4::before {
+  content: "×";
+  color: var(--red);
+  margin-right: 0.45rem;
+}
+.nb-item p {
+  font-size: 0.89rem;
+  color: var(--muted);
+  max-width: 40ch;
+}
+
+@media (max-width: 62rem) {
+  .grid--2,
+  .grid--3,
+  .grid--4,
+  .nb {
+    grid-template-columns: 1fr;
+  }
+  .layer {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}

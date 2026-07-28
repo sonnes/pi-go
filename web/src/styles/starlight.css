@@ -1,0 +1,151 @@
+/* Maps the Graphite tokens onto Starlight's own variables, then puts
+   the docs chrome on sheets so no text ever sits on the ruled ground. */
+
+:root {
+  --sl-font: var(--font-prose);
+  --sl-font-mono: var(--font-mono);
+
+  --sl-color-white: var(--text);
+  --sl-color-gray-1: var(--text);
+  --sl-color-gray-2: var(--copy);
+  --sl-color-gray-3: var(--muted);
+  --sl-color-gray-4: var(--muted-soft);
+  --sl-color-gray-5: var(--line-strong);
+  --sl-color-gray-6: var(--line);
+  --sl-color-black: var(--panel);
+
+  --sl-color-accent: var(--warm);
+  --sl-color-accent-low: var(--panel-soft);
+  --sl-color-accent-high: var(--accent-ink);
+
+  --sl-color-text: var(--copy);
+  --sl-color-text-accent: var(--accent-ink);
+  --sl-color-text-invert: var(--panel);
+  --sl-color-bg: transparent;
+  --sl-color-bg-nav: var(--panel);
+  --sl-color-bg-sidebar: var(--panel);
+  --sl-color-bg-inline-code: #b0492a0f;
+  --sl-color-hairline: var(--line);
+  --sl-color-hairline-light: var(--line);
+  --sl-color-hairline-shade: var(--line-strong);
+
+  --sl-content-width: 48rem;
+  --sl-text-h1: clamp(1.9rem, 3.4vw, 2.5rem);
+  --sl-text-h2: 1.32rem;
+  --sl-text-h3: 1.1rem;
+  --sl-nav-height: 3.3rem;
+}
+
+:root[data-theme="dark"] {
+  --sl-color-bg-inline-code: #dd8a5e1a;
+}
+
+/* headings are mono — the system's tell */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.022em;
+  color: var(--text);
+}
+.sl-markdown-content h2 {
+  padding-top: 1.3rem;
+  border-top: 1px solid var(--line-strong);
+}
+
+.sl-markdown-content {
+  font-size: 1rem;
+  line-height: 1.62;
+}
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--accent-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-line);
+}
+.sl-markdown-content a:hover:not(:where(.not-content *)) {
+  border-bottom-color: var(--accent-ink);
+}
+.sl-markdown-content code:not(:where(.not-content *)) {
+  color: var(--accent-ink);
+}
+
+/* ---------- sheets ---------- */
+header.header {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line-strong);
+  box-shadow: none;
+}
+.sidebar-pane {
+  background: var(--panel);
+  border-inline-end: 1px solid var(--line-strong);
+}
+.main-frame {
+  padding-top: 0;
+}
+.main-pane {
+  background: var(--panel);
+  border-inline-start: 1px solid var(--line-strong);
+}
+/* the ruled ground shows only outside the sheet */
+.page {
+  max-width: var(--shell);
+  margin-inline: auto;
+  border-inline: 1px solid var(--line-strong);
+  background: var(--panel);
+}
+
+/* sidebar + right rail */
+.sidebar-content a {
+  font-size: 0.9rem;
+}
+.sidebar-content summary,
+.sidebar-content .large,
+.right-sidebar h2 {
+  font-family: var(--font-mono);
+  font-size: var(--micro-size);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 400;
+}
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover {
+  color: var(--accent-ink);
+  background: transparent;
+  border-inline-start-color: var(--warm);
+  font-weight: 400;
+}
+.right-sidebar a[aria-current="true"] {
+  color: var(--accent-ink);
+}
+
+/* search + edit link + pagination read as drafting chrome */
+site-search button[data-open-modal],
+.pagination-links a {
+  font-family: var(--font-mono);
+  border-radius: 0;
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+  box-shadow: none;
+}
+.pagination-links a {
+  color: var(--text);
+}
+.pagination-links a span {
+  color: var(--muted);
+}
+
+/* code blocks: square edges, sheet-coloured chrome */
+.expressive-code .frame,
+.expressive-code pre {
+  border-radius: 0 !important;
+}
+.expressive-code .frame.has-title:not(.is-terminal) .title {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  background: var(--panel-soft);
+  border-radius: 0;
+}

@@ -1,0 +1,27 @@
+---
+// A code frame: repo path in the header, graphite build stripe down the
+// left, and a badge that says the snippet compiles. Highlighting comes
+// from Expressive Code with the site's Graphite themes, so there is no
+// syntax-colouring JavaScript on the page.
+import { Code } from "@astrojs/starlight/components";
+
+interface Props {
+  path: string;
+  code: string;
+  lang?: string;
+  badge?: string;
+  copy?: boolean;
+}
+
+const { path, code, lang = "go", badge = "go test ✓", copy = true } = Astro.props;
+---
+
+<div class="codeframe">
+  <div class="frame-head">
+    <span class="frame-path">{path}</span>
+    <span class="frame-badge"><i class="dot"></i>{badge}</span>
+    {copy && <button class="copy" data-copy>Copy</button>}
+  </div>
+  <Code code={code.trim()} lang={lang} frame="none" />
+  <slot />
+</div>

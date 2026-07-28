@@ -27,3 +27,8 @@ Thumbs.db
 .env
 .env.*
 .envrc
+
+# site
+web/node_modules/
+web/dist/
+web/.astro/

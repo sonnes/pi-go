@@ -1,4 +1,5 @@
-.PHONY: test test-pkg check tidy run build install gen
+.PHONY: test test-pkg check tidy run build install gen \
+	site-install site-dev site-build site-preview site-check
 
 # Regenerate per-provider models.go from the models.dev catalog.
 gen:
@@ -69,3 +70,22 @@ tidy:
 	cd pkg/pi && go mod tidy
 	cd pkg/tool/find && go mod tidy
 	cd pkg/tool/grep && go mod tidy
+
+# ---------------------------------------------------------------------
+# Site (web/): Astro + Starlight. Docs pages are read from ./docs, so a
+# docs change and its site change are the same commit.
+# ---------------------------------------------------------------------
+site-install:
+	cd web && pnpm install
+
+site-dev:
+	cd web && pnpm dev
+
+site-build:
+	cd web && pnpm build
+
+site-preview:
+	cd web && pnpm preview
+
+site-check:
+	cd web && pnpm check

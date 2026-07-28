@@ -1,0 +1,75 @@
+---
+// Overrides Starlight's PageTitle so the repo's frontmatter convention
+// reaches the page: `summary` sets the lede, `read_when` renders the
+// "Read this when" callout that tells a reader whether to stay.
+// Starlight's own PAGE_TITLE_ID; its constants module is not exported,
+// and the value is part of the anchor contract (#_top).
+const PAGE_TITLE_ID = "_top";
+
+const { entry } = Astro.locals.starlightRoute;
+const { title, summary, read_when: readWhen } = entry.data as {
+  title: string;
+  summary?: string;
+  read_when?: string[];
+};
+---
+
+<h1 id={PAGE_TITLE_ID}>{title}</h1>
+
+{summary && <p class="page-lede">{summary}</p>}
+
+{
+  readWhen && readWhen.length > 0 && (
+    <div class="readwhen">
+      <span class="micro">Read this when</span>
+      <ul>
+        {readWhen.map((item) => (
+          <li>{item}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+<style>
+  @layer starlight.core {
+    h1 {
+      margin-top: 1rem;
+      font-family: var(--font-display);
+      font-size: var(--sl-text-h1);
+      line-height: 1.14;
+      letter-spacing: -0.022em;
+      font-weight: 500;
+      color: var(--text);
+    }
+  }
+
+  .page-lede {
+    margin-top: 0.65rem;
+    font-size: 1.12rem;
+    line-height: 1.55;
+    color: var(--copy);
+    max-width: 60ch;
+  }
+
+  .readwhen {
+    margin-top: 1.4rem;
+    border: 1px solid var(--line-strong);
+    border-left: 2px solid var(--warm);
+    background: var(--panel-soft);
+    padding: 0.85rem 1.05rem;
+  }
+  .readwhen .micro {
+    display: block;
+    margin-bottom: 0.4rem;
+    color: var(--warm);
+  }
+  .readwhen ul {
+    margin: 0 0 0 1rem;
+    padding: 0;
+  }
+  .readwhen li {
+    font-size: 0.93rem;
+    color: var(--copy);
+  }
+</style>

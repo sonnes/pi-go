@@ -1,0 +1,255 @@
+/* pi-go — Blueprint system, Graphite palette, light-first.
+   Type: JetBrains Mono (display, code, micro) + Inter (prose).
+
+   Two rules the layout obeys:
+   1. The ruled ground is a drafting table. It is never behind text.
+   2. Every text-bearing region sits on an opaque sheet with an edge. */
+
+:root {
+  color-scheme: light;
+
+  /* ground + sheets */
+  --ground: #f4f4f3;
+  --bg-canvas: #eeefee;
+  --panel: #ffffff;
+  --panel-soft: #f7f7f6;
+
+  --line: #16181a1a;
+  --line-strong: #16181a2e;
+
+  /* ink */
+  --text: #16181a;
+  --copy: #16181ad6;
+  --muted: #5f6669;
+  --muted-soft: #5f6669a8;
+  --muted-strong: #3d4346;
+
+  /* structure: graphite does the drawing */
+  --accent: #33393d;
+  --accent-faint: #33393d0a;
+  --accent-line: #33393d33;
+
+  /* signal: one warm mark, and the only link colour */
+  --warm: #b0492a;
+  --accent-ink: #96401f;
+  --green: #2f6b45;
+  --red: #b03a25;
+
+  /* ruling — texture, not information */
+  --rule-minor: #16181a08;
+  --rule-major: #16181a12;
+
+  /* type */
+  --font-display: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-prose: "Inter", system-ui, -apple-system, sans-serif;
+  --micro-size: 0.66rem;
+
+  /* layout */
+  --shell: 84rem;
+  --shell-pad: 2rem;
+  --split: minmax(0, 1.4fr) minmax(21rem, 34rem);
+  --split-gap: clamp(2rem, 3.5vw, 3.75rem);
+  --sheet-gap: 1.15rem;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ground: #101213;
+  --bg-canvas: #17191b;
+  --panel: #1b1e20;
+  --panel-soft: #212426;
+
+  --line: #ffffff17;
+  --line-strong: #ffffff2e;
+
+  --text: #e6e8e8;
+  --copy: #e6e8e8c4;
+  --muted: #969c9f;
+  --muted-soft: #969c9f96;
+  --muted-strong: #c3c8ca;
+
+  --accent: #c3cacd;
+  --accent-faint: #c3cacd0f;
+  --accent-line: #c3cacd33;
+
+  --warm: #dd8a5e;
+  --accent-ink: #e59b72;
+  --green: #6dbd8a;
+  --red: #e0715a;
+
+  --rule-minor: #ffffff08;
+  --rule-major: #ffffff10;
+}
+
+/* ---------- the drafting table ---------- */
+body {
+  background-color: var(--ground);
+  background-image:
+    linear-gradient(var(--rule-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule-minor) 1px, transparent 1px),
+    linear-gradient(var(--rule-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule-major) 1px, transparent 1px);
+  background-size:
+    16px 16px,
+    16px 16px,
+    96px 96px,
+    96px 96px;
+  color: var(--text);
+  font-family: var(--font-prose);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- shared chrome ---------- */
+.micro {
+  font-family: var(--font-mono);
+  font-size: var(--micro-size);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line-strong);
+}
+.site-nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  height: 3.3rem;
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding-inline: var(--shell-pad);
+}
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  text-decoration: none;
+  margin-right: auto;
+}
+.brand-mark {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  color: var(--text);
+}
+.brand-mark em {
+  font-style: normal;
+  color: var(--warm);
+}
+.brand-suffix {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  padding: 0.1rem 0.3rem;
+}
+.site-nav-links {
+  display: flex;
+  gap: 1.35rem;
+  align-items: center;
+}
+.site-nav-links a {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  text-decoration: none;
+  color: var(--muted);
+  padding: 0.2rem 0;
+  border-bottom: 1px solid transparent;
+}
+.site-nav-links a:hover,
+.site-nav-links a[aria-current] {
+  color: var(--text);
+  border-bottom-color: var(--warm);
+}
+.theme-toggle {
+  display: flex;
+  border: 1px solid var(--line-strong);
+  overflow: hidden;
+}
+.theme-toggle button {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 0.3rem 0.5rem;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.theme-toggle button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--panel);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  text-decoration: none;
+  padding: 0.58rem 1rem;
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
+}
+.btn--primary:hover {
+  background: var(--text);
+  border-color: var(--text);
+}
+
+.site-footer {
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  max-width: var(--shell);
+  margin: 0 auto var(--sheet-gap);
+  padding-block: 1.6rem;
+}
+.site-footer .foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem 2rem;
+  align-items: center;
+  padding-inline: var(--shell-pad);
+}
+.site-footer .foot-links {
+  display: flex;
+  gap: 1.2rem;
+  margin-left: auto;
+}
+.site-footer a {
+  text-decoration: none;
+}
+.site-footer a:hover {
+  color: var(--accent-ink);
+}
+
+@media (max-width: 62rem) {
+  :root {
+    --split: 1fr;
+    --shell-pad: 1.15rem;
+    --sheet-gap: 0.75rem;
+  }
+  .site-nav-links a:nth-child(n + 4) {
+    display: none;
+  }
+}
