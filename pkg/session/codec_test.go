@@ -57,6 +57,24 @@ func TestCodecMessageEntry(t *testing.T) {
 	assert.True(t, me.Meta)
 }
 
+func TestCodecDropsEphemeral(t *testing.T) {
+	msg := ai.UserMessage("reminder")
+	msg.Timestamp = codecTS
+	orig := session.MessageEntry{
+		EntryHeader: session.EntryHeader{ID: "m1", CreatedAt: codecTS},
+		Message:     msg,
+		Ephemeral:   true,
+	}
+
+	// Meta is the durable flavor and survives; ephemeral is defined by
+	// never reaching a store, so an entry read back is never ephemeral.
+	got := roundTrip[codecState](t, orig)
+	me, ok := got.(session.MessageEntry)
+	require.True(t, ok)
+	assert.False(t, me.Ephemeral)
+	assert.Equal(t, "reminder", me.Text())
+}
+
 func TestCodecCompactionEntry(t *testing.T) {
 	orig := session.CompactionEntry{
 		EntryHeader:  session.EntryHeader{ID: "c1", CreatedAt: codecTS},

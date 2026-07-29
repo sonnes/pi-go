@@ -89,12 +89,14 @@ func ModelView(path []Entry) []ai.Message {
 }
 
 // TranscriptView projects a root→leaf path (see [Path]) for display:
-// meta message entries are hidden, everything else — including custom
-// entries the model never sees — is kept.
+// injected context is hidden, everything else — including custom
+// entries the model never sees — is kept. Injected means either flavor
+// of [MessageEntry] the model reads and the reader should not: Meta,
+// which persists, and Ephemeral, which does not.
 func TranscriptView(path []Entry) []Entry {
 	var out []Entry
 	for _, e := range path {
-		if me, ok := e.(MessageEntry); ok && me.Meta {
+		if me, ok := e.(MessageEntry); ok && (me.Meta || me.Ephemeral) {
 			continue
 		}
 		out = append(out, e)

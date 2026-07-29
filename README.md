@@ -126,7 +126,7 @@ da, err := pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
     durable.WithStore(store),
     durable.WithSessionID("user-42"),
 )
-_, _ = da.Run(ctx, ai.UserMessage("My name is Ravi. Remember it.")).Wait()
+_, _ = da.Run(ctx, durable.Text("My name is Ravi. Remember it.")).Wait()
 da.Close()
 
 // Thursday, process B. Same ID — same conversation.
@@ -134,8 +134,10 @@ da, _ = pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
     durable.WithStore(store),
     durable.WithSessionID("user-42"),
 )
-msgs, _ := da.Run(ctx, ai.UserMessage("What's my name?")).Wait()
+msgs, _ := da.Run(ctx, durable.Text("What's my name?")).Wait()
 ```
+
+`Run` takes session entries rather than messages, so a turn can carry more than what the user typed. `durable.Text` builds the ordinary user entry. The same slot also takes injected context — text the model reads but the transcript hides — in two flavors that differ only in whether it survives a restart: set `Meta` on the entry for the durable kind, like a skill body or an expanded command, and pass it through `durable.Ephemeral` for the kind computed fresh each turn, like a reminder built from live state, which the model sees once and the store never holds.
 
 Following Flue's durable-execution model, persistence is per message: run input is persisted before the run starts, and every message the loop produces is persisted when it completes. Run events double as durability receipts — a `message_end` is forwarded only after its entries are in the store, so anything a consumer has seen complete survives a crash. If a crash leaves an assistant tool call without its results, the model view repairs it on resume by synthesizing interrupted tool results.
 

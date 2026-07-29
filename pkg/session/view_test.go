@@ -277,15 +277,20 @@ func TestTranscriptView(t *testing.T) {
 		CustomEntry: session.CustomEntry{EntryHeader: header("e3", "e2", 3), Kind: "note"},
 		Note:        "visible",
 	}
+	ephemeral := msgEntry("e5", "e4", 5, ai.UserMessage("reminder"))
+	ephemeral.Ephemeral = true
 	path := []session.Entry{
 		msgEntry("e1", "", 1, ai.UserMessage("hi")),
 		metaEntry("e2", "e1", 2, ai.UserMessage("attached file")),
 		custom,
 		msgEntry("e4", "e3", 4, ai.AssistantMessage(ai.Text{Text: "hello"})),
+		ephemeral,
 	}
 
 	got := session.TranscriptView(path)
 
+	// Meta and ephemeral entries are both injected context: model-visible,
+	// transcript-hidden. They differ only in whether they persist.
 	require.Len(t, got, 3)
 	assert.Equal(t, "e1", got[0].Header().ID)
 	assert.Equal(t, "e3", got[1].Header().ID)

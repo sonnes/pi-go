@@ -20,7 +20,7 @@ The agent manages an agentic conversation loop: prompt assembly → model infere
 
 **Model is required; everything else is an option.** `New` takes the model as its first positional argument and the rest — tools, hooks, system prompt — as functional options. Making the model required moves missing-model errors to compile time and matches `ai.GenerateText`, which also takes the model positionally. The uniform constructor shape is captured by `CreateFunc` (`func(model ai.Model, opts ...Option) Agent`), which every implementation satisfies.
 
-**Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, `WithHook` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...Message` — both `LLMMessage` and custom messages. See [Agent Messages](/concepts/agent/messages).
+**Functional options over config struct.** Options like `WithTools`, `WithHistory`, `WithSystemPrompt`, `WithStreamOpts`, `WithMaxTurns`, `WithHook` allow adding new parameters without breaking callers. Options are additive — pass as many as needed. `WithHistory` accepts `...ai.Message` and copies what it is given. See [Agent History](/concepts/agent/messages).
 
 **Extension mechanism for sub-packages.** `WithExtension(key, value)` and `WithExtensionMutator(key, mutate)` let sub-packages (e.g. `pkg/agent/claude`) carry their own configuration through the unified `Option` stream. Each sub-package writes to `Config.Extensions[key]` using the package name as the key, and its create func reads the same slot. This is how a single call like `f(ai.Model{Name: "sonnet"}, claude.WithCLIPath("/x"))` composes the model, agent-level options, and sub-package options without collisions.
 
@@ -61,7 +61,9 @@ Design:
 
 ## Agent interface
 
-`Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. It is three methods: `Run(ctx, msgs...) *Stream` executes the loop, `Messages()` observes the history, and `Close() error` releases backend resources (a no-op for in-process agents). Small on purpose — a decorator like `pkg/durable` wraps three methods, not ten, and a new backend implements only the run itself. `Default` is the standard implementation.
+`Agent` is the interface for an agentic conversation loop, abstracting the loop for alternative implementations, testing, or decoration. It is three methods: `Run(ctx, msgs...) *Stream` executes the loop, `Messages()` observes the history, and `Close() error` releases backend resources (a no-op for in-process agents). Small on purpose — a wrapper like `pkg/durable` covers three methods, not ten, and a new backend implements only the run itself. `Default` is the standard implementation.
+
+`pkg/durable` mirrors the shape but not the signature: its `Run` takes `session.Entry` values, not `ai.Message` values, so it does not satisfy this interface (its `Stream` carries durable events besides). The entry is durable's currency everywhere else — `Append`, `Entries`, `Transcript`, persistence receipts — and taking it at the input boundary too is what lets one turn carry four different kinds of input: the ordinary user entry, injected context the model reads and the transcript hides, a custom entry the model never sees, and an ephemeral entry that reaches the model without ever being written to the store.
 
 ## Agent registry
 
@@ -102,6 +104,6 @@ The context passed to `Run` owns the run. Cancelling it aborts the current LLM s
 
 ## Related
 
-- [Agent Messages](/concepts/agent/messages) — extensible message type with custom message support
+- [Agent History](/concepts/agent/messages) — how the loop holds history, and where hooks can change it
 - [Agent State](/concepts/agent/agent-state) — runtime state observability
 - [Streaming](/concepts/agent/streaming) — event stream and consumption patterns

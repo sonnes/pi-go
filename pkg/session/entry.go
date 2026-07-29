@@ -38,16 +38,27 @@ type Entry interface {
 
 // MessageEntry wraps an [ai.Message] as a tree node.
 //
-// Meta marks entries that are sent to the model but hidden from
-// transcript views — attachments, injected context, reminders. It is
-// the mirror image of [CustomEntry], which is visible to the
-// application but never sent to the model.
+// Meta and Ephemeral both mark injected context — attachments,
+// reminders, skill bodies: sent to the model, hidden from transcript
+// views. They are the mirror image of [CustomEntry], which is visible
+// to the application but never sent to the model. The two differ in one
+// thing, durability: a meta entry is written to the [Store] and comes
+// back on resume, an ephemeral one never leaves memory.
 type MessageEntry struct {
 	EntryHeader
 	ai.Message
 
-	// Meta marks the entry model-visible but transcript-hidden.
+	// Meta marks persisted injected context: model-visible,
+	// transcript-hidden, and durable.
 	Meta bool
+
+	// Ephemeral marks injected context that must not reach a [Store].
+	// A durable agent keeps it in its in-memory log and shows it to the
+	// model for one run, but never writes it, so it is gone on resume —
+	// context that is only true right now, like a reminder computed
+	// from live state. It is never serialized, so an entry read back
+	// from a [Store] is by definition not ephemeral.
+	Ephemeral bool
 }
 
 // NewMessageEntry wraps an [ai.Message] into a [MessageEntry].

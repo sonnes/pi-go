@@ -191,15 +191,32 @@ func New[T any](
 	return a, nil
 }
 
-// Run persists msgs as entries at the leaf, then executes the inner
-// loop, persisting each message it produces before forwarding its
-// message_end. Zero msgs continues from the current leaf.
+// Run persists entries at the leaf, then executes the inner loop,
+// persisting each message it produces before forwarding its
+// message_end. Zero entries continues from the current leaf.
+//
+// Input is entries, not messages, so the caller controls what the model
+// and the transcript each see. [Text], [Image], and [File] build the
+// ordinary user entry. Injected context — the model reads it, the
+// transcript hides it — comes in two flavors that differ only in
+// durability: Meta persists, and [Ephemeral] never leaves memory. A
+// custom entry is the opposite of both, persisted but never sent to the
+// model. Tree fields are assigned on append.
+//
+// Entries reach the model in the order given, and every kind but
+// ephemeral is written as given. State changes belong in
+// [Agent.SetState] and compaction in [Agent.Compact] — those maintain
+// in-memory state and publish their session events, which Run does not.
+//
+// The persistence receipts on the boundary events carry only durable
+// entries, so an ephemeral one is absent from them; read it back from
+// [Agent.Entries] instead.
 //
 // The stream is turn-scoped: inner agent events lifted under
 // [EventAgent], with persistence receipts on the boundary events.
 // Session events go to the [WithPublisher] publisher. A persist
 // failure fails the run loudly.
-func (a *Agent[T]) Run(ctx context.Context, msgs ...ai.Message) *Stream {
+func (a *Agent[T]) Run(ctx context.Context, entries ...session.Entry) *Stream {
 	return stream.New(func(push func(Event)) ([]ai.Message, error) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -221,13 +238,17 @@ func (a *Agent[T]) Run(ctx context.Context, msgs ...ai.Message) *Stream {
 			a.mu.Unlock()
 		}()
 
-		// Persist input before the run starts.
+		// The history before this turn's input; the input messages are
+		// appended below in the order the caller wrote them, which is
+		// what keeps an ephemeral entry in position.
+		a.mu.Lock()
+		history := session.ModelView(session.PathFrom(a.index, a.leafID))
+		a.mu.Unlock()
+
+		// Persist input before the run starts. Ephemeral entries drop
+		// out here; they reach the model through history only.
 		var inputEntries []session.Entry
-		if len(msgs) > 0 {
-			entries := make([]session.Entry, len(msgs))
-			for i, m := range msgs {
-				entries[i] = session.NewMessageEntry(m)
-			}
+		if len(entries) > 0 {
 			var err error
 			inputEntries, err = a.persist(ctx, entries...)
 			if err != nil {
@@ -235,9 +256,7 @@ func (a *Agent[T]) Run(ctx context.Context, msgs ...ai.Message) *Stream {
 			}
 		}
 
-		a.mu.Lock()
-		history := a.modelViewLocked()
-		a.mu.Unlock()
+		history = repairToolCalls(append(history, inputMessages(entries)...))
 
 		inner := a.newInner(agent.WithHistory(history...))
 		defer inner.Close()
@@ -334,9 +353,11 @@ func (a *Agent[T]) LeafID() string {
 	return a.leafID
 }
 
-// Entries returns the full persisted log in append order, including
-// meta and custom entries. Use [session.Tree] to derive the tree, or
-// [Agent.Transcript] for the display view of the active path.
+// Entries returns this instance's full log in append order, including
+// meta and custom entries, and the [Ephemeral] ones that were never
+// written to the store — so it can be wider than what a resume would
+// load. Use [session.Tree] to derive the tree, or [Agent.Transcript]
+// for the display view of the active path.
 func (a *Agent[T]) Entries(ctx context.Context) ([]session.Entry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -355,7 +376,8 @@ func (a *Agent[T]) Transcript(ctx context.Context) ([]session.Entry, error) {
 }
 
 // Append persists custom entries at the leaf without running the
-// loop. Custom entries are not sent to the model.
+// loop. Custom entries are not sent to the model. Entries marked
+// [Ephemeral] are recorded in memory but not written to the store.
 func (a *Agent[T]) Append(ctx context.Context, entries ...session.Entry) error {
 	_, err := a.persist(ctx, entries...)
 	return err
@@ -555,8 +577,33 @@ func (a *Agent[T]) Compact(ctx context.Context, opts ...CompactOption) error {
 
 // --- internals ---
 
+// inputMessages projects run input for the model: the message entries
+// in the order given, ephemeral ones included. Custom and state entries
+// carry no message and are skipped, matching [session.ModelView].
+func inputMessages(entries []session.Entry) []ai.Message {
+	var msgs []ai.Message
+	for _, e := range entries {
+		if me, ok := session.AsMessageEntry(e); ok {
+			msgs = append(msgs, me.Message)
+		}
+	}
+	return msgs
+}
+
 // persist assigns tree headers to entries, chains them at the leaf,
-// appends them to the store, and advances the leaf.
+// appends them to the store, and advances the leaf. It returns the
+// entries that reached the store, which is what makes the returned
+// slice a durability receipt.
+//
+// Entries marked [session.MessageEntry.Ephemeral] are recorded in the
+// in-memory log but never handed to the store, and this is the one
+// place that decides it — whichever verb they arrived through. They
+// hang off the current leaf without advancing it, which keeps them off
+// the durable chain: a stored entry must never name a parent the store
+// does not have, or the walk in [session.PathFrom] would stop there on
+// resume and drop everything above it. Being off the chain also keeps
+// them out of the active path, so the transcript, the model view, and
+// [Agent.Fork] skip them for free.
 func (a *Agent[T]) persist(ctx context.Context, entries ...session.Entry) ([]session.Entry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -564,34 +611,44 @@ func (a *Agent[T]) persist(ctx context.Context, entries ...session.Entry) ([]ses
 }
 
 func (a *Agent[T]) persistLocked(ctx context.Context, entries ...session.Entry) ([]session.Entry, error) {
-	if len(entries) == 0 {
-		return nil, nil
-	}
-
 	now := time.Now()
 	parent := a.leafID
-	out := make([]session.Entry, len(entries))
-	for i, e := range entries {
+	recorded := make([]session.Entry, 0, len(entries))
+	durables := make([]session.Entry, 0, len(entries))
+	for _, e := range entries {
 		h := session.EntryHeader{
 			ID:        newEntryID(),
 			ParentID:  parent,
 			CreatedAt: now,
 		}
-		out[i] = withHeader(e, h)
+		withID := withHeader(e, h)
+		recorded = append(recorded, withID)
+
+		me, isMessage := session.AsMessageEntry(withID)
+		if isMessage && me.Ephemeral {
+			continue
+		}
+		durables = append(durables, withID)
 		parent = h.ID
 	}
 
-	if err := a.store.AppendEntries(ctx, a.sess.ID, out...); err != nil {
-		return nil, err
+	if len(recorded) == 0 {
+		return nil, nil
 	}
 
-	a.entries = append(a.entries, out...)
-	for _, e := range out {
+	if len(durables) > 0 {
+		if err := a.store.AppendEntries(ctx, a.sess.ID, durables...); err != nil {
+			return nil, err
+		}
+	}
+
+	a.entries = append(a.entries, recorded...)
+	for _, e := range durables {
 		a.index[e.Header().ID] = e
 	}
 	a.leafID = parent
 	a.sess.UpdatedAt = now
-	return out, nil
+	return durables, nil
 }
 
 // modelViewLocked projects the active path for the model, repairing

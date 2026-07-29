@@ -15,10 +15,20 @@
 //
 // Persistence is per message: run input is persisted before the run
 // starts, and every message the loop produces is persisted when it
-// completes. Run events ride the run's [Stream] and double as
-// durability receipts — a lifted agent_start or message_end is
-// forwarded only after its entries are in the store, so anything a
-// consumer has seen complete survives a crash.
+// completes. Input is [session.Entry] values rather than messages, so
+// the caller decides at the input boundary what the model and the
+// transcript each see — an ordinary user entry from [Text], a custom
+// entry that persists without reaching the model, or injected context
+// the model reads and the transcript hides. Injected context comes in a
+// durable flavor and a non-durable one: a meta entry is written and
+// returns on resume, an [Ephemeral] one is shown to the model for a
+// single run and never written at all.
+//
+// Run events ride the run's [Stream] and double as durability receipts
+// — a lifted agent_start or message_end is forwarded only after its
+// entries are in the store, so anything a consumer has seen complete
+// survives a crash. Ephemeral entries are the one thing receipts never
+// carry: there is nothing durable to attest to.
 //
 // Session events (session_init, session_updated, session_branched,
 // session_forked, session_compacted) are delivered to the [Publisher]
@@ -30,6 +40,8 @@
 // model view repairs it on resume by synthesizing interrupted tool
 // results (see [Agent.Messages]).
 //
-// See docs/plans/durable-agents.md for the implementation plan and
-// docs/launch/durable-agents.html for the design overview.
+// See docs/concepts/durable/ for the design rationale: entries.md on the
+// input kinds and the views that read them, sessions.md on identity,
+// state, and the store contract, and tree.md on branching, forking, and
+// compaction.
 package durable

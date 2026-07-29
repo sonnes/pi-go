@@ -228,7 +228,7 @@ func (d *Demo) run(ctx context.Context, text string) error {
 		text = "What's the weather in Paris?"
 	}
 
-	stream := d.agent.Run(ctx, ai.UserMessage(text))
+	stream := d.agent.Run(ctx, durable.Text(text))
 
 	// A durable run lifts the inner agent's events, and forwards each
 	// only once the entries it asserts are in the store — so anything

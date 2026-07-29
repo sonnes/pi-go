@@ -77,7 +77,7 @@ func Example() {
 	}
 	defer da.Close()
 
-	msgs, err := da.Run(ctx, ai.UserMessage("Where is order order_1234?")).Wait()
+	msgs, err := da.Run(ctx, durable.Text("Where is order order_1234?")).Wait()
 	if err != nil {
 		panic(err)
 	}
@@ -92,14 +92,14 @@ func ExampleNew() {
 
 	// Monday, process A.
 	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
-	_, _ = da.Run(ctx, ai.UserMessage("My name is Ravi. Remember it.")).Wait()
+	_, _ = da.Run(ctx, durable.Text("My name is Ravi. Remember it.")).Wait()
 	da.Close()
 
 	// Thursday, process B. Same ID — same conversation.
 	da, _ = durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
 	defer da.Close()
 
-	msgs, _ := da.Run(ctx, ai.UserMessage("What's my name?")).Wait()
+	msgs, _ := da.Run(ctx, durable.Text("What's my name?")).Wait()
 	fmt.Println(msgs[len(msgs)-1].Text())
 }
 
@@ -147,13 +147,13 @@ func ExampleAgent_Branch() {
 
 	// A checkpoint is just a remembered leaf.
 	checkpoint := da.LeafID()
-	_, _ = da.Run(ctx, ai.UserMessage("Reship the order.")).Wait()
+	_, _ = da.Run(ctx, durable.Text("Reship the order.")).Wait()
 
 	// Rewind and take the other approach.
 	if err := da.Branch(ctx, checkpoint); err != nil {
 		panic(err)
 	}
-	_, _ = da.Run(ctx, ai.UserMessage("Refund instead of reshipping.")).Wait()
+	_, _ = da.Run(ctx, durable.Text("Refund instead of reshipping.")).Wait()
 
 	// Both branches are still in the tree.
 	entries, _ := da.Entries(ctx)
@@ -177,7 +177,7 @@ func ExampleAgent_Fork() {
 	}
 	defer alt.Close()
 
-	_, _ = alt.Run(ctx, ai.UserMessage("What if we refund instead of reshipping?")).Wait()
+	_, _ = alt.Run(ctx, durable.Text("What if we refund instead of reshipping?")).Wait()
 	fmt.Println(alt.Session().ParentID)
 }
 
@@ -210,7 +210,7 @@ func ExampleAgent_Run() {
 	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("chat-1"))
 	defer da.Close()
 
-	s := da.Run(ctx, ai.UserMessage("Tell me a joke."))
+	s := da.Run(ctx, durable.Text("Tell me a joke."))
 	for e, err := range s.Events() {
 		if err != nil {
 			panic(err)

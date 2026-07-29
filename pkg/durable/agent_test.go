@@ -196,10 +196,19 @@ func openWithPublisher(
 	return da, pub
 }
 
+// mustMessage extracts the message entry from e, failing the test if it
+// is not one.
+func mustMessage(t *testing.T, e session.Entry) session.MessageEntry {
+	t.Helper()
+	me, ok := session.AsMessageEntry(e)
+	require.True(t, ok)
+	return me
+}
+
 // run drives one turn to completion, failing the test on error.
 func run(t *testing.T, da *durable.Agent[testState], text string) {
 	t.Helper()
-	_, err := da.Run(t.Context(), ai.UserMessage(text)).Wait()
+	_, err := da.Run(t.Context(), durable.Text(text)).Wait()
 	require.NoError(t, err)
 }
 
@@ -210,7 +219,7 @@ func TestRun_EventsAndPersistence(t *testing.T) {
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("hello")}}
 	da := openTestAgent(t, store, "s1", prov)
 
-	events, msgs, err := collect(t, da.Run(t.Context(), ai.UserMessage("hi")))
+	events, msgs, err := collect(t, da.Run(t.Context(), durable.Text("hi")))
 	require.NoError(t, err)
 
 	// Wait returns the run's new messages.
@@ -275,7 +284,7 @@ func TestRun_ToolLoopPersistsEveryMessage(t *testing.T) {
 	}}
 	da := openTestAgent(t, store, "s1", prov, agent.WithTools(echo))
 
-	events, _, err := collect(t, da.Run(t.Context(), ai.UserMessage("go")))
+	events, _, err := collect(t, da.Run(t.Context(), durable.Text("go")))
 	require.NoError(t, err)
 
 	// Three message_end receipts: assistant(tool_use), tool result,
@@ -312,13 +321,248 @@ func TestRun_ProviderErrorKeepsInputOnly(t *testing.T) {
 	prov := &mockProvider{responses: []*ai.EventStream{errorStream(assert.AnError)}}
 	da := openTestAgent(t, store, "s1", prov)
 
-	_, _, err := collect(t, da.Run(t.Context(), ai.UserMessage("hi")))
+	_, _, err := collect(t, da.Run(t.Context(), durable.Text("hi")))
 	assert.ErrorIs(t, err, assert.AnError)
 
 	// Input persisted before the run; nothing else landed.
 	_, entries, lerr := store.LoadSession(t.Context(), "s1")
 	require.NoError(t, lerr)
 	require.Len(t, entries, 1)
+}
+
+func TestRun_MetaInputReachesModelNotTranscript(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	reminder := durable.Text("<system-reminder>be terse</system-reminder>")
+	reminder.Meta = true
+
+	events, _, err := collect(t, da.Run(t.Context(), reminder, durable.Text("hi")))
+	require.NoError(t, err)
+
+	// Both input entries ride the agent_start receipt.
+	starts := liftedOf(events, agent.EventAgentStart)
+	require.Len(t, starts, 1)
+	assert.Len(t, starts[0].Entries, 2)
+
+	// Reminder, user message, assistant reply.
+	entries, err := da.Entries(t.Context())
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+
+	// The model sees the reminder ahead of the user message.
+	prompt := prov.prompt(0)
+	require.Len(t, prompt.Messages, 2)
+	assert.Contains(t, prompt.Messages[0].Text(), "be terse")
+	assert.Equal(t, "hi", prompt.Messages[1].Text())
+
+	// The transcript hides it.
+	transcript, err := da.Transcript(t.Context())
+	require.NoError(t, err)
+	require.Len(t, transcript, 2)
+	first, ok := session.AsMessageEntry(transcript[0])
+	require.True(t, ok)
+	assert.Equal(t, "hi", first.Message.Text())
+}
+
+func TestRun_CustomInputPersistsUnseenByModel(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	artifact := artifactEntry{
+		CustomEntry: session.CustomEntry{Kind: "artifact"},
+		Title:       "draft",
+	}
+
+	events, _, err := collect(t, da.Run(t.Context(), artifact, durable.Text("review it")))
+	require.NoError(t, err)
+
+	starts := liftedOf(events, agent.EventAgentStart)
+	require.Len(t, starts, 1)
+	assert.Len(t, starts[0].Entries, 2)
+
+	// The custom entry persisted with tree fields assigned.
+	entries, err := da.Entries(t.Context())
+	require.NoError(t, err)
+	arts := session.Filter[artifactEntry](entries)
+	require.Len(t, arts, 1)
+	assert.Equal(t, "draft", arts[0].Title)
+	assert.NotEmpty(t, arts[0].Header().ID)
+
+	// The model saw only the user message.
+	prompt := prov.prompt(0)
+	require.Len(t, prompt.Messages, 1)
+	assert.Equal(t, "review it", prompt.Messages[0].Text())
+
+	// The transcript shows the artifact.
+	transcript, err := da.Transcript(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, transcript, 3)
+}
+
+func TestAppend_KeepsEphemeralOutOfTheStore(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	// An ephemeral entry is recorded in memory, gets an ID, and leaves
+	// the leaf where it was — it is not on the durable chain.
+	require.NoError(t, da.Append(t.Context(), durable.Ephemeral(durable.Text("nudge"))))
+
+	entries, err := da.Entries(t.Context())
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.True(t, mustMessage(t, entries[0]).Ephemeral)
+	assert.NotEmpty(t, entries[0].Header().ID)
+	assert.Empty(t, da.LeafID())
+
+	_, stored, err := store.LoadSession(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.Empty(t, stored)
+
+	// Mixed with durable entries, the durable chain closes over the gap
+	// so no stored entry points at a parent the store never received.
+	err = da.Append(
+		t.Context(),
+		durable.Text("first"),
+		durable.Ephemeral(durable.Text("skipped")),
+		durable.Text("second"),
+	)
+	require.NoError(t, err)
+
+	entries, err = da.Entries(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, entries, 4)
+
+	_, stored, err = store.LoadSession(t.Context(), "s1")
+	require.NoError(t, err)
+	require.Len(t, stored, 2)
+	first, ok := session.AsMessageEntry(stored[0])
+	require.True(t, ok)
+	assert.Equal(t, "first", first.Message.Text())
+	second, ok := session.AsMessageEntry(stored[1])
+	require.True(t, ok)
+	assert.Equal(t, "second", second.Message.Text())
+	assert.Equal(t, first.Header().ID, second.Header().ParentID)
+	assert.Equal(t, second.Header().ID, da.LeafID())
+}
+
+func TestBranch_RejectsEphemeralEntry(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	run(t, da, "hi")
+	require.NoError(t, da.Append(t.Context(), durable.Ephemeral(durable.Text("nudge"))))
+
+	entries, err := da.Entries(t.Context())
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	ephemeral := entries[2]
+	require.True(t, mustMessage(t, ephemeral).Ephemeral)
+
+	// Branching onto it would chain later durable entries to a parent
+	// the store never received.
+	leaf := da.LeafID()
+	err = da.Branch(t.Context(), ephemeral.Header().ID)
+	require.Error(t, err)
+	assert.Equal(t, leaf, da.LeafID())
+}
+
+func TestRun_EphemeralInputReachesModelUnpersisted(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	prov := &mockProvider{responses: []*ai.EventStream{
+		textStream("ok"),
+		textStream("ok again"),
+	}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	reminder := durable.Ephemeral(durable.Text("<system-reminder>be terse</system-reminder>"))
+
+	events, _, err := collect(t, da.Run(t.Context(), reminder, durable.Text("hi")))
+	require.NoError(t, err)
+
+	// The model sees the reminder in written order, ahead of the input.
+	prompt := prov.prompt(0)
+	require.Len(t, prompt.Messages, 2)
+	assert.Contains(t, prompt.Messages[0].Text(), "be terse")
+	assert.Equal(t, "hi", prompt.Messages[1].Text())
+
+	// The receipt covers what is durable, so the reminder is not on it.
+	starts := liftedOf(events, agent.EventAgentStart)
+	require.Len(t, starts, 1)
+	assert.Len(t, starts[0].Entries, 1)
+
+	// The in-memory log keeps the reminder; the store does not.
+	entries, err := da.Entries(t.Context())
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	assert.True(t, mustMessage(t, entries[0]).Ephemeral)
+
+	_, stored, err := store.LoadSession(t.Context(), "s1")
+	require.NoError(t, err)
+	require.Len(t, stored, 2)
+	user, ok := session.AsMessageEntry(stored[0])
+	require.True(t, ok)
+	assert.Equal(t, "hi", user.Message.Text())
+	assert.Empty(t, user.Header().ParentID)
+
+	// It is off the active path, so transcript and model views skip it.
+	transcript, err := da.Transcript(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, transcript, 2)
+
+	// A later run does not replay it.
+	_, _, err = collect(t, da.Run(t.Context(), durable.Text("again")))
+	require.NoError(t, err)
+	next := prov.prompt(1)
+	require.Len(t, next.Messages, 3)
+	assert.Equal(t, "hi", next.Messages[0].Text())
+	assert.Equal(t, "ok", next.Messages[1].Text())
+	assert.Equal(t, "again", next.Messages[2].Text())
+
+	// Reopening from the store sees a clean, contiguous history.
+	reopened := openTestAgent(t, store, "s1", prov)
+	msgs := reopened.Messages()
+	require.Len(t, msgs, 4)
+	assert.Equal(t, "hi", msgs[0].Text())
+}
+
+func TestRun_EphemeralOnlyInputRunsWithoutPersisting(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	prov := &mockProvider{responses: []*ai.EventStream{
+		textStream("ok"),
+		textStream("nudged"),
+	}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	run(t, da, "hi")
+	leaf := da.LeafID()
+
+	_, _, err := collect(t, da.Run(t.Context(), durable.Ephemeral(durable.Text("nudge"))))
+	require.NoError(t, err)
+
+	// The nudge reached the model on top of the persisted history.
+	prompt := prov.prompt(1)
+	require.Len(t, prompt.Messages, 3)
+	assert.Equal(t, "nudge", prompt.Messages[2].Text())
+
+	// The log holds the nudge; the reply chains past it to the old leaf.
+	entries, err := da.Entries(t.Context())
+	require.NoError(t, err)
+	require.Len(t, entries, 4)
+	assert.True(t, mustMessage(t, entries[2]).Ephemeral)
+	assert.Equal(t, leaf, entries[2].Header().ParentID)
+	reply, ok := session.AsMessageEntry(entries[3])
+	require.True(t, ok)
+	assert.Equal(t, "nudged", reply.Message.Text())
+	assert.Equal(t, leaf, reply.Header().ParentID)
+
+	_, stored, err := store.LoadSession(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.Len(t, stored, 3)
 }
 
 func TestNew_ResumeHydratesHistory(t *testing.T) {
@@ -346,7 +590,7 @@ func TestNew_ResumeHydratesHistory(t *testing.T) {
 	assert.Equal(t, "u42", inits[0].SessionID)
 	assert.Equal(t, leafBefore, inits[0].LeafID)
 
-	events, _, err := collect(t, da.Run(t.Context(), ai.UserMessage("What's my name?")))
+	events, _, err := collect(t, da.Run(t.Context(), durable.Text("What's my name?")))
 	require.NoError(t, err)
 
 	// The run stream carries no session events.
@@ -458,7 +702,7 @@ func TestMessages_RepairsDanglingToolCalls(t *testing.T) {
 	assert.True(t, msgs[2].IsError)
 
 	// The next run's provider call sees the repaired history.
-	_, _, err := collect(t, da.Run(t.Context(), ai.UserMessage("continue")))
+	_, _, err := collect(t, da.Run(t.Context(), durable.Text("continue")))
 	require.NoError(t, err)
 	p := prov.prompt(0)
 	require.Len(t, p.Messages, 4)
@@ -495,7 +739,7 @@ func TestSetState(t *testing.T) {
 	assert.Equal(t, durable.EventSessionInit, published[0].Type)
 
 	// The run stream carries no session events.
-	events, _, err := collect(t, da.Run(t.Context(), ai.UserMessage("hi")))
+	events, _, err := collect(t, da.Run(t.Context(), durable.Text("hi")))
 	require.NoError(t, err)
 	assert.Empty(t, ofType(events, durable.EventSessionUpdated))
 }
@@ -523,7 +767,7 @@ func TestBranch(t *testing.T) {
 	assert.Equal(t, checkpoint, branched[0].LeafID)
 	assert.Equal(t, fromLeaf, branched[0].FromID)
 
-	_, _, err := collect(t, da.Run(t.Context(), ai.UserMessage("third question")))
+	_, _, err := collect(t, da.Run(t.Context(), durable.Text("third question")))
 	require.NoError(t, err)
 
 	// Model view: first exchange + third exchange; second is abandoned.
@@ -601,7 +845,7 @@ func TestFork(t *testing.T) {
 	assert.Len(t, ofType(pub.all(), durable.EventSessionForked), 1)
 
 	// The source's run stream carries no session events.
-	events, _, err := collect(t, da.Run(t.Context(), ai.UserMessage("back to src")))
+	events, _, err := collect(t, da.Run(t.Context(), durable.Text("back to src")))
 	require.NoError(t, err)
 	assert.Empty(t, ofType(events, durable.EventSessionForked))
 }

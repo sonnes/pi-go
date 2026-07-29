@@ -25,6 +25,10 @@ export const sidebar = [
     items: slugsIn("concepts/agent"),
   },
   {
+    label: "Concepts · durable",
+    items: slugsIn("concepts/durable"),
+  },
+  {
     label: "Concepts · auth",
     items: slugsIn("concepts/auth"),
   },
