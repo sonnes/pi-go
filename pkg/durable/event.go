@@ -97,3 +97,14 @@ type Event struct {
 // a consumed run is a persisted run. Errors surface on the Events
 // iterator and from Wait, never as events.
 type Stream = stream.Stream[Event, []ai.Message]
+
+// Fail returns a [Stream] that produces no events and fails with err:
+// Wait returns (nil, err) and the events iterator yields the error.
+//
+// It is how something standing in for a run refuses one — middleware
+// wrapping [Agent.Run] that denies the run entirely returns Fail
+// instead of calling through, and the caller sees an ordinary failed
+// stream.
+func Fail(err error) *Stream {
+	return stream.Err[Event, []ai.Message](err)
+}

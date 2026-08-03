@@ -16,24 +16,30 @@ import (
 	"github.com/sonnes/pi-go/pkg/stream"
 )
 
-// extKey is the [agent.Config] extension slot durability reads its
+// slot is the [agent.Config] extension slot durability reads its
 // options from. Durable's With* options are [agent.Option]s that layer
 // onto a single ext value, so a durable agent is configured with the
 // same option currency as [agent.New].
-const extKey = "durable"
+//
+// The slot holds an ext by value, so an option list that never
+// mentioned durability reads back as the zero ext rather than as
+// nothing at all.
+var slot = agent.Slot[ext]{Key: "durable"}
 
 // ext accumulates durability configuration from the durable options.
 type ext struct {
-	store     any // the session.Store[T], asserted in New
-	sessionID string
-	publisher Publisher
+	store      any // the session.Store[T], asserted in New
+	sessionID  string
+	publisher  Publisher
+	middleware []Middleware
 }
 
-func extFrom(v any) *ext {
-	if e, ok := v.(*ext); ok {
+// mutate returns an option that layers f onto the slot's ext.
+func mutate(f func(*ext)) agent.Option {
+	return slot.Mutate(func(e ext) ext {
+		f(&e)
 		return e
-	}
-	return &ext{}
+	})
 }
 
 // Agent is a persistent agent instance: an inner [agent.Agent] loop
@@ -52,6 +58,11 @@ type Agent[T any] struct {
 	lm        ai.LanguageModel
 	baseOpts  []agent.Option
 	publisher Publisher
+
+	// run is this instance's middleware chain around runBase, built
+	// once at construction. Never nil: an agent with no middleware
+	// registered gets runBase itself.
+	run Runner
 
 	mu      sync.Mutex
 	sess    *session.Session[T]
@@ -75,31 +86,19 @@ func (a *Agent[T]) newInner(extra ...agent.Option) agent.Agent {
 // in-memory store — fine for tests and ephemeral agents; pass a
 // persistent store to survive restarts.
 func WithStore[T any](s session.Store[T]) agent.Option {
-	return agent.WithExtensionMutator(extKey, func(v any) any {
-		e := extFrom(v)
-		e.store = s
-		return e
-	})
+	return mutate(func(e *ext) { e.store = s })
 }
 
 // WithSessionID sets the session ID to create or resume. Without it,
 // [New] generates one, readable via [Agent.Session].
 func WithSessionID(id string) agent.Option {
-	return agent.WithExtensionMutator(extKey, func(v any) any {
-		e := extFrom(v)
-		e.sessionID = id
-		return e
-	})
+	return mutate(func(e *ext) { e.sessionID = id })
 }
 
 // WithPublisher sets the [Publisher] that receives the session's
 // events. A forked agent inherits it.
 func WithPublisher(p Publisher) agent.Option {
-	return agent.WithExtensionMutator(extKey, func(v any) any {
-		e := extFrom(v)
-		e.publisher = p
-		return e
-	})
+	return mutate(func(e *ext) { e.publisher = p })
 }
 
 // publish delivers a session event to the publisher, if any. Callers
@@ -129,7 +128,7 @@ func New[T any](
 	lm ai.LanguageModel,
 	opts ...agent.Option,
 ) (*Agent[T], error) {
-	dcfg := extFrom(agent.ApplyOptions(opts...).Extensions[extKey])
+	dcfg := slot.From(agent.ApplyOptions(opts...))
 
 	var store session.Store[T]
 	switch s := dcfg.store.(type) {
@@ -183,6 +182,8 @@ func New[T any](
 		index:     index,
 		leafID:    leaf,
 	}
+	a.run = chain(dcfg.middleware, a.runBase)
+
 	a.publish(Event{
 		Type:      EventSessionInit,
 		SessionID: sessionID,
@@ -216,7 +217,19 @@ func New[T any](
 // [EventAgent], with persistence receipts on the boundary events.
 // Session events go to the [WithPublisher] publisher. A persist
 // failure fails the run loudly.
+//
+// Any [Middleware] registered with [WithMiddleware] wraps this call.
+// The chain runs synchronously, on the caller's goroutine, before the
+// producer starts — so a middleware that adds entries has done so by
+// the time the stream exists, and one that refuses the run returns
+// [Fail] without a producer ever starting.
 func (a *Agent[T]) Run(ctx context.Context, entries ...session.Entry) *Stream {
+	return a.run(ctx, entries...)
+}
+
+// runBase is the durable run itself — the innermost [Runner], with the
+// middleware chain wrapped around it by [New] and [Agent.Fork].
+func (a *Agent[T]) runBase(ctx context.Context, entries ...session.Entry) *Stream {
 	return stream.New(func(push func(Event)) ([]ai.Message, error) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -468,6 +481,11 @@ func (a *Agent[T]) Fork(ctx context.Context, newID string) (*Agent[T], error) {
 		index:     index,
 		leafID:    parent,
 	}
+	// The child re-instantiates the chain rather than sharing this
+	// agent's: each Middleware func is invoked again, so the closures
+	// holding per-run state are the child's own. Sharing them would let
+	// one session's state decide another session's runs.
+	child.run = chain(middlewareFrom(a.baseOpts), child.runBase)
 
 	a.publish(Event{
 		Type:      EventSessionForked,

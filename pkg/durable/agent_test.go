@@ -2,6 +2,7 @@ package durable_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -997,4 +998,21 @@ func TestNew_ResumeFromFileStore(t *testing.T) {
 	require.Len(t, p.Messages, 3)
 	assert.Equal(t, "I'm Ravi.", p.Messages[0].Text())
 	assert.Equal(t, "hello Ravi", p.Messages[1].Text())
+}
+
+func TestFail(t *testing.T) {
+	boom := errors.New("permission denied")
+
+	s := durable.Fail(boom)
+	msgs, err := s.Wait()
+	assert.Nil(t, msgs)
+	assert.ErrorIs(t, err, boom)
+
+	// The error also surfaces on the events iterator, like any failed run.
+	s = durable.Fail(boom)
+	var got error
+	for _, err := range s.Events() {
+		got = err
+	}
+	assert.ErrorIs(t, got, boom)
 }

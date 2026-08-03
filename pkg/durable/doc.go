@@ -40,6 +40,29 @@
 // model view repairs it on resume by synthesizing interrupted tool
 // results (see [Agent.Messages]).
 //
+// # Middleware
+//
+// [Middleware] wraps a whole run — the http.Handler idiom, one level
+// down. It sees the entries going in, the [Stream] coming out, or it
+// refuses the run outright by returning [Fail] instead of calling
+// through. [WithMiddleware] registers it, first registered outermost.
+//
+// The chain is built once per agent instance and runs synchronously on
+// the caller's goroutine, before the producer starts — so a middleware
+// that adds entries has done so by the time [Agent.Run] hands back a
+// stream, and one that refuses never starts a producer at all.
+//
+// Because the chain is per instance, a [Middleware] closure is the
+// right place for per-session state: a "once per session" notice holds
+// a boolean there. [Agent.Fork] re-instantiates the chain for the
+// child by re-invoking each Middleware, so the child gets its own
+// closures — the parent's counters, flags, and caches stay the
+// parent's.
+//
+// Middleware sees whole runs. Interception inside a run — per model
+// call, per tool — is [agent.Hook], forwarded to the inner loop
+// untouched. The two do not overlap.
+//
 // See docs/concepts/durable/ for the design rationale: entries.md on the
 // input kinds and the views that read them, sessions.md on identity,
 // state, and the store contract, and tree.md on branching, forking, and
