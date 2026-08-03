@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/v3/option"
 
 	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openairesponses"

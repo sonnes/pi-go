@@ -1,6 +1,6 @@
-.PHONY: test test-pkg check tidy run build install gen \
+.PHONY: test test-pkg check fmt tidy run build install gen \
 	site-install site-dev site-build site-preview site-check \
-	site-wasm site-wasm-test
+	site-wasm site-wasm-test docs-links
 
 # Regenerate per-provider models.go from the models.dev catalog.
 gen:
@@ -48,6 +48,11 @@ check:
 	go vet ./cmd/piwasm/...
 	gofmt -l .
 
+# Format the Go files supplied through FILES, for example:
+# make fmt FILES="pkg/ai/provider/openai/openai.go"
+fmt:
+	gofmt -w $(FILES)
+
 build:
 	cd cmd/pi && go build -o ../../.bin/pi .
 
@@ -94,6 +99,12 @@ site-preview:
 
 site-check:
 	cd web && pnpm check
+
+# Docs link contract: every internal link is repo-relative, so it
+# resolves on GitHub and web/src/remark/rewrite-doc-links.mjs can turn it
+# into a site route. A site-absolute link satisfies neither.
+docs-links:
+	node web/scripts/check-links.mjs docs
 
 # Build the browser demo (agent loop + session tree) to WebAssembly and
 # copy the matching wasm_exec.js, so the loader can never drift from the

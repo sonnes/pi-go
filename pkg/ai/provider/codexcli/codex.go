@@ -340,7 +340,8 @@ func pumpAIEvents(
 
 		switch line.Type {
 		case "item.started":
-			if line.Item.Type != "command_execution" {
+			call, ok := startedToolCall(line.Item)
+			if !ok {
 				continue
 			}
 			idx := contentIdx
@@ -349,6 +350,7 @@ func pumpAIEvents(
 			push(ai.Event{
 				Type:         ai.EventToolStart,
 				ContentIndex: idx,
+				ToolCall:     &call,
 			})
 
 		case "item.completed":
@@ -373,6 +375,57 @@ func pumpAIEvents(
 					})
 				}
 				call := commandToolCall(line.Item)
+				push(ai.Event{
+					Type:         ai.EventToolEnd,
+					ContentIndex: idx,
+					ToolCall:     &call,
+				})
+				setContent(&msg, idx, call)
+
+			case "reasoning":
+				if line.Item.Text == "" {
+					continue
+				}
+				idx := contentIdx
+				contentIdx++
+				emitThinkingBlock(push, idx, line.Item.Text)
+				setContent(&msg, idx, ai.Thinking{Thinking: line.Item.Text})
+
+			case "plan_update", "todo_list":
+				idx := contentIdx
+				contentIdx++
+				call := ai.ToolCall{
+					ID:        line.Item.ID,
+					Name:      "TodoWrite",
+					Arguments: line.Item.todoArguments(),
+				}
+				push(ai.Event{
+					Type:         ai.EventToolStart,
+					ContentIndex: idx,
+					ToolCall:     &call,
+				})
+				push(ai.Event{
+					Type:         ai.EventToolEnd,
+					ContentIndex: idx,
+					ToolCall:     &call,
+				})
+				setContent(&msg, idx, call)
+
+			default:
+				call, ok := completedToolCall(line.Item)
+				if !ok {
+					continue
+				}
+				idx, started := itemIdx[line.Item.ID]
+				if !started {
+					idx = contentIdx
+					contentIdx++
+					push(ai.Event{
+						Type:         ai.EventToolStart,
+						ContentIndex: idx,
+						ToolCall:     &call,
+					})
+				}
 				push(ai.Event{
 					Type:         ai.EventToolEnd,
 					ContentIndex: idx,
@@ -419,6 +472,16 @@ func emitTextBlock(push func(ai.Event), idx int, text string) {
 	})
 }
 
+func emitThinkingBlock(push func(ai.Event), idx int, thinking string) {
+	push(ai.Event{Type: ai.EventThinkStart, ContentIndex: idx})
+	push(ai.Event{
+		Type:         ai.EventThinkDelta,
+		ContentIndex: idx,
+		Delta:        thinking,
+	})
+	push(ai.Event{Type: ai.EventThinkEnd, ContentIndex: idx})
+}
+
 func setContent(msg *ai.Message, idx int, c ai.Content) {
 	for len(msg.Content) <= idx {
 		msg.Content = append(msg.Content, ai.Text{})
@@ -445,6 +508,81 @@ func commandToolCall(item rawItem) ai.ToolCall {
 		ServerType: ai.ServerToolBash,
 		Output:     output,
 	}
+}
+
+func startedToolCall(item rawItem) (ai.ToolCall, bool) {
+	if item.Type == "command_execution" {
+		return commandToolCall(item), true
+	}
+	return completedToolCall(item)
+}
+
+func completedToolCall(item rawItem) (ai.ToolCall, bool) {
+	var (
+		name       string
+		serverType ai.ServerToolType
+		arguments  map[string]any
+	)
+
+	switch item.Type {
+	case "file_change":
+		name = "file_change"
+		serverType = ai.ServerToolTextEditor
+		arguments = map[string]any{"changes": item.Changes}
+	case "web_search", "web_search_call":
+		name = "web_search"
+		serverType = ai.ServerToolWebSearch
+		arguments = item.Arguments
+		if arguments == nil {
+			arguments = map[string]any{}
+		}
+		if item.Query != "" {
+			arguments["query"] = item.Query
+		}
+	case "mcp_tool_call":
+		name = item.Tool
+		if item.Server != "" && name != "" {
+			name = item.Server + "." + name
+		}
+		if name == "" {
+			name = "mcp"
+		}
+		serverType = ai.ServerToolMCP
+		arguments = item.Arguments
+	default:
+		return ai.ToolCall{}, false
+	}
+
+	output := &ai.ServerToolOutput{
+		Content: item.outputText(),
+		IsError: item.commandFailed(),
+	}
+	if raw, err := json.Marshal(item); err == nil {
+		output.Raw = raw
+	}
+
+	return ai.ToolCall{
+		ID:         item.ID,
+		Name:       name,
+		Arguments:  arguments,
+		Server:     true,
+		ServerType: serverType,
+		Output:     output,
+	}, true
+}
+
+func (item rawItem) outputText() string {
+	if item.AggregatedOutput != "" {
+		return item.AggregatedOutput
+	}
+	if len(item.Result) == 0 {
+		return item.Status
+	}
+	var text string
+	if err := json.Unmarshal(item.Result, &text); err == nil {
+		return text
+	}
+	return string(item.Result)
 }
 
 func collectObjectResult(stdout io.Reader) (string, ai.Usage, error) {

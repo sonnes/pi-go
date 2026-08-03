@@ -261,6 +261,18 @@ func (a *Agent) readTurn(stdout io.Reader, push func(agent.Event)) turnResult {
 				msg.API = "codex-cli"
 				msg.Model = a.cfg.model
 				appendMessage(&result, msg, push)
+
+			default:
+				call, ok := line.Item.serverToolCall()
+				if !ok {
+					continue
+				}
+				push(agent.Event{
+					Type:       agent.EventToolExecutionStart,
+					ToolCallID: call.ID,
+					ToolName:   string(call.ServerType),
+					Args:       call.Arguments,
+				})
 			}
 
 		case "item.completed":
@@ -295,6 +307,48 @@ func (a *Agent) readTurn(stdout io.Reader, push func(agent.Event)) turnResult {
 					ai.Text{Text: "Todos updated."},
 				)
 				appendMessage(&result, msg, push)
+
+			case "plan_update":
+				call := ai.ToolCall{
+					ID:        line.Item.ID,
+					Name:      "TodoWrite",
+					Arguments: line.Item.todoArguments(),
+				}
+				msg := ai.AssistantMessage(call)
+				msg.API = "codex-cli"
+				msg.Model = a.cfg.model
+				appendMessage(&result, msg, push)
+				appendMessage(
+					&result,
+					ai.ToolResultMessage(
+						line.Item.ID,
+						"TodoWrite",
+						ai.Text{Text: "Todos updated."},
+					),
+					push,
+				)
+
+			case "reasoning":
+				if line.Item.Text == "" {
+					continue
+				}
+				msg := ai.AssistantMessage(ai.Thinking{Thinking: line.Item.Text})
+				msg.API = "codex-cli"
+				msg.Model = a.cfg.model
+				appendMessage(&result, msg, push)
+
+			default:
+				call, ok := line.Item.serverToolCall()
+				if !ok {
+					continue
+				}
+				push(agent.Event{
+					Type:       agent.EventToolExecutionEnd,
+					ToolCallID: call.ID,
+					ToolName:   string(call.ServerType),
+					Result:     call.Output.Content,
+					IsError:    call.Output.IsError,
+				})
 			}
 
 		case "turn.completed":

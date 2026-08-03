@@ -5,17 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
-	"github.com/openai/openai-go/packages/param"
-	"github.com/openai/openai-go/responses"
-	"github.com/openai/openai-go/shared"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
 	"github.com/tidwall/gjson"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
@@ -61,7 +63,11 @@ type Provider struct {
 }
 
 // Verify interface compliance.
-var _ ai.TextProvider = (*Provider)(nil)
+var (
+	_ ai.TextProvider   = (*Provider)(nil)
+	_ ai.ObjectProvider = (*Provider)(nil)
+	_ ai.TokenCounter   = (*Provider)(nil)
+)
 
 // providerID is the OpenAI Responses provider identity.
 const providerID = "openai-responses"
@@ -179,7 +185,7 @@ func (p *Provider) StreamText(
 
 			switch event.Type {
 			case "response.reasoning_summary_text.delta":
-				delta := event.Delta.OfString
+				delta := event.Delta
 				if !inThink {
 					inThink = true
 					push(ai.Event{
@@ -206,7 +212,7 @@ func (p *Provider) StreamText(
 				}
 
 			case "response.output_text.delta":
-				delta := event.Delta.OfString
+				delta := event.Delta
 				if inThink {
 					inThink = false
 					push(ai.Event{
@@ -246,7 +252,7 @@ func (p *Provider) StreamText(
 			// know about content_part.delta, but the flat fields populate
 			// from the JSON payload regardless.
 			case "response.content_part.delta":
-				delta := event.Delta.OfString
+				delta := event.Delta
 				if delta == "" {
 					// Some OpenRouter payloads put the text under part.text
 					// for the initial chunk; fall back to that.
@@ -308,7 +314,7 @@ func (p *Provider) StreamText(
 							Name: event.Item.Name,
 						},
 					})
-				case "web_search_call", "code_interpreter_call":
+				case "web_search_call", "code_interpreter_call", "file_search_call", "computer_call", "mcp_call":
 					if inText {
 						inText = false
 						push(ai.Event{
@@ -359,7 +365,7 @@ func (p *Provider) StreamText(
 
 			case "response.output_item.done":
 				switch event.Item.Type {
-				case "web_search_call", "code_interpreter_call":
+				case "web_search_call", "code_interpreter_call", "file_search_call", "computer_call", "mcp_call":
 					call := buildServerToolCall(event.Item)
 					call.Name = canonicalServerToolName(call.ServerType, serverToolNames, event.Item.Type)
 					serverToolCalls = append(serverToolCalls, call)
@@ -384,7 +390,7 @@ func (p *Provider) StreamText(
 				}
 
 			case "response.function_call_arguments.delta":
-				delta := event.Delta.OfString
+				delta := event.Delta
 				tc, ok := toolCalls[event.OutputIndex]
 				if ok {
 					tc.arguments.WriteString(delta)
@@ -481,6 +487,116 @@ func (p *Provider) StreamText(
 	})
 }
 
+// GenerateObject generates a structured object using strict JSON Schema mode.
+func (p *Provider) GenerateObject(
+	ctx context.Context,
+	model ai.Model,
+	prompt ai.Prompt,
+	schema *jsonschema.Schema,
+	opts ai.StreamOptions,
+) (*ai.ObjectResponse, error) {
+	params := buildParams(model, prompt, opts, p.dialect)
+	if schema == nil {
+		params.Text.Format = responses.ResponseFormatTextConfigUnionParam{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		}
+	} else {
+		schemaMap, err := schemaToMap(schema)
+		if err != nil {
+			return nil, fmt.Errorf("openai-responses: %w", err)
+		}
+
+		format := responses.ResponseFormatTextConfigParamOfJSONSchema(
+			"structured_output",
+			schemaMap,
+		)
+		format.OfJSONSchema.Strict = param.NewOpt(true)
+		params.Text.Format = format
+	}
+
+	reqOpts := mergeHeaders(model.Headers, opts.Headers)
+	if p.dialect == DialectOpenRouter && len(prompt.Tools) > 0 {
+		tools := convertOpenRouterTools(prompt.Tools)
+		if len(tools) > 0 {
+			reqOpts = append(reqOpts, option.WithJSONSet("tools", tools))
+		}
+	}
+
+	response, err := p.client.Responses.New(ctx, *params, reqOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("openai-responses: %w", err)
+	}
+
+	raw := response.OutputText()
+	if raw == "" {
+		return nil, errors.New("openai-responses: no object generated")
+	}
+
+	usage := mapUsage(response.Usage)
+	usage.Cost = ai.CalculateCost(model, usage)
+
+	return &ai.ObjectResponse{
+		Raw:   raw,
+		Usage: usage,
+		Model: string(response.Model),
+	}, nil
+}
+
+// CountTokens counts the input tokens in prompt before generating a response.
+// OpenAI exposes this endpoint only on its native Responses API.
+func (p *Provider) CountTokens(
+	ctx context.Context,
+	model ai.Model,
+	prompt ai.Prompt,
+	opts ai.StreamOptions,
+) (*ai.TokenCount, error) {
+	if p.dialect != DialectOpenAI {
+		return nil, errors.New(
+			"openai-responses: token counting is only supported by the OpenAI dialect",
+		)
+	}
+
+	params := responses.InputTokenCountParams{
+		Model: param.NewOpt(model.ID),
+		Input: responses.InputTokenCountParamsInputUnion{
+			OfResponseInputItemArray: convertInput(prompt.Messages),
+		},
+	}
+	if prompt.System != "" {
+		params.Instructions = param.NewOpt(prompt.System)
+	}
+	if len(prompt.Tools) > 0 {
+		params.Tools = convertTools(prompt.Tools)
+	}
+	if opts.ToolChoice != "" {
+		params.ToolChoice = convertInputTokenToolChoice(opts.ToolChoice)
+	}
+
+	reqOpts := mergeHeaders(model.Headers, opts.Headers)
+	response, err := p.client.Responses.InputTokens.Count(ctx, params, reqOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("openai-responses: %w", err)
+	}
+
+	return &ai.TokenCount{Total: int(response.InputTokens)}, nil
+}
+
+// schemaToMap converts a jsonschema-go value to the Responses API's generic
+// JSON-schema representation.
+func schemaToMap(schema *jsonschema.Schema) (map[string]any, error) {
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 type streamToolCall struct {
 	id        string
 	name      string
@@ -534,7 +650,7 @@ func buildParams(
 		// option.WithJSONSet at the StreamText callsite, so leave
 		// params.Tools empty here.
 		//
-		// In the Codex dialect, server tools (e.g. web_search_preview) are
+		// In the Codex dialect, server tools (e.g. web_search) are
 		// not supported by the backend and must be stripped before sending.
 		switch dialect {
 		case DialectOpenRouter:
@@ -555,6 +671,9 @@ func buildParams(
 	cacheRetention := ai.ResolveCacheRetention(opts.CacheRetention)
 	if cacheRetention != ai.CacheRetentionNone && opts.SessionID != "" {
 		params.PromptCacheKey = param.NewOpt(opts.SessionID)
+	}
+	if cacheRetention == ai.CacheRetentionLong {
+		params.PromptCacheRetention = responses.ResponseNewParamsPromptCacheRetention24h
 	}
 
 	return params
@@ -802,6 +921,13 @@ func buildServerToolCall(item responses.ResponseOutputItemUnion) ai.ToolCall {
 		}
 		tc.Output = &ai.ServerToolOutput{
 			Content: codeInterpreterOutputs(item),
+			Raw:     json.RawMessage(item.RawJSON()),
+			IsError: item.Status == "failed",
+		}
+
+	default:
+		tc.Output = &ai.ServerToolOutput{
+			Content: string(item.Status),
 			Raw:     json.RawMessage(item.RawJSON()),
 			IsError: item.Status == "failed",
 		}

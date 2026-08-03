@@ -217,14 +217,70 @@ func convertTools(tools []ai.ToolInfo) []anthropic.ToolUnionParam {
 	return result
 }
 
+// convertCountTokenTools converts tool definitions for Anthropic's
+// count-tokens endpoint. Its union type mirrors MessageNewParams but is a
+// distinct SDK type.
+func convertCountTokenTools(
+	tools []ai.ToolInfo,
+) []anthropic.MessageCountTokensToolUnionParam {
+	result := make(
+		[]anthropic.MessageCountTokensToolUnionParam,
+		0,
+		len(tools),
+	)
+
+	for _, tool := range convertTools(tools) {
+		result = append(result, anthropic.MessageCountTokensToolUnionParam{
+			OfTool:                      tool.OfTool,
+			OfCodeExecutionTool20250522: tool.OfCodeExecutionTool20250522,
+			OfWebFetchTool20250910:      tool.OfWebFetchTool20250910,
+			OfWebSearchTool20250305:     tool.OfWebSearchTool20250305,
+		})
+	}
+
+	return result
+}
+
 // convertServerTool maps a pi-go server-tool ToolInfo to an Anthropic typed
-// tool param. Returns false if the type is not supported by the non-beta API.
+// tool param. Returns false if the type is not supported by the Messages API.
 //
 // Supported config keys (per [ai.ServerToolType]):
 //   - web_search: max_uses (int), strict (bool), allowed_domains ([]string),
 //     blocked_domains ([]string)
+//   - web_fetch: max_uses (int), max_content_tokens (int), strict (bool),
+//     allowed_domains ([]string), blocked_domains ([]string)
 func convertServerTool(t ai.ToolInfo) (anthropic.ToolUnionParam, bool) {
 	switch t.ServerType {
+	case ai.ServerToolCodeExecution:
+		code := &anthropic.CodeExecutionTool20250522Param{}
+		if value, ok := t.ServerConfig["strict"].(bool); ok {
+			code.Strict = param.NewOpt(value)
+		}
+		if value, ok := t.ServerConfig["defer_loading"].(bool); ok {
+			code.DeferLoading = param.NewOpt(value)
+		}
+		code.AllowedCallers = serverStringSlice(t.ServerConfig["allowed_callers"])
+		return anthropic.ToolUnionParam{OfCodeExecutionTool20250522: code}, true
+
+	case ai.ServerToolWebFetch:
+		webFetch := &anthropic.WebFetchTool20250910Param{}
+		if value, ok := serverInt64(t.ServerConfig["max_uses"]); ok {
+			webFetch.MaxUses = param.NewOpt(value)
+		}
+		if value, ok := serverInt64(t.ServerConfig["max_content_tokens"]); ok {
+			webFetch.MaxContentTokens = param.NewOpt(value)
+		}
+		if value, ok := t.ServerConfig["strict"].(bool); ok {
+			webFetch.Strict = param.NewOpt(value)
+		}
+		webFetch.AllowedDomains = serverStringSlice(
+			t.ServerConfig["allowed_domains"],
+		)
+		webFetch.BlockedDomains = serverStringSlice(
+			t.ServerConfig["blocked_domains"],
+		)
+		return anthropic.ToolUnionParam{OfWebFetchTool20250910: webFetch}, true
+
 	case ai.ServerToolWebSearch:
 		ws := &anthropic.WebSearchTool20250305Param{}
 		if v, ok := t.ServerConfig["max_uses"].(int); ok {
@@ -243,11 +299,40 @@ func convertServerTool(t ai.ToolInfo) (anthropic.ToolUnionParam, bool) {
 		}
 		return anthropic.ToolUnionParam{OfWebSearchTool20250305: ws}, true
 	default:
-		// Other server tools (code_execution, web_fetch, computer use, MCP) live
-		// only on the beta API and require migrating this provider to the beta
-		// SDK; skip silently for now.
+		// Other server tools (computer use, MCP) require the beta SDK.
 		return anthropic.ToolUnionParam{}, false
 	}
+}
+
+func serverInt64(value any) (int64, bool) {
+	switch value := value.(type) {
+	case int:
+		return int64(value), true
+	case int64:
+		return value, true
+	default:
+		return 0, false
+	}
+}
+
+func serverStringSlice(value any) []string {
+	if strings, ok := value.([]string); ok {
+		return strings
+	}
+
+	values, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if text, ok := value.(string); ok {
+			result = append(result, text)
+		}
+	}
+
+	return result
 }
 
 // convertToolChoice converts a ToolChoice to Anthropic format.

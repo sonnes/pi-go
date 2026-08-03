@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/packages/param"
-	"github.com/openai/openai-go/shared"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/shared"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
@@ -135,7 +135,7 @@ func convertFile(f ai.File) (openai.ChatCompletionContentPartUnionParam, bool) {
 // convertAssistantMessage converts an assistant message to OpenAI format.
 func convertAssistantMessage(msg ai.Message) openai.ChatCompletionMessageParamUnion {
 	var text string
-	var toolCalls []openai.ChatCompletionMessageToolCallParam
+	var toolCalls []openai.ChatCompletionMessageToolCallUnionParam
 
 	for _, c := range msg.Content {
 		switch v := c.(type) {
@@ -148,12 +148,13 @@ func convertAssistantMessage(msg ai.Message) openai.ChatCompletionMessageParamUn
 			args, _ := json.Marshal(v.Arguments)
 			toolCalls = append(
 				toolCalls,
-				openai.ChatCompletionMessageToolCallParam{
-					ID:   v.ID,
-					Type: "function",
-					Function: openai.ChatCompletionMessageToolCallFunctionParam{
-						Name:      v.Name,
-						Arguments: string(args),
+				openai.ChatCompletionMessageToolCallUnionParam{
+					OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+						ID: v.ID,
+						Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+							Name:      v.Name,
+							Arguments: string(args),
+						},
 					},
 				},
 			)
@@ -187,8 +188,8 @@ func convertToolResultMessage(msg ai.Message) openai.ChatCompletionMessageParamU
 }
 
 // convertTools converts ai.ToolInfo definitions to OpenAI tool params.
-func convertTools(tools []ai.ToolInfo, compat Compat) []openai.ChatCompletionToolParam {
-	result := make([]openai.ChatCompletionToolParam, 0, len(tools))
+func convertTools(tools []ai.ToolInfo, compat Compat) []openai.ChatCompletionToolUnionParam {
+	result := make([]openai.ChatCompletionToolUnionParam, 0, len(tools))
 	for _, t := range tools {
 		var schemaMap map[string]any
 		if t.InputSchema != nil {
@@ -206,8 +207,10 @@ func convertTools(tools []ai.ToolInfo, compat Compat) []openai.ChatCompletionToo
 			fn.Strict = param.NewOpt(false)
 		}
 
-		result = append(result, openai.ChatCompletionToolParam{
-			Function: fn,
+		result = append(result, openai.ChatCompletionToolUnionParam{
+			OfFunction: &openai.ChatCompletionFunctionToolParam{
+				Function: fn,
+			},
 		})
 	}
 	return result
@@ -232,7 +235,7 @@ func convertToolChoice(
 		}
 	default:
 		return openai.ChatCompletionToolChoiceOptionUnionParam{
-			OfChatCompletionNamedToolChoice: &openai.ChatCompletionNamedToolChoiceParam{
+			OfFunctionToolChoice: &openai.ChatCompletionNamedToolChoiceParam{
 				Function: openai.ChatCompletionNamedToolChoiceFunctionParam{
 					Name: string(tc),
 				},

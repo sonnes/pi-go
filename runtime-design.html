@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pkg/runtime — design proposal</title>
+<style>
+  :root {
+    --bg: #fdfdfc;
+    --fg: #1a1a18;
+    --muted: #6b6b64;
+    --accent: #0b6bcb;
+    --border: #e4e4de;
+    --code-bg: #f4f4ef;
+    --comment: #7a8a6f;
+    --warn-bg: #fdf6e3;
+    --warn-border: #e6d9a8;
+    --ok: #2a7d4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a;
+      --fg: #e8e8e2;
+      --muted: #9a9a90;
+      --accent: #6cb2ff;
+      --border: #2e2e34;
+      --code-bg: #1f1f25;
+      --comment: #8fa07e;
+      --warn-bg: #262218;
+      --warn-border: #4a4128;
+      --ok: #5fbf8a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem 6rem; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.35rem; margin: 3rem 0 .75rem; padding-top: 1.5rem; border-top: 1px solid var(--border); letter-spacing: -.01em; }
+  h3 { font-size: 1.05rem; margin: 1.75rem 0 .5rem; }
+  p, ul, ol { margin: .75rem 0; }
+  li { margin: .35rem 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .meta { color: var(--muted); font-size: .9rem; margin-bottom: 2rem; }
+  .meta .badge {
+    display: inline-block; border: 1px solid var(--border); border-radius: 99px;
+    padding: .05rem .6rem; margin-right: .5rem; font-size: .8rem;
+  }
+  code {
+    font: .86em/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--code-bg); border-radius: 4px; padding: .1em .35em;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.15rem; overflow-x: auto; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; font-size: .84rem; }
+  .c { color: var(--comment); }
+  .toc { border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1.25rem; font-size: .92rem; }
+  .toc ol { margin: .25rem 0; padding-left: 1.25rem; }
+  blockquote {
+    margin: 1rem 0; padding: .1rem 1.1rem; border-left: 3px solid var(--accent);
+    color: var(--muted); font-style: italic;
+  }
+  blockquote code { font-style: normal; }
+  .decision { margin: 1.5rem 0; }
+  .decision .label { font-weight: 600; }
+  .cost { color: var(--muted); font-size: .95rem; }
+  .cost b { color: var(--fg); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; }
+  th, td { text-align: left; padding: .5rem .75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; }
+  .unknown {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.25rem; margin: 1.25rem 0;
+  }
+  .unknown h3 { margin: 0 0 .5rem; }
+  .unknown .lean { font-size: .92rem; }
+  .unknown .lean::before { content: "Leaning: "; font-weight: 600; color: var(--ok); }
+  .callout {
+    background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px;
+    padding: .75rem 1.15rem; margin: 1.25rem 0; font-size: .95rem;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1><code>pkg/runtime</code></h1>
+<p class="meta">
+  <span class="badge">design proposal</span>
+  <span class="badge">draft</span>
+  2026-08-03 · pi-go
+</p>
+
+<p>A resident-instance manager for durable agents: it instantiates an agent when a
+request names a session, keeps it warm across turns, serializes runs against it,
+routes the run's event stream back to the caller, and evicts it when it goes idle
+or the pool is full. The store makes eviction safe; the runtime makes it
+automatic.</p>
+
+<nav class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#problem">The problem</a></li>
+  <li><a href="#position">Where it sits</a></li>
+  <li><a href="#decisions">Key decisions</a></li>
+  <li><a href="#api">API</a></li>
+  <li><a href="#lifecycle">Instance lifecycle</a></li>
+  <li><a href="#dx">DX walkthrough</a></li>
+  <li><a href="#eviction">What eviction costs</a></li>
+  <li><a href="#unknowns">Unknowns</a></li>
+  <li><a href="#nongoals">Non-goals</a></li>
+</ol>
+</nav>
+
+<h2 id="problem">1. The problem</h2>
+
+<p><code>durable.New</code> already documents the gap this package fills:</p>
+
+<blockquote>New does not track instances — each call returns a fresh one, and the
+caller owns instance discipline.</blockquote>
+
+<p>For the CLI, instance discipline is trivial: one session, one process, one
+instance. For a server it is the whole job. Every server built on pi-go today
+must hand-roll the same four things:</p>
+
+<ul>
+  <li><b>Instantiation.</b> A request names a session ID; someone has to hold the
+  map from ID to live instance, create on miss, and win the race when two
+  requests miss at once. Rebuilding per request works — <code>durable.New</code>
+  hydrates from the store — but pays hydration, artifact resolution, and seeding
+  on every turn, and discards the in-memory state (the leaf position, ephemeral
+  entries) that makes an instance more than its transcript.</li>
+  <li><b>Eviction.</b> A long-running server cannot hold every session it has
+  ever seen. Instances must be closed and dropped when idle, without closing one
+  mid-run.</li>
+  <li><b>Request routing.</b> Runs are strictly sequential per agent — a second
+  <code>Run</code> while one is active fails its stream. Someone has to
+  serialize.</li>
+  <li><b>Response routing.</b> The run's events have to get back to the caller
+  that sent the input, and only that caller — session-lifecycle events already
+  have their own path (the <code>Publisher</code>).</li>
+</ul>
+
+<p>None of this is application logic. All of it is the same in every server.</p>
+
+<h2 id="position">2. Where it sits</h2>
+
+<pre><code>  agent      the loop
+   │
+  durable    + persistence, one session per instance
+   │
+  harness    + artifact compilation, mints durable agents
+   │
+  runtime    + instance discipline: many sessions, one process   ← this proposal
+   │
+  your server (HTTP/WS/queue — not the SDK's business)</code></pre>
+
+<p>The runtime imports <code>durable</code> and <code>session</code> only. It does
+<b>not</b> import <code>harness</code> — it takes a factory function, and a
+closure over <code>harness.Agent</code> is the expected but not required way to
+make one. Same relationship harness has to durable: composition without the
+lower layer knowing.</p>
+
+<h2 id="decisions">3. Key decisions</h2>
+
+<div class="decision">
+<p><span class="label">A factory in, instances out.</span>
+<code>runtime.New</code> takes
+<code>func(ctx, sessionID) (*durable.Agent[T], error)</code>. The runtime never
+constructs an agent itself and has no opinion about harness, catalog, store, or
+options — the factory closes over all of that.</p>
+<p class="cost"><b>Alternative rejected:</b> accepting a <code>*harness.Harness[T]</code>
+directly. Convenient for the common case, but it would couple the runtime to the
+top of the stack and exclude agents minted by bare <code>durable.New</code>.
+<b>Bought:</b> the runtime works for any durable agent, and per-session
+configuration (working directory, overlays, model) is just code in the factory.</p>
+</div>
+
+<div class="decision">
+<p><span class="label">Checkout is the primitive; <code>Run</code> is the 90% verb.</span>
+<code>Acquire(ctx, id)</code> returns the actual <code>*durable.Agent[T]</code>
+plus a release func. While any acquire is outstanding, the instance cannot be
+evicted (a refcount, not a lock — concurrent acquires of one session share the
+instance). Every durable verb — <code>Branch</code>, <code>Fork</code>,
+<code>Compact</code>, <code>SetState</code>, <code>Transcript</code> — is reached
+through the checkout, unmirrored.</p>
+<p class="cost"><b>Alternative rejected:</b> mirroring the durable verbs on the
+runtime (<code>rt.Branch(id, …)</code>, <code>rt.Compact(id, …)</code>). That API
+must chase every verb durable adds, forever, and adds nothing but the lookup.
+<b>Cost accepted:</b> a caller can hold a checkout too long and pin an instance;
+release discipline is theirs. <b>Bought:</b> a runtime API of five methods that
+never grows when durable does.</p>
+</div>
+
+<div class="decision">
+<p><span class="label"><code>Run</code> serializes per session: FIFO, waiting is
+ctx-bounded.</span> <code>rt.Run(ctx, id, entries…)</code> acquires, waits its
+turn behind any active run on that session, runs, and releases when the stream
+ends. Two quick messages from one user become two turns in order, not one turn
+and one error. Cancelling <code>ctx</code> while queued abandons the wait; the
+input is never persisted.</p>
+<p class="cost"><b>Alternative rejected:</b> surfacing durable's
+<code>run already active</code> to the caller and making every server write its
+own retry loop. <b>Cost accepted:</b> a queued message is a <i>next turn</i> —
+it cannot steer the run in flight, and nothing bounds the queue but callers'
+contexts. Both are real questions (see unknowns <a href="#u3">#3</a>).
+<b>Bought:</b> the obvious server handler is three lines and correct.</p>
+</div>
+
+<div class="decision">
+<p><span class="label"><code>Run</code> returns a <code>*durable.Stream</code>,
+never <code>(stream, error)</code>.</span> A factory failure, a closed runtime,
+or a cancelled wait comes back as <code>durable.Fail(err)</code> — one error
+path, on the stream, exactly the invariant <code>agent.Run</code> and
+<code>durable.Run</code> already keep: errors, including pre-flight ones, surface
+on the stream.</p>
+<p class="cost"><b>Bought:</b> response routing is nothing but handing the stream
+to whoever asked. The runtime adds no second event vocabulary and no
+subscription machinery — the run stream goes to the caller of <code>Run</code>,
+and session-lifecycle events keep flowing to whatever <code>Publisher</code> the
+factory installed. Fan-out to additional watchers is deliberately unsolved here
+(unknown <a href="#u4">#4</a>).</p>
+</div>
+
+<div class="decision">
+<p><span class="label">Eviction is idle-only, and two policies compose.</span>
+<code>WithIdleTTL(d)</code> sweeps instances whose last activity is older than
+<i>d</i>; <code>WithMaxInstances(n)</code> evicts least-recently-used idle
+instances when a miss would exceed <i>n</i>. An instance that is running, queued
+behind, or checked out is never evicted — capacity pressure with zero idle
+instances makes the miss wait, not the victim die.</p>
+<p class="cost"><b>Alternative rejected:</b> pluggable eviction policies
+(<code>WithEvictionPolicy(…)</code>). Speculative flexibility with no consumer;
+TTL + LRU cap covers the known cases, and a policy interface can be extracted
+the day a third policy exists. <b>Cost accepted:</b> eviction discards in-memory
+state — see <a href="#eviction">§7</a>, which is honest about exactly what.
+<b>Bought:</b> bounded memory with two knobs a reader already understands.</p>
+</div>
+
+<div class="decision">
+<p><span class="label"><code>Close</code> drains.</span> After
+<code>rt.Close(ctx)</code> begins, new work fails fast
+(<code>ErrClosed</code> on the stream); active runs get until <code>ctx</code>
+to finish; then every instance is closed. Store persistence is per message, so
+even a run cut off by the deadline is durable up to its last completed
+message — that guarantee is durable's, and the runtime inherits rather than
+restates it.</p>
+</div>
+
+<h2 id="api">4. API</h2>
+
+<p>The whole surface. Five methods on the type, two options, one factory type,
+two sentinel errors.</p>
+
+<pre><code><span class="c">// Package runtime manages resident instances of durable agents:
+// instantiation on demand, per-session run serialization, idle
+// eviction, and drain on shutdown.</span>
+package runtime <span class="c">// import "github.com/sonnes/pi-go/pkg/runtime"</span>
+
+<span class="c">// Factory mints the instance for a session ID. Typically a closure
+// over [harness.Harness.Agent] or [durable.New]. Called at most once
+// per resident lifetime of a session — concurrent requests for the
+// same absent session share one call.</span>
+type Factory[T any] func(ctx context.Context, sessionID string) (*durable.Agent[T], error)
+
+<span class="c">// New returns a Runtime. The zero configuration holds instances
+// forever and without bound — pass WithIdleTTL and WithMaxInstances
+// in any real server.</span>
+func New[T any](f Factory[T], opts ...Option) *Runtime[T]
+
+type Option func(*config)
+
+<span class="c">// WithIdleTTL evicts an instance whose last activity — run end,
+// release, or durable verb — is older than d. Zero means never.</span>
+func WithIdleTTL(d time.Duration) Option
+
+<span class="c">// WithMaxInstances bounds resident instances. On a miss at the
+// bound, the least-recently-used idle instance is evicted; if none is
+// idle, the miss waits. Zero means unbounded.</span>
+func WithMaxInstances(n int) Option
+
+<span class="c">// Run routes entries to the session's instance — instantiating it
+// if absent — and returns the run's stream. Runs on one session are
+// FIFO; Run waits for its turn until ctx is done. All errors,
+// including factory failures, surface on the stream.</span>
+func (r *Runtime[T]) Run(ctx context.Context, sessionID string, entries ...session.Entry) *durable.Stream
+
+<span class="c">// Acquire checks out the session's instance for direct use of the
+// durable verbs. The instance is not evicted while checked out; the
+// caller must call release exactly once. Concurrent acquires share
+// the instance — durable's own locking makes its verbs safe.</span>
+func (r *Runtime[T]) Acquire(ctx context.Context, sessionID string) (a *durable.Agent[T], release func(), err error)
+
+<span class="c">// Evict closes and drops the session's instance now. It refuses —
+// ErrBusy — if the instance is running or checked out. An absent
+// session is a no-op. The next request rehydrates from the store.</span>
+func (r *Runtime[T]) Evict(sessionID string) error
+
+<span class="c">// Resident reports the sessions currently instantiated, for
+// observability. Order is unspecified.</span>
+func (r *Runtime[T]) Resident() []string
+
+<span class="c">// Close drains: new work fails with ErrClosed, active runs get
+// until ctx to finish, then every instance is closed. Idempotent.</span>
+func (r *Runtime[T]) Close(ctx context.Context) error
+
+var ErrClosed = errors.New("runtime: closed")
+var ErrBusy   = errors.New("runtime: instance busy")</code></pre>
+
+<p>Notes on shape:</p>
+<ul>
+  <li>Options are plain <code>runtime.Option</code>, not
+  <code>agent.Option</code>. The extension-slot currency exists so options can
+  ride <i>one flat list down through layers</i>; the runtime is above the
+  option-consuming stack and its knobs configure the pool, not any agent. Mixing
+  them into the agent list would imply they overlay per build, which they never
+  do.</li>
+  <li><code>Acquire</code> returning the naked <code>*durable.Agent[T]</code>
+  means nothing stops a caller stashing the pointer past release. Documented as
+  undefined behavior rather than prevented with a wrapper type — the wrapper
+  would have to mirror every verb, which is the rejected alternative again.</li>
+  <li>There is no <code>rt.Get</code>-without-instantiating and no
+  <code>rt.Has</code>. Reading a transcript without wanting an instance is a
+  <code>session.Store</code> read; the runtime is only for callers that want the
+  live thing.</li>
+</ul>
+
+<h2 id="lifecycle">5. Instance lifecycle</h2>
+
+<pre><code>                 miss on Run/Acquire
+                 (singleflight: one factory call
+                  per absent session)
+   ┌─────────┐  ───────────────────────▶  ┌─────────┐
+   │ absent  │                            │  idle   │◀────────────┐
+   └─────────┘  ◀───────────────────────  └─────────┘             │
+        ▲        evict: IdleTTL sweep /     │    ▲                │
+        │        LRU at MaxInstances /      │    │                │
+        │        explicit Evict             ▼    │                │
+        │        (agent.Close + drop)     ┌──────────┐   run ends │
+        └──── never from here ─────────── │ running/ │────────────┘
+              (running, queued-behind,    │ acquired │
+               or checked-out instances   └──────────┘
+               are unevictable)</code></pre>
+
+<p>Last-activity is bumped on run end, release, and any acquire — an instance's
+TTL clock measures quiet time, not lifetime. Rehydration after eviction is
+<code>durable.New</code>'s resume path: history from the store, leaf at the last
+appended entry, crash-repair included. That path already exists and is already
+tested; the runtime adds no second resume mechanism.</p>
+
+<h2 id="dx">6. DX walkthrough</h2>
+
+<h3>Wiring — once, at startup</h3>
+
+<pre><code>store, err := sessionfs.New[chat.State](dir)          <span class="c">// or your Postgres store</span>
+h, err := harness.New[chat.State](
+    harness.WithCatalog(cat),
+    harness.WithDefaultModel("anthropic/claude-fable-5"),
+    harness.WithSkills(fsres.Skills(".claude/skills")),
+    durable.WithStore(store),
+)
+
+rt := runtime.New(
+    func(ctx context.Context, id string) (*durable.Agent[chat.State], error) {
+        return h.Agent(ctx, durable.WithSessionID(id))
+    },
+    runtime.WithIdleTTL(15*time.Minute),
+    runtime.WithMaxInstances(512),
+)</code></pre>
+
+<p>The factory is where per-session policy lives, as plain code — look the
+session up in your own database and overlay its working directory, its model,
+its resolvers:</p>
+
+<pre><code>func (s *server) mint(ctx context.Context, id string) (*durable.Agent[chat.State], error) {
+    ws, err := s.db.Workspace(ctx, id)
+    if err != nil {
+        return nil, err
+    }
+    return s.h.Agent(ctx,
+        durable.WithSessionID(id),
+        harness.WithWorkDir(ws.Root),
+    )
+}</code></pre>
+
+<h3>The chat handler — the 90% path</h3>
+
+<pre><code>func (s *server) handleMessage(w http.ResponseWriter, r *http.Request) {
+    id := r.PathValue("session")
+
+    stream := s.rt.Run(r.Context(), id, durable.Text(r.FormValue("text")))
+
+    w.Header().Set("Content-Type", "text/event-stream")
+    for evt, err := range stream.Events() {
+        if err != nil {
+            writeSSEError(w, err)
+            return
+        }
+        writeSSE(w, evt)              <span class="c">// events are durability receipts:</span>
+    }                                 <span class="c">// anything the client renders is already stored</span>
+}</code></pre>
+
+<p>No lookup, no create-on-miss, no lock, no "is it already running", no
+cleanup. The three failure shapes — factory error, closed runtime, cancelled
+wait — all arrive as the stream's error, so the handler has one error path.</p>
+
+<h3>Durable verbs — the checkout path</h3>
+
+<pre><code>func (s *server) handleRewind(w http.ResponseWriter, r *http.Request) {
+    a, release, err := s.rt.Acquire(r.Context(), r.PathValue("session"))
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusServiceUnavailable)
+        return
+    }
+    defer release()
+
+    if err := a.Branch(r.Context(), r.FormValue("entry")); err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+    w.WriteHeader(http.StatusNoContent)
+}</code></pre>
+
+<h3>Shutdown</h3>
+
+<pre><code>ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+if err := rt.Close(ctx); err != nil {
+    log.Printf("runtime: drain incomplete: %v", err)   <span class="c">// runs cut off are still</span>
+}                                                      <span class="c">// durable per message</span></code></pre>
+
+<h2 id="eviction">7. What eviction costs</h2>
+
+<p>Eviction is safe because durable persistence is per message. It is not free.
+Honestly:</p>
+
+<table>
+<tr><th>Survives eviction</th><th>Lost on eviction</th></tr>
+<tr>
+  <td>The transcript, per message — input persists before the run, every
+  produced message at its <code>message_end</code></td>
+  <td><b>The leaf position.</b> A rewind via <code>Branch</code> is in-memory by
+  design; rehydration resumes at the last <i>appended</i> entry. An evicted
+  session silently un-rewinds. (Unknown <a href="#u2">#2</a>.)</td>
+</tr>
+<tr>
+  <td>Session state — a fold over persisted <code>StateEntry</code>s</td>
+  <td>Ephemeral entries — never stored, by definition</td>
+</tr>
+<tr>
+  <td>Crash repair — dangling tool calls patched on resume</td>
+  <td>The build snapshot — the next instance re-resolves artifacts, which is
+  usually a feature (edits arrive) and occasionally a surprise (the prompt
+  changed mid-conversation)</td>
+</tr>
+<tr>
+  <td>Seeding correctness — the leaf-pointer guard means a resumed session
+  never re-seeds</td>
+  <td>Warm subprocess state, for CLI-backed agents — <code>Close</code> kills
+  the child process (unknown <a href="#u7">#7</a>)</td>
+</tr>
+</table>
+
+<h2 id="unknowns">8. Unknowns</h2>
+
+<p>Ordered by how much they could bend the design. The first two are the ones to
+settle before writing code.</p>
+
+<div class="unknown" id="u1">
+<h3>1 · Detached runs and reconnection</h3>
+<p>In this proposal the caller's <code>ctx</code> owns the run: client
+disconnects, run cancels mid-tool. For a chat product that is often wrong — the
+user closes their laptop, the agent should finish, and the client should
+re-attach and catch up. Detached runs pull in a chain of machinery: a
+runtime-owned run context, a per-session event buffer, replay from an event or
+leaf cursor, and an <code>Attach(id)</code> verb — most of a broker, which the
+durable layer explicitly refused to be.</p>
+<p class="lean">ship attached-only first; it is what the synchronous
+<code>Run</code> semantics honestly support. Detached execution is a design of
+its own — likely a separate layer or package — and bolting a buffer onto v1
+would prejudge it.</p>
+</div>
+
+<div class="unknown" id="u2">
+<h3>2 · Eviction silently un-rewinds a branched session</h3>
+<p>The leaf lives in memory on purpose ("a rewind is a property of a working
+instance, not a stored fact"). A runtime that evicts turns that deliberate
+choice into a booby trap: rewind, go idle 15 minutes, come back, and your next
+turn grows from the old leaf. Options: (a) persist the leaf, reversing a
+documented session-layer decision; (b) pin instances whose leaf ≠ last appended
+entry, letting one rewound session defeat the memory bound; (c) let the
+<i>application</i> record the leaf in session state and re-Branch in the
+factory; (d) document it and accept the surprise.</p>
+<p class="lean">(c) — it needs zero new mechanism and keeps the layering
+honest. But it is a sharp edge every server team must know about, which argues
+it at least deserves a loud place in the runtime's package doc, and possibly a
+<code>runtime</code>-level helper later.</p>
+</div>
+
+<div class="unknown" id="u3">
+<h3>3 · Busy semantics: queue, reject, or steer</h3>
+<p>FIFO-wait makes the second message a next turn. Products increasingly want a
+third thing: a message that lands <i>inside</i> the active run (steering, à la
+"actually, stop and try X"). That is an agent-loop capability pi-go does not
+have, and no runtime queue can fake it. Also open: should the wait be bounded by
+anything besides the caller's ctx (a depth cap per session?), and should there
+be a <code>TryRun</code> that returns <code>ErrBusy</code> for callers that
+would rather show "agent is working" than block?</p>
+<p class="lean">FIFO-wait only, no depth knob until a real server needs one.
+Steering is upstream loop work, out of the runtime's hands.</p>
+</div>
+
+<div class="unknown" id="u4">
+<h3>4 · Fan-out: the second watcher of a session</h3>
+<p>The run stream goes to whoever called <code>Run</code>. A second browser tab
+watching the same session gets nothing. Durable's answer is the
+<code>Publisher</code> — but session events don't carry the streaming deltas,
+one publisher exists per agent, and the factory owns it. If the runtime installs
+its own fan-out publisher it collides with the factory's; if it doesn't, every
+app builds fan-out alone (which the no-broker decision says is fine). Slow
+subscribers, replay, and backpressure are all lurking behind this door.</p>
+<p class="lean">stay out in v1 — same reasoning as the durable layer's "every
+application that needs fan-out already has a way to do it." Revisit together
+with unknown #1; they are the same broker in two costumes.</p>
+</div>
+
+<div class="unknown" id="u5">
+<h3>5 · One process is load-bearing</h3>
+<p>The design assumes all requests for a session reach one process. Two replicas
+each instantiating a session won't corrupt it — durable's concurrent instances
+grow sibling branches — but users would see a conversation that forks
+invisibly per request. Sticky routing, a distributed lock, or lease-in-store
+are all plausible; all are infrastructure the SDK has so far refused to carry.</p>
+<p class="lean">declare single-process scope loudly and leave routing to the
+deployment. Perhaps the one cheap assist: a store-level lease hook, someday, as
+an optional interface.</p>
+</div>
+
+<div class="unknown" id="u6">
+<h3>6 · Capacity pressure with zero idle victims</h3>
+<p>At <code>MaxInstances</code> with every instance running, a miss waits.
+Under sustained overload that is an unbounded convoy of waiting requests — the
+classic thundering-herd shape. Options: fail fast with a capacity error, wait
+with no bound but the ctx (proposed), or a semaphore with a queue cap.</p>
+<p class="lean">ctx-bounded waiting matches the rest of the design; servers
+already run request timeouts. But this is the knob most likely to grow once a
+real deployment hits it.</p>
+</div>
+
+<div class="unknown" id="u7">
+<h3>7 · Eviction cost is wildly asymmetric across agent kinds</h3>
+<p>Evicting an in-process instance costs a hydration on return. Evicting a
+CLI-backed agent (<code>agent/claude</code>, <code>codex</code>,
+<code>cursor</code>) kills a subprocess whose restart costs seconds and whose
+own internal session state may not round-trip through pi-go's store at all. One
+TTL for both is crude. Per-factory TTL? A <code>Cost</code> hint on the
+instance? Or is a CLI-backed server simply expected to set a long TTL?</p>
+<p class="lean">one TTL, documented. Evidence before knobs.</p>
+</div>
+
+<div class="unknown" id="u8">
+<h3>8 · <code>Fork</code> escapes the registry</h3>
+<p><code>Acquire</code> hands out the real agent; calling <code>Fork</code> on
+it mints a child instance the runtime has never heard of — unevicted, untracked,
+and a second live instance if someone later asks the runtime for the child's ID.
+Options: document ("fork through the store: release, then Run against the new
+ID"), or an <code>Adopt</code> verb, or intercepting Fork — which needs a
+wrapper type, the thing this design keeps refusing.</p>
+<p class="lean">document the pattern; adoption only if it proves common.</p>
+</div>
+
+<div class="unknown" id="u9">
+<h3>9 · The name</h3>
+<p><code>pkg/runtime</code> collides with the stdlib's <code>runtime</code> —
+any file importing both must alias one, and grep-ability suffers. Candidates:
+keep <code>runtime</code> (few app files import stdlib runtime),
+<code>host</code>, <code>pool</code>, <code>resident</code>.</p>
+<p class="lean">keep <code>runtime</code>; the collision is rare in application
+code and the word is exactly right. Decide before the first release, not
+after.</p>
+</div>
+
+<h2 id="nongoals">9. Non-goals</h2>
+
+<ul>
+  <li><b>Not a server.</b> No HTTP, no websockets, no wire protocol. The runtime
+  ends at "here is a stream"; transport is the application's.</li>
+  <li><b>Not a broker.</b> No subscriptions, no replay, no delivery guarantees —
+  inherited verbatim from the durable layer's no-broker decision, and revisited
+  only together with detached runs.</li>
+  <li><b>Not a scheduler.</b> No priorities, no cross-session fairness, no rate
+  limiting. FIFO per session, first-come across sessions.</li>
+  <li><b>Not distributed.</b> One process. See unknown #5.</li>
+</ul>
+
+<p class="meta" style="margin-top:3rem">Grounded in: <code>pkg/durable/agent.go</code> (instance
+discipline, resume, sibling branches), <code>pkg/harness/harness.go</code>
+(factory rationale), <code>docs/architecture/session-and-durable.md</code>
+(in-memory leaf, no-broker), <code>docs/architecture/harness.md</code>
+(freshness per build).</p>
+
+</main>
+</body>
+</html>

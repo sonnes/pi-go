@@ -17,13 +17,25 @@ type rawLine struct {
 }
 
 type rawItem struct {
-	ID               string `json:"id,omitempty"`
-	Type             string `json:"type,omitempty"`
-	Text             string `json:"text,omitempty"`
-	Command          string `json:"command,omitempty"`
-	AggregatedOutput string `json:"aggregated_output,omitempty"`
-	ExitCode         *int   `json:"exit_code,omitempty"`
-	Status           string `json:"status,omitempty"`
+	ID               string           `json:"id,omitempty"`
+	Type             string           `json:"type,omitempty"`
+	Text             string           `json:"text,omitempty"`
+	Command          string           `json:"command,omitempty"`
+	AggregatedOutput string           `json:"aggregated_output,omitempty"`
+	ExitCode         *int             `json:"exit_code,omitempty"`
+	Status           string           `json:"status,omitempty"`
+	Query            string           `json:"query,omitempty"`
+	Server           string           `json:"server,omitempty"`
+	Tool             string           `json:"tool,omitempty"`
+	Arguments        map[string]any   `json:"arguments,omitempty"`
+	Result           json.RawMessage  `json:"result,omitempty"`
+	Changes          []map[string]any `json:"changes,omitempty"`
+	Items            []rawTodoItem    `json:"items,omitempty"`
+}
+
+type rawTodoItem struct {
+	Text      string `json:"text"`
+	Completed bool   `json:"completed"`
 }
 
 type rawUsage struct {
@@ -59,6 +71,22 @@ func (item rawItem) commandFailed() bool {
 	default:
 		return true
 	}
+}
+
+func (item rawItem) todoArguments() map[string]any {
+	todos := make([]map[string]any, 0, len(item.Items))
+	for _, todo := range item.Items {
+		status := "pending"
+		if todo.Completed {
+			status = "completed"
+		}
+		todos = append(todos, map[string]any{
+			"content":     todo.Text,
+			"active_form": todo.Text,
+			"status":      status,
+		})
+	}
+	return map[string]any{"todos": todos}
 }
 
 func (line rawLine) error() error {

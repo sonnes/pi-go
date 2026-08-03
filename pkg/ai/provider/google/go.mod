@@ -1,6 +1,6 @@
 module github.com/sonnes/pi-go/pkg/ai/provider/google
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/charmbracelet/log v0.4.2
@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/sonnes/pi-go v0.0.0
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/genai v1.44.0
+	google.golang.org/genai v1.66.0
 )
 
 require (

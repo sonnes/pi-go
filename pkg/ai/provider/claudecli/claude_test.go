@@ -34,6 +34,15 @@ const thinkingNDJSON = `{"type":"system","subtype":"init","session_id":"s1"}
 {"type":"result","subtype":"success","result":"The answer is 42."}
 `
 
+const partialTextNDJSON = `{"type":"system","subtype":"init","session_id":"s1"}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo!"}}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello!"}],"stop_reason":"end_turn"}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}
+{"type":"result","subtype":"success","result":"Hello!","usage":{"input_tokens":10,"output_tokens":5}}
+`
+
 const objectResultNDJSON = `{"type":"system","subtype":"init","session_id":"s1"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"{\"name\":\"Alice\",\"age\":30}"}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":20}}}
 {"type":"result","subtype":"success","result":"{\"name\":\"Alice\",\"age\":30}","usage":{"input_tokens":10,"output_tokens":20}}
@@ -230,6 +239,92 @@ func TestStreamText_Thinking(t *testing.T) {
 	}
 	require.NotNil(t, thinkDelta)
 	assert.Equal(t, "Let me ponder...", thinkDelta.Delta)
+}
+
+func TestStreamText_PartialMessages(t *testing.T) {
+	p := New(WithPartialMessages())
+	_, _, restore := stubSend(p, partialTextNDJSON, nil)
+	defer restore()
+
+	stream := p.StreamText(
+		context.Background(),
+		ai.Model{},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{},
+	)
+
+	var events []ai.Event
+	for event, err := range stream.Events() {
+		require.NoError(t, err)
+		events = append(events, event)
+	}
+
+	assert.Equal(t, []ai.EventType{
+		ai.EventStart,
+		ai.EventTextStart,
+		ai.EventTextDelta,
+		ai.EventTextDelta,
+		ai.EventTextEnd,
+	}, aiEventTypes(events))
+	assert.Equal(t, "Hel", events[2].Delta)
+	assert.Equal(t, "lo!", events[3].Delta)
+	assert.Equal(t, "Hello!", events[4].Content)
+
+	message, err := stream.Wait()
+	require.NoError(t, err)
+	assert.Equal(t, "Hello!", message.Text())
+}
+
+func TestStreamText_ResumesSession(t *testing.T) {
+	p := New(WithSessionID("sess-1"))
+	lastArgs, _, restore := stubSend(p, simpleTextNDJSON, nil)
+	defer restore()
+
+	_, err := p.StreamText(
+		context.Background(),
+		ai.Model{},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("continue")}},
+		ai.StreamOptions{},
+	).Wait()
+	require.NoError(t, err)
+	assert.Equal(t, "sess-1", lastArgs().resumeSession)
+	assert.False(t, lastArgs().noPersistence)
+}
+
+// ai.WithSessionID is a prompt-cache affinity key, not a CLI session
+// handle. Resuming on it would hand the subprocess an ID it never
+// issued, so it must stay inert here.
+func TestStreamText_IgnoresCacheSessionID(t *testing.T) {
+	p := New()
+	lastArgs, _, restore := stubSend(p, simpleTextNDJSON, nil)
+	defer restore()
+
+	_, err := p.StreamText(
+		context.Background(),
+		ai.Model{},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{SessionID: "cache-affinity-key"},
+	).Wait()
+	require.NoError(t, err)
+	assert.Empty(t, lastArgs().resumeSession)
+	assert.True(t, lastArgs().noPersistence)
+}
+
+func TestGenerateObject_ResumesSession(t *testing.T) {
+	p := New(WithSessionID("sess-1"))
+	lastArgs, _, restore := stubSend(p, objectResultNDJSON, nil)
+	defer restore()
+
+	_, err := p.GenerateObject(
+		context.Background(),
+		ai.Model{},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("continue")}},
+		&jsonschema.Schema{Type: "object"},
+		ai.StreamOptions{SessionID: "cache-affinity-key"},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "sess-1", lastArgs().resumeSession)
+	assert.False(t, lastArgs().noPersistence)
 }
 
 func TestStreamText_EmptyPrompt(t *testing.T) {
@@ -601,6 +696,19 @@ func TestBuildArgs(t *testing.T) {
 				"--max-turns", "3",
 				"--add-dir", "/extra",
 				"go",
+			},
+		},
+		{
+			name: "with partial messages and resumed session",
+			cfg:  config{cliPath: "claude", partialMessages: true},
+			args: sendArgs{prompt: "continue", resumeSession: "sess-123"},
+			want: []string{
+				"--print",
+				"--output-format", "stream-json",
+				"--verbose",
+				"--include-partial-messages",
+				"--resume", "sess-123",
+				"continue",
 			},
 		},
 	}

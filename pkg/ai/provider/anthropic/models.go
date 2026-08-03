@@ -37,22 +37,6 @@ var (
 		ReleaseDate:      "2025-10-15",
 		LastUpdated:      "2025-10-15",
 	}
-	ClaudeOpus41 = ai.Model{
-		ID:               "claude-opus-4-1",
-		Name:             "Claude Opus 4.1 (latest)",
-		Reasoning:        true,
-		ToolCall:         true,
-		StructuredOutput: true,
-		Temperature:      true,
-		Input:            []ai.Modality{ai.ModalityText, ai.ModalityImage, ai.ModalityPDF},
-		Output:           []ai.Modality{ai.ModalityText},
-		ContextWindow:    200000,
-		MaxTokens:        32000,
-		Cost:             ai.Cost{Input: 15, Output: 75, CacheRead: 1.5, CacheWrite: 18.75},
-		Knowledge:        "2025-03-31",
-		ReleaseDate:      "2025-08-05",
-		LastUpdated:      "2025-08-05",
-	}
 	ClaudeOpus45 = ai.Model{
 		ID:               "claude-opus-4-5",
 		Name:             "Claude Opus 4.5 (latest)",
@@ -115,6 +99,21 @@ var (
 		ReleaseDate:      "2026-05-28",
 		LastUpdated:      "2026-05-28",
 	}
+	ClaudeOpus5 = ai.Model{
+		ID:               "claude-opus-5",
+		Name:             "Claude Opus 5",
+		Reasoning:        true,
+		ToolCall:         true,
+		StructuredOutput: true,
+		Input:            []ai.Modality{ai.ModalityText, ai.ModalityImage, ai.ModalityPDF},
+		Output:           []ai.Modality{ai.ModalityText},
+		ContextWindow:    1000000,
+		MaxTokens:        128000,
+		Cost:             ai.Cost{Input: 5, Output: 25, CacheRead: 0.5, CacheWrite: 6.25},
+		Knowledge:        "2026-05",
+		ReleaseDate:      "2026-07-24",
+		LastUpdated:      "2026-07-24",
+	}
 	ClaudeSonnet45 = ai.Model{
 		ID:               "claude-sonnet-4-5",
 		Name:             "Claude Sonnet 4.5 (latest)",
@@ -168,11 +167,11 @@ var (
 var models = []ai.Model{
 	ClaudeFable5,
 	ClaudeHaiku45,
-	ClaudeOpus41,
 	ClaudeOpus45,
 	ClaudeOpus46,
 	ClaudeOpus47,
 	ClaudeOpus48,
+	ClaudeOpus5,
 	ClaudeSonnet45,
 	ClaudeSonnet46,
 	ClaudeSonnet5,

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -23,6 +24,7 @@ var (
 	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
 	_ ai.ImageProvider  = (*Provider)(nil)
+	_ ai.TokenCounter   = (*Provider)(nil)
 )
 
 // providerID is the Google generative provider identity.
@@ -125,7 +127,7 @@ func (p *Provider) StreamText(
 			return nil, errors.New("google: no messages to send")
 		}
 
-		applyOptions(config, opts)
+		applyOptions(config, model, opts)
 
 		if len(prompt.Tools) > 0 {
 			config.Tools, config.ToolConfig = convertTools(prompt.Tools, opts.ToolChoice)
@@ -453,9 +455,67 @@ func (p *Provider) StreamText(
 	})
 }
 
+// CountTokens counts the tokens in prompt before generating a response.
+//
+// The Gemini Developer API counts messages only: its countTokens endpoint
+// rejects system instructions and tool definitions, which are Vertex-only.
+// Since a count that silently omitted them would understate the request,
+// such prompts are refused rather than under-counted.
+func (p *Provider) CountTokens(
+	ctx context.Context,
+	model ai.Model,
+	prompt ai.Prompt,
+	opts ai.StreamOptions,
+) (*ai.TokenCount, error) {
+	if prompt.System != "" {
+		return nil, errors.New(
+			"google: the Gemini Developer API cannot count system instructions",
+		)
+	}
+	if len(prompt.Tools) > 0 {
+		return nil, errors.New(
+			"google: the Gemini Developer API cannot count tool definitions",
+		)
+	}
+
+	contents := convertMessages(prompt.Messages)
+	if len(contents) == 0 {
+		return nil, errors.New("google: no messages to send")
+	}
+
+	config := &genai.CountTokensConfig{}
+
+	headers := http.Header{}
+	for key, value := range model.Headers {
+		headers.Add(key, value)
+	}
+	for key, value := range opts.Headers {
+		headers.Add(key, value)
+	}
+	if len(headers) > 0 {
+		config.HTTPOptions = &genai.HTTPOptions{Headers: headers}
+	}
+
+	response, err := p.client.Models.CountTokens(
+		ctx,
+		model.ID,
+		contents,
+		config,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("google: %w", err)
+	}
+
+	return &ai.TokenCount{Total: int(response.TotalTokens)}, nil
+}
+
 // applyOptions maps StreamOptions to genai config.
-func applyOptions(config *genai.GenerateContentConfig, opts ai.StreamOptions) {
-	if opts.Temperature != nil {
+func applyOptions(
+	config *genai.GenerateContentConfig,
+	model ai.Model,
+	opts ai.StreamOptions,
+) {
+	if opts.Temperature != nil && !usesThinkingLevel(model) {
 		tmp := float32(*opts.Temperature)
 		config.Temperature = &tmp
 	}
@@ -465,6 +525,12 @@ func applyOptions(config *genai.GenerateContentConfig, opts ai.StreamOptions) {
 	if opts.ThinkingLevel != "" {
 		config.ThinkingConfig = &genai.ThinkingConfig{
 			IncludeThoughts: true,
+		}
+		if usesThinkingLevel(model) {
+			config.ThinkingConfig.ThinkingLevel = googleThinkingLevel(
+				opts.ThinkingLevel,
+			)
+			return
 		}
 		var budget int32
 		switch opts.ThinkingLevel {
@@ -482,6 +548,28 @@ func applyOptions(config *genai.GenerateContentConfig, opts ai.StreamOptions) {
 		if budget > 0 {
 			config.ThinkingConfig.ThinkingBudget = &budget
 		}
+	}
+}
+
+// usesThinkingLevel reports whether a Gemini 3.x model expects a qualitative
+// thinking level instead of the legacy numeric budget.
+func usesThinkingLevel(model ai.Model) bool {
+	return strings.HasPrefix(strings.ToLower(model.ID), "gemini-3")
+}
+
+// googleThinkingLevel maps pi-go's level set onto the Gemini 3.x level set.
+func googleThinkingLevel(level ai.ThinkingLevel) genai.ThinkingLevel {
+	switch level {
+	case ai.ThinkingMinimal:
+		return genai.ThinkingLevelMinimal
+	case ai.ThinkingLow:
+		return genai.ThinkingLevelLow
+	case ai.ThinkingMedium:
+		return genai.ThinkingLevelMedium
+	case ai.ThinkingHigh, ai.ThinkingXHigh:
+		return genai.ThinkingLevelHigh
+	default:
+		return genai.ThinkingLevelUnspecified
 	}
 }
 
@@ -520,7 +608,11 @@ func convertTools(tools []ai.ToolInfo, choice ai.ToolChoice) ([]*genai.Tool, *ge
 	if len(funcs) > 0 {
 		googleTools = append(googleTools, &genai.Tool{FunctionDeclarations: funcs})
 	}
-	if serverTool.GoogleSearch != nil || serverTool.CodeExecution != nil || serverTool.URLContext != nil {
+	if serverTool.GoogleSearch != nil ||
+		serverTool.CodeExecution != nil ||
+		serverTool.URLContext != nil ||
+		serverTool.FileSearch != nil ||
+		serverTool.ComputerUse != nil {
 		t := serverTool
 		googleTools = append(googleTools, &t)
 	}
@@ -563,8 +655,69 @@ func applyServerTool(t *genai.Tool, info ai.ToolInfo) {
 	switch info.ServerType {
 	case ai.ServerToolWebSearch:
 		t.GoogleSearch = &genai.GoogleSearch{}
+	case ai.ServerToolWebFetch:
+		t.URLContext = &genai.URLContext{}
 	case ai.ServerToolCodeExecution:
 		t.CodeExecution = &genai.ToolCodeExecution{}
+	case ai.ServerToolFileSearch:
+		storeNames := serverStringSlice(info.ServerConfig["store_names"])
+		if len(storeNames) == 0 {
+			return
+		}
+		fileSearch := &genai.FileSearch{
+			FileSearchStoreNames: storeNames,
+		}
+		if topK, ok := serverInt32(info.ServerConfig["top_k"]); ok {
+			fileSearch.TopK = &topK
+		}
+		if filter, ok := info.ServerConfig["metadata_filter"].(string); ok {
+			fileSearch.MetadataFilter = filter
+		}
+		t.FileSearch = fileSearch
+	case ai.ServerToolComputer:
+		environment := genai.EnvironmentBrowser
+		if value, ok := info.ServerConfig["environment"].(string); ok {
+			switch strings.ToLower(value) {
+			case "mobile":
+				environment = genai.EnvironmentMobile
+			case "desktop":
+				environment = genai.EnvironmentDesktop
+			}
+		}
+		computer := &genai.ComputerUse{Environment: environment}
+		if enabled, ok := info.ServerConfig["prompt_injection_detection"].(bool); ok {
+			computer.EnablePromptInjectionDetection = &enabled
+		}
+		t.ComputerUse = computer
+	}
+}
+
+func serverStringSlice(value any) []string {
+	if values, ok := value.([]string); ok {
+		return values
+	}
+	if values, ok := value.([]any); ok {
+		result := make([]string, 0, len(values))
+		for _, value := range values {
+			if text, ok := value.(string); ok {
+				result = append(result, text)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
+func serverInt32(value any) (int32, bool) {
+	switch value := value.(type) {
+	case int:
+		return int32(value), true
+	case int32:
+		return value, true
+	case int64:
+		return int32(value), true
+	default:
+		return 0, false
 	}
 }
 
@@ -733,7 +886,7 @@ func (p *Provider) GenerateObject(
 		}
 	}
 
-	applyOptions(config, opts)
+	applyOptions(config, model, opts)
 
 	contents := convertMessages(prompt.Messages)
 	if len(contents) == 0 {

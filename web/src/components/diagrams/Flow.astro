@@ -1,0 +1,264 @@
+---
+// A vertical chain of stages with labelled connectors, optionally closing
+// back on itself. Serves the agent loop and the harness compile pipeline.
+//
+// Connectors are real grid rows rather than decorated gaps, so a long
+// edge label makes the connector taller instead of overlapping its
+// neighbours. Fan-in and fan-out are a stage holding several cells —
+// which is what removes the need for SVG, since converging lines are
+// never drawn.
+import Figure from "./Figure.astro";
+import { countAccents, type FigureProps, type Stage } from "./types";
+
+interface Props extends FigureProps {
+  stages: Stage[];
+  /** Close the chain: the last stage feeds back into the first. */
+  loop?: boolean;
+  /** Label written in the return gutter, e.g. "next turn". Implies loop. */
+  rail?: string;
+  /** The way out of a looped chain. */
+  exit?: { when: string; edge?: string };
+}
+
+const { n, caption, stages, loop = false, rail, exit } = Astro.props;
+
+// Figure cannot make this check for us: Flow always forwards a <slot />,
+// so Figure sees a default slot even when the page passed no children.
+if (!Astro.slots.has("default")) {
+  throw new Error(
+    `Diagram "${caption}" has no description. Add prose as children: it is ` +
+      `the screen-reader content and the GitHub fallback, not a caption.`,
+  );
+}
+
+const accents = countAccents(stages);
+if (accents > 1) {
+  throw new Error(
+    `Diagram "${caption}" marks ${accents} cells accent: true. The rust ` +
+      `accent is the single signal colour — pick the one that matters.`,
+  );
+}
+
+const closed = loop || Boolean(rail);
+---
+
+<Figure n={n} caption={caption}>
+  <div class:list={["flow", closed && "is-closed"]} slot="graphic">
+    {
+      closed && (
+        <div class="flow-return">
+          {rail && <span class="flow-rail-label">{rail}</span>}
+        </div>
+      )
+    }
+
+    <ol class="flow-chain">
+      {
+        stages.map((stage) => (
+          <li class="flow-stage">
+            {stage.title && <span class="flow-title">{stage.title}</span>}
+
+            <div class="flow-cells">
+              {stage.cells.map((cell) => (
+                <div
+                  class="flow-cell"
+                  data-kind={cell.kind ?? "step"}
+                  data-accent={cell.accent ? "" : null}
+                >
+                  <span class="flow-label">{cell.label}</span>
+                  {cell.note && <span class="flow-note">{cell.note}</span>}
+                </div>
+              ))}
+            </div>
+
+            {stage.edge && (
+              <div class="flow-edge">
+                <span>{stage.edge}</span>
+              </div>
+            )}
+          </li>
+        ))
+      }
+    </ol>
+
+    {
+      exit && (
+        <div class="flow-exit">
+          {exit.edge && <span class="flow-exit-edge">{exit.edge}</span>}
+          <span class="flow-exit-when">{exit.when}</span>
+        </div>
+      )
+    }
+  </div>
+
+  <slot />
+</Figure>
+
+<style>
+  .flow {
+    display: grid;
+    grid-template-columns: 1fr;
+    min-width: 16rem;
+  }
+  .flow.is-closed {
+    grid-template-columns: var(--dgm-rail) 1fr;
+  }
+
+  .flow-chain {
+    grid-column: -2;
+    grid-row: 1;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .flow-stage {
+    display: block;
+  }
+
+  .flow-title {
+    display: block;
+    margin-bottom: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: var(--micro-size);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-soft);
+  }
+
+  /* One cell is a step; several band together with a 1px rule between
+     them, which is how a fan-out reads without drawing any lines. */
+  .flow-cells {
+    display: grid;
+    gap: 1px;
+    background: var(--line-strong);
+    border: 1px solid var(--line-strong);
+  }
+
+  .flow-cell {
+    padding: var(--dgm-pad);
+    background: var(--panel);
+  }
+  .flow-cell[data-kind="artifact"] {
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--panel) 0 6px,
+      var(--panel-soft) 6px 12px
+    );
+  }
+  .flow-cell[data-kind="output"] {
+    box-shadow: inset 2px 0 0 var(--accent-line);
+  }
+  .flow-cell[data-accent] {
+    background: var(--accent-faint);
+    box-shadow: inset 2px 0 0 var(--warm);
+  }
+
+  .flow-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--text);
+  }
+  .flow-note {
+    display: block;
+    margin-top: 0.22rem;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
+  /* The connector: a centred rule, a CSS-triangle arrowhead, and the
+     label beside it. Height is auto with a floor, so nothing is measured
+     and a two-line label just makes it taller. */
+  .flow-edge {
+    position: relative;
+    min-height: var(--dgm-edge-h);
+    display: flex;
+    align-items: center;
+    padding-left: calc(50% + 0.6rem);
+  }
+  .flow-edge::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid var(--accent-line);
+  }
+  .flow-edge::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -1px;
+    translate: -3px 0;
+    border-inline: 3px solid transparent;
+    border-top: 4px solid var(--accent-line);
+  }
+  .flow-edge span {
+    font-family: var(--font-mono);
+    font-size: var(--micro-size);
+    line-height: 1.5;
+    color: var(--muted-soft);
+    padding: 0.3rem 0;
+  }
+
+  /* Three borders make the return path: out of the bottom, up the side,
+     back into the top. align-self: stretch sizes it to the chain, so its
+     height is never computed. */
+  .flow-return {
+    grid-column: 1;
+    grid-row: 1;
+    position: relative;
+    margin: 1.1rem 0;
+    border: 1px solid var(--accent-line);
+    border-right: 0;
+  }
+  .flow-return::after {
+    content: "";
+    position: absolute;
+    top: -1px;
+    right: -3px;
+    border-block: 3px solid transparent;
+    border-left: 4px solid var(--accent-line);
+  }
+  .flow-rail-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    writing-mode: vertical-rl;
+    rotate: 180deg;
+    font-family: var(--font-mono);
+    font-size: var(--micro-size);
+    color: var(--muted-soft);
+    background: var(--panel-soft);
+    padding: 0.3rem 0;
+  }
+
+  .flow-exit {
+    grid-column: -2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding-top: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: var(--micro-size);
+  }
+  .flow-exit-edge {
+    color: var(--muted-soft);
+  }
+  .flow-exit-when {
+    color: var(--green);
+  }
+
+  @media (max-width: 62rem) {
+    .flow.is-closed {
+      grid-template-columns: 1rem 1fr;
+    }
+    .flow-edge {
+      padding-left: calc(50% + 0.5rem);
+    }
+  }
+</style>

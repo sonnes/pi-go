@@ -3,6 +3,7 @@ package openairesponses
 import (
 	"testing"
 
+	"github.com/openai/openai-go/v3/responses"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -46,6 +47,22 @@ func TestBuildParams_PromptCacheKey_SuppressedWhenCacheNone(t *testing.T) {
 	params := buildParams(ai.Model{ID: "gpt-4o"}, prompt, opts, DialectOpenAI)
 
 	assert.False(t, params.PromptCacheKey.Valid())
+}
+
+func TestBuildParams_LongCacheRetention(t *testing.T) {
+	prompt := ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}}
+	params := buildParams(
+		ai.Model{ID: "gpt-5.6"},
+		prompt,
+		ai.StreamOptions{CacheRetention: ai.CacheRetentionLong},
+		DialectOpenAI,
+	)
+
+	assert.Equal(
+		t,
+		responses.ResponseNewParamsPromptCacheRetention24h,
+		params.PromptCacheRetention,
+	)
 }
 
 // TestBuildParams_CodexAlwaysSetsInstructions verifies the Codex backend's

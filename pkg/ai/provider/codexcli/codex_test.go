@@ -37,6 +37,18 @@ const objectJSONL = `{"type":"thread.started","thread_id":"thread-1"}
 {"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":9}}
 `
 
+const richItemsJSONL = `{"type":"thread.started","thread_id":"thread-1"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"reasoning-1","type":"reasoning","text":"I should inspect the files."}}
+{"type":"item.started","item":{"id":"file-1","type":"file_change","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"file-1","type":"file_change","status":"completed","changes":[{"path":"main.go","kind":"update"}]}}
+{"type":"item.completed","item":{"id":"search-1","type":"web_search","query":"Codex JSONL events","result":"Found docs"}}
+{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"linear","tool":"get_issue","arguments":{"id":"PI-1"},"result":"open"}}
+{"type":"item.completed","item":{"id":"plan-1","type":"plan_update","items":[{"text":"inspect","completed":true}]}}
+{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"Done."}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}
+`
+
 func stubSend(
 	p *Provider,
 	output string,
@@ -172,6 +184,31 @@ func TestStreamText_CommandExecution(t *testing.T) {
 	require.NotNil(t, msg)
 	assert.Equal(t, "/tmp/project", msg.Text())
 	require.Len(t, msg.Content, 2)
+}
+
+func TestStreamText_PreservesCurrentCodexItems(t *testing.T) {
+	p := New()
+	_, _, restore := stubSend(p, richItemsJSONL, nil)
+	defer restore()
+
+	msg, err := p.StreamText(
+		context.Background(),
+		ai.Model{ID: "gpt-5.6"},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("inspect")}},
+		ai.StreamOptions{},
+	).Wait()
+
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	assert.Contains(t, msg.Content, ai.Thinking{Thinking: "I should inspect the files."})
+
+	toolCalls := msg.ToolCalls()
+	require.Len(t, toolCalls, 4)
+	assert.Equal(t, ai.ServerToolTextEditor, toolCalls[0].ServerType)
+	assert.Equal(t, ai.ServerToolWebSearch, toolCalls[1].ServerType)
+	assert.Equal(t, ai.ServerToolMCP, toolCalls[2].ServerType)
+	assert.Equal(t, "TodoWrite", toolCalls[3].Name)
+	assert.Equal(t, "Done.", msg.Text())
 }
 
 func TestStreamText_EmptyPrompt(t *testing.T) {

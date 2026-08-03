@@ -43,6 +43,18 @@ const todoTurnJSONL = `{"type":"thread.started","thread_id":"thread-3"}
 {"type":"turn.completed","usage":{"input_tokens":30,"output_tokens":9}}
 `
 
+const richItemsTurnJSONL = `{"type":"thread.started","thread_id":"thread-4"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"reasoning-1","type":"reasoning","text":"I should inspect the files."}}
+{"type":"item.started","item":{"id":"file-1","type":"file_change","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"file-1","type":"file_change","status":"completed","changes":[{"path":"main.go","kind":"update"}]}}
+{"type":"item.completed","item":{"id":"search-1","type":"web_search","query":"Codex JSONL events","result":"Found docs"}}
+{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"linear","tool":"get_issue","arguments":{"id":"PI-1"},"result":"open"}}
+{"type":"item.completed","item":{"id":"plan-1","type":"plan_update","items":[{"text":"inspect","completed":true}]}}
+{"type":"item.completed","item":{"id":"item-2","type":"agent_message","text":"Done."}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":5}}
+`
+
 type runnerCall struct {
 	cfg  config
 	args runArgs
@@ -251,6 +263,35 @@ func TestAgent_Run_TodoListMessages(t *testing.T) {
 
 	last := events[len(events)-1]
 	require.Len(t, last.Messages, 3)
+}
+
+func TestAgent_Run_PreservesCurrentCodexItems(t *testing.T) {
+	a := New(ai.Model{ID: "gpt-5.6", Name: "gpt-5.6"})
+	_, restore := stubRunner(a, richItemsTurnJSONL)
+	defer restore()
+	defer a.Close()
+
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("inspect")))
+	require.NoError(t, err)
+
+	var toolNames []string
+	for _, event := range events {
+		if event.Type == agent.EventToolExecutionEnd {
+			toolNames = append(toolNames, event.ToolName)
+		}
+	}
+	assert.Equal(t, []string{
+		"text_editor",
+		"web_search",
+		"mcp",
+	}, toolNames)
+
+	last := events[len(events)-1]
+	require.Len(t, last.Messages, 4)
+	assert.Contains(t, last.Messages[0].Content, ai.Thinking{
+		Thinking: "I should inspect the files.",
+	})
+	assert.Equal(t, "Done.", last.Messages[3].Text())
 }
 
 func TestAgent_Run_ConcurrentRejected(t *testing.T) {

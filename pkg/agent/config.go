@@ -36,6 +36,28 @@ func ApplyOptions(opts ...Option) Config {
 	}
 }
 
+// Options bundles several options into one. A sub-package minting
+// options into the shared currency often has more than one to
+// contribute but only a single [Option] to return:
+//
+//	func WithDirs(dirs ...string) agent.Option {
+//	    opts := make([]agent.Option, 0, len(dirs))
+//	    for _, d := range dirs {
+//	        opts = append(opts, WithResolver(scan(d)))
+//	    }
+//	    return agent.Options(opts...)
+//	}
+//
+// The bundled options apply in place, in order, so they interleave with
+// their neighbours exactly as if they had been passed inline.
+func Options(opts ...Option) Option {
+	return func(c *config) {
+		for _, opt := range opts {
+			opt(c)
+		}
+	}
+}
+
 // Factory builds an [Agent] from a "<kind>/<model>" spec and options. The
 // catalog stores one per custom agent kind (e.g. the subprocess CLIs) and
 // routes to it by the spec's kind prefix.

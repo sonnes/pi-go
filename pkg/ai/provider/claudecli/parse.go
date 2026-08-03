@@ -11,11 +11,35 @@ type rawLine struct {
 	Type      string          `json:"type"`
 	Subtype   string          `json:"subtype,omitempty"`
 	SessionID string          `json:"session_id,omitempty"`
+	Event     json.RawMessage `json:"event,omitempty"`
 	Message   json.RawMessage `json:"message,omitempty"`
 	Result    string          `json:"result,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
 	CostUSD   float64         `json:"cost_usd,omitempty"`
 	Usage     *rawUsage       `json:"usage,omitempty"`
+}
+
+// streamEvent is an Anthropic SSE event embedded by Claude Code when
+// --include-partial-messages is enabled.
+type streamEvent struct {
+	Type         string              `json:"type"`
+	Index        int                 `json:"index"`
+	ContentBlock *streamContentBlock `json:"content_block,omitempty"`
+	Delta        *streamDelta        `json:"delta,omitempty"`
+}
+
+type streamContentBlock struct {
+	Type  string         `json:"type"`
+	ID    string         `json:"id,omitempty"`
+	Name  string         `json:"name,omitempty"`
+	Input map[string]any `json:"input,omitempty"`
+}
+
+type streamDelta struct {
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	Thinking    string `json:"thinking,omitempty"`
+	PartialJSON string `json:"partial_json,omitempty"`
 }
 
 type rawUsage struct {

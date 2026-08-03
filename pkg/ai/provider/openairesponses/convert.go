@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/openai/openai-go/packages/param"
-	"github.com/openai/openai-go/responses"
-	"github.com/openai/openai-go/shared"
+	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
@@ -200,14 +200,16 @@ func convertToolResultMessage(
 	return responses.ResponseInputItemUnionParam{
 		OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
 			CallID: msg.ToolCallID,
-			Output: text,
+			Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
+				OfString: param.NewOpt(text),
+			},
 		},
 	}
 }
 
 // filterFunctionTools returns only function-kind tools, dropping server tools.
 // Used for the Codex dialect whose backend rejects server tool types such as
-// web_search_preview.
+// web_search.
 func filterFunctionTools(tools []ai.ToolInfo) []ai.ToolInfo {
 	out := make([]ai.ToolInfo, 0, len(tools))
 	for _, t := range tools {
@@ -258,13 +260,15 @@ func convertTools(
 //
 // Supported config keys:
 //   - web_search: search_context_size ("low"|"medium"|"high"), type
-//     ("web_search_preview"|"web_search_preview_2025_03_11")
+//     ("web_search"|"web_search_2025_08_26")
 //   - code_execution: container (string container ID; empty = "auto")
+//   - file_search: vector_store_ids ([]string, required), max_num_results
+//   - computer: no configuration
 func convertServerTool(t ai.ToolInfo) (responses.ToolUnionParam, bool) {
 	switch t.ServerType {
 	case ai.ServerToolWebSearch:
 		ws := &responses.WebSearchToolParam{
-			Type: responses.WebSearchToolTypeWebSearchPreview,
+			Type: responses.WebSearchToolTypeWebSearch,
 		}
 		if v, ok := t.ServerConfig["type"].(string); ok && v != "" {
 			ws.Type = responses.WebSearchToolType(v)
@@ -272,12 +276,12 @@ func convertServerTool(t ai.ToolInfo) (responses.ToolUnionParam, bool) {
 		if v, ok := t.ServerConfig["search_context_size"].(string); ok && v != "" {
 			ws.SearchContextSize = responses.WebSearchToolSearchContextSize(v)
 		}
-		return responses.ToolUnionParam{OfWebSearchPreview: ws}, true
+		return responses.ToolUnionParam{OfWebSearch: ws}, true
 
 	case ai.ServerToolCodeExecution:
 		ci := &responses.ToolCodeInterpreterParam{
 			Container: responses.ToolCodeInterpreterContainerUnionParam{
-				OfCodeInterpreterContainerAuto: &responses.ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam{},
+				OfCodeInterpreterToolAuto: &responses.ToolCodeInterpreterContainerCodeInterpreterContainerAutoParam{},
 			},
 		}
 		if v, ok := t.ServerConfig["container"].(string); ok && v != "" {
@@ -287,9 +291,60 @@ func convertServerTool(t ai.ToolInfo) (responses.ToolUnionParam, bool) {
 		}
 		return responses.ToolUnionParam{OfCodeInterpreter: ci}, true
 
+	case ai.ServerToolFileSearch:
+		vectorStoreIDs := serverStringSlice(t.ServerConfig["vector_store_ids"])
+		if len(vectorStoreIDs) == 0 {
+			return responses.ToolUnionParam{}, false
+		}
+		fs := &responses.FileSearchToolParam{
+			VectorStoreIDs: vectorStoreIDs,
+		}
+		if n, ok := serverInt64(t.ServerConfig["max_num_results"]); ok {
+			fs.MaxNumResults = param.NewOpt(n)
+		}
+		return responses.ToolUnionParam{OfFileSearch: fs}, true
+
+	case ai.ServerToolComputer:
+		return responses.ToolUnionParam{
+			OfComputer: &responses.ComputerToolParam{},
+		}, true
+
 	default:
 		return responses.ToolUnionParam{}, false
 	}
+}
+
+func serverStringSlice(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, value := range v {
+			text, ok := value.(string)
+			if !ok || text == "" {
+				continue
+			}
+			out = append(out, text)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func serverInt64(value any) (int64, bool) {
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case float64:
+		if v == float64(int64(v)) {
+			return int64(v), true
+		}
+	}
+	return 0, false
 }
 
 // openRouterServerToolName maps a pi-go [ai.ServerToolType] to the OpenRouter
@@ -375,6 +430,33 @@ func convertToolChoice(
 		}
 	default:
 		return responses.ResponseNewParamsToolChoiceUnion{
+			OfFunctionTool: &responses.ToolChoiceFunctionParam{
+				Name: string(tc),
+			},
+		}
+	}
+}
+
+// convertInputTokenToolChoice converts a tool choice for the Responses
+// input-token endpoint, which uses a distinct SDK union type.
+func convertInputTokenToolChoice(
+	tc ai.ToolChoice,
+) responses.InputTokenCountParamsToolChoiceUnion {
+	switch tc {
+	case ai.ToolChoiceAuto:
+		return responses.InputTokenCountParamsToolChoiceUnion{
+			OfToolChoiceMode: param.NewOpt(responses.ToolChoiceOptionsAuto),
+		}
+	case ai.ToolChoiceNone:
+		return responses.InputTokenCountParamsToolChoiceUnion{
+			OfToolChoiceMode: param.NewOpt(responses.ToolChoiceOptionsNone),
+		}
+	case ai.ToolChoiceRequired:
+		return responses.InputTokenCountParamsToolChoiceUnion{
+			OfToolChoiceMode: param.NewOpt(responses.ToolChoiceOptionsRequired),
+		}
+	default:
+		return responses.InputTokenCountParamsToolChoiceUnion{
 			OfFunctionTool: &responses.ToolChoiceFunctionParam{
 				Name: string(tc),
 			},

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/v3/option"
 
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"

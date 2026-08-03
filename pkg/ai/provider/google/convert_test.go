@@ -113,3 +113,42 @@ func TestConvertTools_FunctionAndServerInSeparateToolEntries(t *testing.T) {
 	assert.NotNil(t, googleTools[1].GoogleSearch)
 	assert.Empty(t, googleTools[1].FunctionDeclarations)
 }
+
+func TestConvertTools_CurrentGeminiServerTools(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "web_fetch",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebFetch,
+		},
+		{
+			Name:       "file_search",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolFileSearch,
+			ServerConfig: map[string]any{
+				"store_names": []string{"fileSearchStores/pi-go"},
+				"top_k":       4,
+			},
+		},
+		{
+			Name:       "computer",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolComputer,
+			ServerConfig: map[string]any{
+				"environment": "browser",
+			},
+		},
+	}
+
+	googleTools, _ := convertTools(tools, ai.ToolChoiceAuto)
+	require.Len(t, googleTools, 1)
+
+	serverTool := googleTools[0]
+	assert.NotNil(t, serverTool.URLContext)
+	require.NotNil(t, serverTool.FileSearch)
+	assert.Equal(t, []string{"fileSearchStores/pi-go"}, serverTool.FileSearch.FileSearchStoreNames)
+	require.NotNil(t, serverTool.FileSearch.TopK)
+	assert.Equal(t, int32(4), *serverTool.FileSearch.TopK)
+	require.NotNil(t, serverTool.ComputerUse)
+	assert.Equal(t, "ENVIRONMENT_BROWSER", string(serverTool.ComputerUse.Environment))
+}

@@ -130,9 +130,7 @@ func TestConvertTools_ServerWebSearch(t *testing.T) {
 	assert.Equal(t, []any{"example.com"}, got["allowed_domains"])
 }
 
-func TestConvertTools_ServerToolUnsupportedSkipped(t *testing.T) {
-	// code_execution is not supported on the non-beta API path; convertTools
-	// should drop it silently rather than error or pass it as a function tool.
+func TestConvertTools_ServerCodeExecution(t *testing.T) {
 	tools := []ai.ToolInfo{
 		{
 			Name:       "code_execution",
@@ -142,7 +140,29 @@ func TestConvertTools_ServerToolUnsupportedSkipped(t *testing.T) {
 	}
 
 	result := convertTools(tools)
-	assert.Empty(t, result, "unsupported server tool should be skipped")
+	require.Len(t, result, 1)
+	assert.NotNil(t, result[0].OfCodeExecutionTool20250522)
+}
+
+func TestConvertTools_ServerWebFetch(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "web_fetch",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolWebFetch,
+			ServerConfig: map[string]any{
+				"max_uses":           2,
+				"max_content_tokens": 1000,
+			},
+		},
+	}
+
+	result := convertTools(tools)
+	require.Len(t, result, 1)
+	webFetch := result[0].OfWebFetchTool20250910
+	require.NotNil(t, webFetch)
+	assert.EqualValues(t, 2, webFetch.MaxUses.Value)
+	assert.EqualValues(t, 1000, webFetch.MaxContentTokens.Value)
 }
 
 func TestConvertTools_MixedFunctionAndServer(t *testing.T) {

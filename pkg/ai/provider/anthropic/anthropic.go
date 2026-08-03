@@ -27,6 +27,7 @@ import (
 var (
 	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
+	_ ai.TokenCounter   = (*Provider)(nil)
 )
 
 // providerID is the Anthropic Messages provider identity.
@@ -271,6 +272,23 @@ func (p *Provider) StreamText(
 	})
 }
 
+// CountTokens counts the tokens in prompt before generating a response.
+func (p *Provider) CountTokens(
+	ctx context.Context,
+	model ai.Model,
+	prompt ai.Prompt,
+	opts ai.StreamOptions,
+) (*ai.TokenCount, error) {
+	params, reqOpts := buildCountTokensParams(model, prompt, opts)
+
+	response, err := p.client.Messages.CountTokens(ctx, params, reqOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("anthropic: %w", err)
+	}
+
+	return &ai.TokenCount{Total: int(response.InputTokens)}, nil
+}
+
 // buildParams constructs Anthropic MessageNewParams from types.
 func buildParams(
 	model ai.Model,
@@ -311,9 +329,16 @@ func buildParams(
 	}
 
 	if opts.ThinkingLevel != "" {
-		budget := thinkingBudget(opts.ThinkingLevel)
-		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
-		params.MaxTokens = maxTokens + budget
+		if usesAdaptiveThinking(model) {
+			params.Thinking = anthropic.ThinkingConfigParamUnion{
+				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+			}
+			params.OutputConfig.Effort = thinkingEffort(opts.ThinkingLevel)
+		} else {
+			budget := thinkingBudget(opts.ThinkingLevel)
+			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
+			params.MaxTokens = maxTokens + budget
+		}
 		// Temperature not supported with thinking.
 		params.Temperature = param.Opt[float64]{}
 	}
@@ -337,6 +362,56 @@ func buildParams(
 	return params, reqOpts
 }
 
+// buildCountTokensParams constructs the matching Anthropic token-counting
+// request. Token counts must include the same system prompt, history, and
+// tool definitions as a generation request.
+func buildCountTokensParams(
+	model ai.Model,
+	prompt ai.Prompt,
+	opts ai.StreamOptions,
+) (anthropic.MessageCountTokensParams, []option.RequestOption) {
+	params := anthropic.MessageCountTokensParams{
+		Model:    anthropic.Model(model.ID),
+		Messages: convertMessages(prompt.Messages),
+	}
+
+	if prompt.System != "" {
+		params.System = anthropic.MessageCountTokensParamsSystemUnion{
+			OfString: param.NewOpt(prompt.System),
+		}
+	}
+
+	if opts.ThinkingLevel != "" {
+		if usesAdaptiveThinking(model) {
+			params.Thinking = anthropic.ThinkingConfigParamUnion{
+				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+			}
+			params.OutputConfig.Effort = thinkingEffort(opts.ThinkingLevel)
+		} else {
+			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(
+				thinkingBudget(opts.ThinkingLevel),
+			)
+		}
+	}
+
+	if len(prompt.Tools) > 0 {
+		params.Tools = convertCountTokenTools(prompt.Tools)
+	}
+	if opts.ToolChoice != "" {
+		params.ToolChoice = convertToolChoice(opts.ToolChoice)
+	}
+
+	var reqOpts []option.RequestOption
+	for key, value := range model.Headers {
+		reqOpts = append(reqOpts, option.WithHeader(key, value))
+	}
+	for key, value := range opts.Headers {
+		reqOpts = append(reqOpts, option.WithHeader(key, value))
+	}
+
+	return params, reqOpts
+}
+
 // thinkingBudget maps a ThinkingLevel to a token budget.
 func thinkingBudget(level ai.ThinkingLevel) int64 {
 	switch level {
@@ -350,6 +425,34 @@ func thinkingBudget(level ai.ThinkingLevel) int64 {
 		return 16384
 	default:
 		return 4096
+	}
+}
+
+// usesAdaptiveThinking reports whether a model requires adaptive thinking.
+// Claude 4.7 and later reject the legacy token-budget configuration.
+func usesAdaptiveThinking(model ai.Model) bool {
+	id := strings.ToLower(model.ID)
+	return strings.Contains(id, "claude-opus-5") ||
+		strings.Contains(id, "claude-sonnet-5") ||
+		strings.Contains(id, "claude-haiku-5") ||
+		strings.Contains(id, "-4-7") ||
+		strings.Contains(id, "-4-8") ||
+		strings.Contains(id, "-4-9")
+}
+
+// thinkingEffort maps a pi-go thinking level onto Claude's adaptive effort.
+func thinkingEffort(level ai.ThinkingLevel) anthropic.OutputConfigEffort {
+	switch level {
+	case ai.ThinkingMinimal, ai.ThinkingLow:
+		return anthropic.OutputConfigEffortLow
+	case ai.ThinkingMedium:
+		return anthropic.OutputConfigEffortMedium
+	case ai.ThinkingHigh:
+		return anthropic.OutputConfigEffortHigh
+	case ai.ThinkingXHigh:
+		return anthropic.OutputConfigEffortXhigh
+	default:
+		return anthropic.OutputConfigEffortMedium
 	}
 }
 
@@ -556,9 +659,8 @@ func WithHTTPClient(client *http.Client) Option {
 	return func(o *options) { o.httpClient = client }
 }
 
-// GenerateObject generates a structured object using the tool-use trick.
-// It creates a synthetic tool from the schema and forces the model to call it,
-// then extracts the structured JSON from the tool call input.
+// GenerateObject generates a structured object. Current Claude models use
+// native JSON-schema output; older models retain the tool-use fallback.
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,
@@ -572,18 +674,9 @@ func (p *Provider) GenerateObject(
 		"messages", len(prompt.Messages),
 	)
 
-	properties, required, err := extractSchemaFields(schema)
+	schemaMap, err := schemaMap(schema)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: %w", err)
-	}
-
-	structuredOutputTool := anthropic.ToolParam{
-		Name:        "structured_output",
-		Description: anthropic.String("Output the structured data"),
-		InputSchema: anthropic.ToolInputSchemaParam{
-			Properties: properties,
-			Required:   required,
-		},
 	}
 
 	maxTokens := int64(4096)
@@ -594,17 +687,7 @@ func (p *Provider) GenerateObject(
 		maxTokens = int64(model.MaxTokens)
 	}
 
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(model.ID),
-		MaxTokens: maxTokens,
-		Tools:     []anthropic.ToolUnionParam{{OfTool: &structuredOutputTool}},
-		ToolChoice: anthropic.ToolChoiceUnionParam{
-			OfTool: &anthropic.ToolChoiceToolParam{
-				Type: "tool",
-				Name: "structured_output",
-			},
-		},
-	}
+	params := buildObjectParams(model, schemaMap, maxTokens)
 
 	cc, cacheEnabled := cacheMarker(opts, p.baseURL)
 
@@ -640,8 +723,13 @@ func (p *Provider) GenerateObject(
 
 	var rawJSON string
 	for _, block := range response.Content {
-		if block.Type == "tool_use" {
+		switch block.Type {
+		case "tool_use":
 			rawJSON = string(block.Input)
+		case "text":
+			rawJSON = block.Text
+		}
+		if rawJSON != "" {
 			break
 		}
 	}
@@ -674,26 +762,65 @@ func (p *Provider) GenerateObject(
 	}, nil
 }
 
-// extractSchemaFields extracts properties and required fields from a JSON schema.
-func extractSchemaFields(schema *jsonschema.Schema) (properties any, required []string, err error) {
+func buildObjectParams(
+	model ai.Model,
+	schema map[string]any,
+	maxTokens int64,
+) anthropic.MessageNewParams {
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(model.ID),
+		MaxTokens: maxTokens,
+	}
+	if usesAdaptiveThinking(model) {
+		params.OutputConfig.Format = anthropic.JSONOutputFormatParam{
+			Schema: schema,
+		}
+		return params
+	}
+
+	properties, required := schemaProperties(schema)
+	structuredOutputTool := anthropic.ToolParam{
+		Name:        "structured_output",
+		Description: anthropic.String("Output the structured data"),
+		InputSchema: anthropic.ToolInputSchemaParam{
+			Properties: properties,
+			Required:   required,
+		},
+	}
+	params.Tools = []anthropic.ToolUnionParam{{OfTool: &structuredOutputTool}}
+	params.ToolChoice = anthropic.ToolChoiceUnionParam{
+		OfTool: &anthropic.ToolChoiceToolParam{
+			Type: "tool",
+			Name: "structured_output",
+		},
+	}
+	return params
+}
+
+// schemaMap converts a JSON schema into the map shape expected by the API.
+func schemaMap(schema *jsonschema.Schema) (map[string]any, error) {
 	if schema == nil {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	schemaBytes, err := json.Marshal(schema)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal schema: %w", err)
+		return nil, fmt.Errorf("failed to marshal schema: %w", err)
 	}
 
-	var schemaMap map[string]any
-	if err := json.Unmarshal(schemaBytes, &schemaMap); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal schema: %w", err)
+	var result map[string]any
+	if err := json.Unmarshal(schemaBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal schema: %w", err)
 	}
+	return result, nil
+}
 
-	if props, ok := schemaMap["properties"]; ok {
+// schemaProperties extracts the legacy tool input-schema fields.
+func schemaProperties(schema map[string]any) (properties any, required []string) {
+	if props, ok := schema["properties"]; ok {
 		properties = props
 	}
-	if req, ok := schemaMap["required"]; ok {
+	if req, ok := schema["required"]; ok {
 		if reqArr, ok := req.([]any); ok {
 			for _, r := range reqArr {
 				if s, ok := r.(string); ok {
@@ -703,5 +830,5 @@ func extractSchemaFields(schema *jsonschema.Schema) (properties any, required []
 		}
 	}
 
-	return properties, required, nil
+	return properties, required
 }

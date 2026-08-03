@@ -16,11 +16,13 @@ import (
 
 // sendArgs holds parameters for a single subprocess invocation.
 type sendArgs struct {
-	prompt        string
-	systemPrompt  string
-	jsonSchema    string
-	effort        string
-	noPersistence bool
+	prompt          string
+	systemPrompt    string
+	jsonSchema      string
+	effort          string
+	noPersistence   bool
+	resumeSession   string
+	partialMessages bool
 }
 
 // spawn starts a one-shot `claude --print` subprocess and returns its
@@ -96,6 +98,9 @@ func buildArgs(cfg config, args sendArgs) []string {
 		"--verbose",
 	}
 
+	if cfg.partialMessages || args.partialMessages {
+		a = append(a, "--include-partial-messages")
+	}
 	if args.noPersistence {
 		a = append(a, "--no-session-persistence")
 	}
@@ -111,6 +116,13 @@ func buildArgs(cfg config, args sendArgs) []string {
 	if cfg.maxTurns > 0 {
 		a = append(a, "--max-turns", strconv.Itoa(cfg.maxTurns))
 	}
+	if cfg.maxBudgetUSD > 0 {
+		a = append(
+			a,
+			"--max-budget-usd",
+			strconv.FormatFloat(cfg.maxBudgetUSD, 'f', -1, 64),
+		)
+	}
 	for _, dir := range cfg.addDirs {
 		a = append(a, "--add-dir", dir)
 	}
@@ -119,6 +131,9 @@ func buildArgs(cfg config, args sendArgs) []string {
 	}
 	if args.jsonSchema != "" {
 		a = append(a, "--json-schema", args.jsonSchema)
+	}
+	if args.resumeSession != "" {
+		a = append(a, "--resume", args.resumeSession)
 	}
 	if args.prompt != "" {
 		a = append(a, args.prompt)

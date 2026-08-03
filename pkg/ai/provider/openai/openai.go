@@ -14,9 +14,10 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
-	"github.com/openai/openai-go/packages/param"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/shared"
 
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
@@ -416,7 +417,7 @@ func extractReasoning(delta openai.ChatCompletionChunkChoiceDelta) string {
 	return ""
 }
 
-// GenerateObject generates a structured object using JSON mode.
+// GenerateObject generates a structured object using strict JSON Schema mode.
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,
@@ -432,8 +433,25 @@ func (p *Provider) GenerateObject(
 
 	params := buildParams(model, prompt, opts)
 
-	params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
-		OfJSONObject: &openai.ResponseFormatJSONObjectParam{},
+	if schema == nil {
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &openai.ResponseFormatJSONObjectParam{},
+		}
+	} else {
+		schemaMap, err := schemaToMap(schema)
+		if err != nil {
+			return nil, fmt.Errorf("openai: %w", err)
+		}
+
+		params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
+				JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
+					Name:   "structured_output",
+					Schema: schemaMap,
+					Strict: param.NewOpt(true),
+				},
+			},
+		}
 	}
 
 	reqOpts := mergeHeaders(model.Headers, opts.Headers)
@@ -466,7 +484,23 @@ func (p *Provider) GenerateObject(
 	}, nil
 }
 
-// GenerateImage generates images using DALL-E.
+// schemaToMap converts a jsonschema-go value to the OpenAI SDK's generic
+// JSON-schema representation.
+func schemaToMap(schema *jsonschema.Schema) (map[string]any, error) {
+	data, err := json.Marshal(schema)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// GenerateImage generates images using OpenAI's image API.
 func (p *Provider) GenerateImage(
 	ctx context.Context,
 	model ai.Model,
@@ -481,10 +515,7 @@ func (p *Provider) GenerateImage(
 		"prompt", text,
 	)
 
-	modelID := model.ID
-	if modelID == "" {
-		modelID = "dall-e-3"
-	}
+	modelID := imageModelID(model)
 
 	n := opts.ImageCount
 	if n <= 0 {
@@ -522,4 +553,11 @@ func (p *Provider) GenerateImage(
 	return &ai.ImageResponse{
 		Images: images,
 	}, nil
+}
+
+func imageModelID(model ai.Model) string {
+	if model.ID != "" {
+		return model.ID
+	}
+	return "gpt-image-2"
 }

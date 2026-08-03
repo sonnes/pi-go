@@ -17,6 +17,8 @@
 // routes "<kind>/<model>" specs to them. Sub-packages (e.g. pkg/agent/claude)
 // attach their own configuration via [WithExtension] and
 // [WithExtensionMutator]; see [Config.Extensions] for the key convention.
+// [Slot] is the typed way to work with one such slot — it mints options
+// and reads the value back without manual type assertions.
 //
 // The loop is extensible via lifecycle hooks registered with [WithHook].
 // Five [HookEvent] values cover the full lifecycle: [HookBeforeCall],

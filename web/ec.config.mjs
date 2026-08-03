@@ -18,5 +18,12 @@ export default {
       shadowColor: "transparent",
       editorActiveTabIndicatorTopColor: "var(--warm)",
     },
+    // Box-art figures mark their active node with a text marker. The
+    // default derives a blue from the theme, which would be the first
+    // off-palette colour on the site.
+    textMarkers: {
+      markBackground: "var(--warm-faint)",
+      markBorderColor: "var(--warm)",
+    },
   },
 };

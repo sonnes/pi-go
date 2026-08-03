@@ -31,6 +31,7 @@
 
   /* signal: one warm mark, and the only link colour */
   --warm: #b0492a;
+  --warm-faint: #b0492a0f;
   --accent-ink: #96401f;
   --green: #2f6b45;
   --red: #b03a25;
@@ -75,6 +76,7 @@
   --accent-line: #c3cacd33;
 
   --warm: #dd8a5e;
+  --warm-faint: #dd8a5e1a;
   --accent-ink: #e59b72;
   --green: #6dbd8a;
   --red: #e0715a;

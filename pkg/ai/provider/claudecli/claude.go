@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -45,13 +46,16 @@ type Provider struct {
 
 // config holds all configuration for the provider.
 type config struct {
-	cliPath      string
-	workDir      string
-	addDirs      []string
-	env          []string
-	allowedTools []string
-	maxTurns     int
-	model        string
+	cliPath         string
+	workDir         string
+	addDirs         []string
+	env             []string
+	allowedTools    []string
+	maxTurns        int
+	maxBudgetUSD    float64
+	model           string
+	sessionID       string
+	partialMessages bool
 }
 
 // Option configures a [Provider].
@@ -87,6 +91,29 @@ func WithAllowedTools(tools ...string) Option {
 // WithMaxTurns limits the number of agentic turns via --max-turns.
 func WithMaxTurns(n int) Option {
 	return func(c *config) { c.maxTurns = n }
+}
+
+// WithMaxBudgetUSD caps the API spend for each print-mode invocation.
+// A value less than or equal to zero leaves Claude Code's default unlimited.
+func WithMaxBudgetUSD(limit float64) Option {
+	return func(c *config) { c.maxBudgetUSD = limit }
+}
+
+// WithPartialMessages streams Claude Code's partial content-block events.
+// Without this option, the provider emits one complete event triple per block.
+func WithPartialMessages() Option {
+	return func(c *config) { c.partialMessages = true }
+}
+
+// WithSessionID continues a previous Claude Code conversation via
+// `--resume`, and keeps the subprocess persisting the session so a later
+// call can resume it in turn. The ID must be one the CLI issued.
+//
+// This is deliberately separate from [ai.WithSessionID], which is a
+// prompt-cache affinity key that providers are free to invent or reuse —
+// passing one of those here would resume a session that does not exist.
+func WithSessionID(id string) Option {
+	return func(c *config) { c.sessionID = id }
 }
 
 // WithModel overrides the default model. Per-call [ai.Model.ID] values
@@ -138,9 +165,10 @@ func (p *Provider) ID() string {
 // so each text/thinking/tool_use block produces a single
 // start/delta/end triple where the delta carries the full content.
 //
-// Only the last user message in [ai.Prompt.Messages] is sent; prior
-// turns cannot be replayed without breaking the stateless,
-// no-persistence guarantee. [ai.Prompt.System] maps to `--system-prompt`.
+// Only the last user message in [ai.Prompt.Messages] is sent; prior turns
+// are not replayed. A call is stateless by default — to continue an earlier
+// conversation, resume it with [WithSessionID] instead of sending history.
+// [ai.Prompt.System] maps to `--system-prompt`.
 // [ai.Prompt.Tools], [ai.StreamOptions.Temperature], and
 // [ai.StreamOptions.MaxTokens] are not exposed by the CLI and are ignored.
 func (p *Provider) StreamText(
@@ -161,10 +189,12 @@ func (p *Provider) StreamText(
 		}
 
 		args := sendArgs{
-			prompt:        userText,
-			systemPrompt:  prompt.System,
-			effort:        effortForThinkingLevel(opts.ThinkingLevel),
-			noPersistence: true,
+			prompt:          userText,
+			systemPrompt:    prompt.System,
+			effort:          effortForThinkingLevel(opts.ThinkingLevel),
+			noPersistence:   cfg.sessionID == "",
+			resumeSession:   cfg.sessionID,
+			partialMessages: cfg.partialMessages,
 		}
 
 		stdout, cleanup, err := p.sendFn(ctx, cfg, args)
@@ -174,7 +204,12 @@ func (p *Provider) StreamText(
 
 		push(ai.Event{Type: ai.EventStart})
 
-		final, usage, pumpErr := pumpAIEvents(push, stdout, model)
+		final, usage, pumpErr := pumpAIEvents(
+			push,
+			stdout,
+			model,
+			cfg.partialMessages,
+		)
 
 		cleanupErr := cleanup()
 		if pumpErr == nil {
@@ -243,7 +278,8 @@ func (p *Provider) GenerateObject(
 		prompt:        userText,
 		systemPrompt:  prompt.System,
 		effort:        effortForThinkingLevel(opts.ThinkingLevel),
-		noPersistence: true,
+		noPersistence: cfg.sessionID == "",
+		resumeSession: cfg.sessionID,
 		jsonSchema:    string(schemaJSON),
 	}
 
@@ -292,6 +328,7 @@ func pumpAIEvents(
 	push func(ai.Event),
 	stdout io.Reader,
 	model ai.Model,
+	partialMessages bool,
 ) (*ai.Message, ai.Usage, error) {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
@@ -301,6 +338,7 @@ func pumpAIEvents(
 		usage         ai.Usage
 		resultErr     error
 		contentIdx    int
+		partial       partialBlocks
 	)
 
 	for scanner.Scan() {
@@ -309,6 +347,11 @@ func pumpAIEvents(
 			continue
 		}
 		switch line.Type {
+		case "stream_event":
+			if partialMessages {
+				partial.handle(push, line.Event, &contentIdx)
+			}
+
 		case "assistant":
 			var msg anthropicMessage
 			if err := json.Unmarshal(line.Message, &msg); err != nil {
@@ -316,7 +359,8 @@ func pumpAIEvents(
 			}
 			aiMsg := toAIMessage(msg)
 			aiMsg.Model = model.ID
-			emitContentBlocks(push, aiMsg.Content, &contentIdx)
+			skipped := partial.finish(push, &contentIdx)
+			emitContentBlocks(push, aiMsg.Content, &contentIdx, skipped)
 			m := aiMsg
 			lastAssistant = &m
 
@@ -345,12 +389,194 @@ func pumpAIEvents(
 	return lastAssistant, usage, resultErr
 }
 
+// partialBlocks translates Claude Code's embedded Anthropic SSE events into
+// ai.Events and suppresses the equivalent complete blocks that follow on the
+// assistant line.
+type partialBlocks struct {
+	blocks map[int]*partialBlock
+}
+
+type partialBlock struct {
+	contentIndex int
+	kind         string
+	text         strings.Builder
+	call         ai.ToolCall
+}
+
+func (p *partialBlocks) handle(
+	push func(ai.Event),
+	raw json.RawMessage,
+	contentIdx *int,
+) {
+	var event streamEvent
+	if err := json.Unmarshal(raw, &event); err != nil {
+		return
+	}
+
+	switch event.Type {
+	case "content_block_start":
+		p.start(push, event, contentIdx)
+	case "content_block_delta":
+		p.delta(push, event)
+	case "content_block_stop":
+		p.close(push, event.Index, contentIdx)
+	}
+}
+
+func (p *partialBlocks) start(
+	push func(ai.Event),
+	event streamEvent,
+	contentIdx *int,
+) {
+	if event.ContentBlock == nil {
+		return
+	}
+	if p.blocks == nil {
+		p.blocks = make(map[int]*partialBlock)
+	}
+	if _, exists := p.blocks[event.Index]; exists {
+		return
+	}
+
+	block := &partialBlock{
+		contentIndex: *contentIdx,
+		kind:         event.ContentBlock.Type,
+		call: ai.ToolCall{
+			ID:        event.ContentBlock.ID,
+			Name:      event.ContentBlock.Name,
+			Arguments: event.ContentBlock.Input,
+		},
+	}
+	p.blocks[event.Index] = block
+
+	switch block.kind {
+	case "text":
+		push(ai.Event{Type: ai.EventTextStart, ContentIndex: block.contentIndex})
+	case "thinking":
+		push(ai.Event{Type: ai.EventThinkStart, ContentIndex: block.contentIndex})
+	case "tool_use":
+		call := block.call
+		push(ai.Event{
+			Type:         ai.EventToolStart,
+			ContentIndex: block.contentIndex,
+			ToolCall:     &call,
+		})
+	}
+}
+
+func (p *partialBlocks) delta(push func(ai.Event), event streamEvent) {
+	if event.Delta == nil {
+		return
+	}
+	block := p.blocks[event.Index]
+	if block == nil {
+		return
+	}
+
+	switch event.Delta.Type {
+	case "text_delta":
+		block.text.WriteString(event.Delta.Text)
+		push(ai.Event{
+			Type:         ai.EventTextDelta,
+			ContentIndex: block.contentIndex,
+			Delta:        event.Delta.Text,
+		})
+	case "thinking_delta":
+		block.text.WriteString(event.Delta.Thinking)
+		push(ai.Event{
+			Type:         ai.EventThinkDelta,
+			ContentIndex: block.contentIndex,
+			Delta:        event.Delta.Thinking,
+		})
+	case "input_json_delta":
+		block.text.WriteString(event.Delta.PartialJSON)
+		push(ai.Event{
+			Type:         ai.EventToolDelta,
+			ContentIndex: block.contentIndex,
+			Delta:        event.Delta.PartialJSON,
+		})
+	}
+}
+
+func (p *partialBlocks) close(
+	push func(ai.Event),
+	sourceIndex int,
+	contentIdx *int,
+) {
+	block := p.blocks[sourceIndex]
+	if block == nil {
+		return
+	}
+
+	content := block.text.String()
+	switch block.kind {
+	case "text":
+		push(ai.Event{
+			Type:         ai.EventTextEnd,
+			ContentIndex: block.contentIndex,
+			Content:      content,
+		})
+	case "thinking":
+		push(ai.Event{
+			Type:         ai.EventThinkEnd,
+			ContentIndex: block.contentIndex,
+			Content:      content,
+		})
+	case "tool_use":
+		if content != "" {
+			_ = json.Unmarshal([]byte(content), &block.call.Arguments)
+		}
+		call := block.call
+		push(ai.Event{
+			Type:         ai.EventToolEnd,
+			ContentIndex: block.contentIndex,
+			ToolCall:     &call,
+		})
+	}
+
+	if block.contentIndex >= *contentIdx {
+		*contentIdx = block.contentIndex + 1
+	}
+	delete(p.blocks, sourceIndex)
+}
+
+func (p *partialBlocks) finish(
+	push func(ai.Event),
+	contentIdx *int,
+) map[int]bool {
+	if len(p.blocks) == 0 {
+		return nil
+	}
+
+	indices := make([]int, 0, len(p.blocks))
+	for index := range p.blocks {
+		indices = append(indices, index)
+	}
+	sort.Ints(indices)
+
+	skipped := make(map[int]bool, len(indices))
+	for _, index := range indices {
+		skipped[index] = true
+		p.close(push, index, contentIdx)
+	}
+
+	return skipped
+}
+
 // emitContentBlocks pushes ai.Events for each content block in a
 // completed assistant message. Because the Claude CLI doesn't stream
 // token deltas, each block emits a start/delta/end triple where the
 // delta carries the full content.
-func emitContentBlocks(push func(ai.Event), blocks []ai.Content, idx *int) {
-	for _, block := range blocks {
+func emitContentBlocks(
+	push func(ai.Event),
+	blocks []ai.Content,
+	idx *int,
+	skipped map[int]bool,
+) {
+	for sourceIndex, block := range blocks {
+		if skipped[sourceIndex] {
+			continue
+		}
 		switch b := block.(type) {
 		case ai.Text:
 			push(ai.Event{Type: ai.EventTextStart, ContentIndex: *idx})

@@ -17,14 +17,20 @@ type rawLine struct {
 }
 
 type rawItem struct {
-	ID               string        `json:"id,omitempty"`
-	Type             string        `json:"type,omitempty"`
-	Text             string        `json:"text,omitempty"`
-	Command          string        `json:"command,omitempty"`
-	AggregatedOutput string        `json:"aggregated_output,omitempty"`
-	ExitCode         *int          `json:"exit_code,omitempty"`
-	Status           string        `json:"status,omitempty"`
-	Items            []rawTodoItem `json:"items,omitempty"`
+	ID               string           `json:"id,omitempty"`
+	Type             string           `json:"type,omitempty"`
+	Text             string           `json:"text,omitempty"`
+	Command          string           `json:"command,omitempty"`
+	AggregatedOutput string           `json:"aggregated_output,omitempty"`
+	ExitCode         *int             `json:"exit_code,omitempty"`
+	Status           string           `json:"status,omitempty"`
+	Query            string           `json:"query,omitempty"`
+	Server           string           `json:"server,omitempty"`
+	Tool             string           `json:"tool,omitempty"`
+	Arguments        map[string]any   `json:"arguments,omitempty"`
+	Result           json.RawMessage  `json:"result,omitempty"`
+	Changes          []map[string]any `json:"changes,omitempty"`
+	Items            []rawTodoItem    `json:"items,omitempty"`
 }
 
 type rawTodoItem struct {
@@ -83,6 +89,74 @@ func (item rawItem) todoArguments() map[string]any {
 	return map[string]any{
 		"todos": todos,
 	}
+}
+
+func (item rawItem) outputText() string {
+	if item.AggregatedOutput != "" {
+		return item.AggregatedOutput
+	}
+	if len(item.Result) == 0 {
+		return item.Status
+	}
+	var text string
+	if err := json.Unmarshal(item.Result, &text); err == nil {
+		return text
+	}
+	return string(item.Result)
+}
+
+func (item rawItem) serverToolCall() (ai.ToolCall, bool) {
+	var (
+		name       string
+		serverType ai.ServerToolType
+		arguments  map[string]any
+	)
+
+	switch item.Type {
+	case "file_change":
+		name = "file_change"
+		serverType = ai.ServerToolTextEditor
+		arguments = map[string]any{"changes": item.Changes}
+	case "web_search", "web_search_call":
+		name = "web_search"
+		serverType = ai.ServerToolWebSearch
+		arguments = item.Arguments
+		if arguments == nil {
+			arguments = map[string]any{}
+		}
+		if item.Query != "" {
+			arguments["query"] = item.Query
+		}
+	case "mcp_tool_call":
+		name = item.Tool
+		if item.Server != "" && name != "" {
+			name = item.Server + "." + name
+		}
+		if name == "" {
+			name = "mcp"
+		}
+		serverType = ai.ServerToolMCP
+		arguments = item.Arguments
+	default:
+		return ai.ToolCall{}, false
+	}
+
+	output := &ai.ServerToolOutput{
+		Content: item.outputText(),
+		IsError: item.commandFailed(),
+	}
+	if raw, err := json.Marshal(item); err == nil {
+		output.Raw = raw
+	}
+
+	return ai.ToolCall{
+		ID:         item.ID,
+		Name:       name,
+		Arguments:  arguments,
+		Server:     true,
+		ServerType: serverType,
+		Output:     output,
+	}, true
 }
 
 func (line rawLine) error() error {

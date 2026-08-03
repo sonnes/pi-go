@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openai/openai-go/responses"
-	"github.com/openai/openai-go/shared"
+	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -352,15 +352,15 @@ func TestConvertTools_ServerWebSearch(t *testing.T) {
 
 	result := convertTools(tools)
 	require.Len(t, result, 1)
-	require.NotNil(t, result[0].OfWebSearchPreview)
+	require.NotNil(t, result[0].OfWebSearch)
 
-	body, err := json.Marshal(result[0].OfWebSearchPreview)
+	body, err := json.Marshal(result[0].OfWebSearch)
 	require.NoError(t, err)
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(body, &got))
 
-	assert.Equal(t, "web_search_preview", got["type"])
+	assert.Equal(t, "web_search", got["type"])
 	assert.Equal(t, "high", got["search_context_size"])
 }
 
@@ -386,6 +386,33 @@ func TestConvertTools_ServerCodeInterpreter(t *testing.T) {
 	assert.Equal(t, "code_interpreter", got["type"])
 	// Default container is the auto sentinel object.
 	assert.NotNil(t, got["container"])
+}
+
+func TestConvertTools_FileSearchAndComputer(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{
+			Name:       "file_search",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolFileSearch,
+			ServerConfig: map[string]any{
+				"vector_store_ids": []string{"vs_pi_go"},
+				"max_num_results":  4,
+			},
+		},
+		{
+			Name:       "computer",
+			Kind:       ai.ToolKindServer,
+			ServerType: ai.ServerToolComputer,
+		},
+	}
+
+	result := convertTools(tools)
+	require.Len(t, result, 2)
+	require.NotNil(t, result[0].OfFileSearch)
+	require.NotNil(t, result[1].OfComputer)
+	assert.Equal(t, []string{"vs_pi_go"}, result[0].OfFileSearch.VectorStoreIDs)
+	require.True(t, result[0].OfFileSearch.MaxNumResults.Valid())
+	assert.Equal(t, int64(4), result[0].OfFileSearch.MaxNumResults.Value)
 }
 
 func TestConvertOpenRouterTools_FunctionTool(t *testing.T) {

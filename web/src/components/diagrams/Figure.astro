@@ -1,0 +1,91 @@
+---
+// Chrome shared by every diagram: the sheet, the header bar, and the
+// fallback contract. Not for use from a page — Flow and LayerStack wrap
+// themselves in it.
+//
+// The graphic is aria-hidden and the prose beneath it is the accessible
+// content. That is deliberate: an aria-label would flatten the
+// description into an attribute with no code formatting and no links,
+// and a screen reader would read every cell label twice. The prose is
+// visible rather than screen-reader-only, because an alt text nobody can
+// see is an alt text nobody proofreads.
+//
+// The same prose is what GitHub shows, where the component tag is
+// stripped and only its children survive. So it is required — a figure
+// whose meaning lives only in the picture is a figure that vanishes for
+// half its readers.
+import type { FigureProps } from "./types";
+
+interface Props extends FigureProps {}
+
+const { n, caption } = Astro.props;
+
+if (!Astro.slots.has("default")) {
+  throw new Error(
+    `Diagram "${caption}" has no description. Add prose as children: it is ` +
+      `the screen-reader content and the GitHub fallback, not a caption.`,
+  );
+}
+---
+
+<figure class="dgm">
+  <figcaption>
+    {n && <span class="dgm-n">Fig. {n}</span>}
+    <span class="dgm-caption">{caption}</span>
+  </figcaption>
+
+  <div class="dgm-body" aria-hidden="true">
+    <slot name="graphic" />
+  </div>
+
+  <div class="dgm-alt">
+    <slot />
+  </div>
+</figure>
+
+<style>
+  .dgm {
+    /* Layout tokens inherit into the graphic components below. */
+    --dgm-pad: 0.72rem 0.85rem;
+    --dgm-edge-h: 1.5rem;
+    --dgm-rail: 1.6rem;
+
+    margin: 1.9rem 0;
+    border: 1px solid var(--line-strong);
+    background: var(--panel-soft);
+  }
+
+  /* The header bar is the site's figure-caption convention, matching
+     Expressive Code's frame title and CodeFrame's own header. */
+  figcaption {
+    display: flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    padding: 0.42rem 0.85rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel-soft);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+  }
+  .dgm-n {
+    color: var(--muted-soft);
+    letter-spacing: 0.04em;
+  }
+
+  .dgm-body {
+    padding: 1.15rem 0.85rem;
+    background: var(--panel-soft);
+    overflow-x: auto;
+  }
+
+  .dgm-alt {
+    padding: 0 0.85rem 0.15rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  .dgm-alt :global(p) {
+    margin: 0.8rem 0;
+  }
+</style>

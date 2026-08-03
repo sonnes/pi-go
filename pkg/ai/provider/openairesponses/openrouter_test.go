@@ -2,13 +2,14 @@ package openairesponses_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/v3/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -39,6 +40,45 @@ func scrubOpenRouterRequest(req *http.Request) error {
 		}
 	}
 	req.Header.Set("User-Agent", "Go-http-client/1.1")
+	return canonicalizeOpenRouterBody(req)
+}
+
+// canonicalizeOpenRouterBody preserves the field order used by the recorded
+// cassettes while the v3 SDK emits the equivalent tools field before stream.
+func canonicalizeOpenRouterBody(req *http.Request) error {
+	body, ok := req.Body.(*httprr.Body)
+	if !ok || len(body.Data) == 0 {
+		return nil
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(body.Data, &payload); err != nil {
+		return err
+	}
+
+	keys := []string{
+		"instructions",
+		"max_output_tokens",
+		"store",
+		"input",
+		"model",
+		"stream",
+		"tools",
+	}
+	parts := make([]string, 0, len(payload))
+	for _, key := range keys {
+		value, ok := payload[key]
+		if !ok {
+			continue
+		}
+		parts = append(parts, `"`+key+`":`+string(value))
+		delete(payload, key)
+	}
+	for key, value := range payload {
+		parts = append(parts, `"`+key+`":`+string(value))
+	}
+	body.Data = []byte("{" + strings.Join(parts, ",") + "}")
+	body.ReadOffset = 0
 	return nil
 }
 
