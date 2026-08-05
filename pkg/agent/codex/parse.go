@@ -51,14 +51,36 @@ func parseLine(data []byte) (rawLine, error) {
 	return line, err
 }
 
-func usageFromCodex(u rawUsage) ai.Usage {
-	return ai.Usage{
-		Input:     u.InputTokens,
-		Output:    u.OutputTokens,
+// usageFromCodex converts a Codex CLI usage block to [ai.Usage], priced
+// against model's rates.
+//
+// Codex relays OpenAI's counts, where input_tokens includes the cached prefix
+// and output_tokens includes reasoning tokens. Both are split out here so the
+// categories are disjoint and a sum double-counts nothing. Reasoning bills at
+// the output rate — OpenAI charges it as output, and prices no separate
+// reasoning rate.
+func usageFromCodex(model ai.Model, u rawUsage) ai.Usage {
+	usage := ai.Usage{
+		Input:     u.InputTokens - u.CachedInputTokens,
+		Output:    u.OutputTokens - u.ReasoningOutputTokens,
 		CacheRead: u.CachedInputTokens,
 		Reasoning: u.ReasoningOutputTokens,
-		Total:     u.InputTokens + u.OutputTokens,
 	}
+
+	rates := model.Cost
+	usage.Cost = ai.UsageCost{
+		Input:     perMillion(usage.Input, rates.Input),
+		Output:    perMillion(usage.Output, rates.Output),
+		CacheRead: perMillion(usage.CacheRead, rates.CacheRead),
+		Reasoning: perMillion(usage.Reasoning, rates.Output),
+	}
+
+	return usage
+}
+
+// perMillion prices tokens at rate, which is quoted per million tokens.
+func perMillion(tokens int, rate float64) float64 {
+	return float64(tokens) * rate / 1_000_000
 }
 
 func (item rawItem) commandFailed() bool {

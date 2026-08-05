@@ -302,11 +302,34 @@ func optField(key, val string) string {
 	return key + "=" + val
 }
 
+// totalTokens sums every token category [ai.Usage] reports. The categories
+// are disjoint, so this is the grand total for a call.
+func totalTokens(u ai.Usage) int {
+	return u.Input +
+		u.Output +
+		u.CacheRead +
+		u.CacheWrite +
+		u.Reasoning +
+		u.InputAudio +
+		u.OutputAudio
+}
+
+// totalCost sums every cost category [ai.UsageCost] reports, in USD.
+func totalCost(u ai.Usage) float64 {
+	return u.Cost.Input +
+		u.Cost.Output +
+		u.Cost.CacheRead +
+		u.Cost.CacheWrite +
+		u.Cost.Reasoning +
+		u.Cost.InputAudio +
+		u.Cost.OutputAudio
+}
+
 func usageFields(u ai.Usage) []string {
 	fields := []string{
 		fmt.Sprintf("in=%d", u.Input),
 		fmt.Sprintf("out=%d", u.Output),
-		fmt.Sprintf("total=%d", u.Total),
+		fmt.Sprintf("total=%d", totalTokens(u)),
 	}
 	if u.CacheRead > 0 {
 		fields = append(fields, fmt.Sprintf("cache_read=%d", u.CacheRead))
@@ -314,8 +337,8 @@ func usageFields(u ai.Usage) []string {
 	if u.CacheWrite > 0 {
 		fields = append(fields, fmt.Sprintf("cache_write=%d", u.CacheWrite))
 	}
-	if u.Cost.Total > 0 {
-		fields = append(fields, fmt.Sprintf("$%.4f", u.Cost.Total))
+	if cost := totalCost(u); cost > 0 {
+		fields = append(fields, fmt.Sprintf("$%.4f", cost))
 	}
 	return fields
 }
@@ -362,7 +385,7 @@ func handleEvent(evt agent.Event) {
 		// Insert a blank line so streamed assistant text on stdout
 		// doesn't visually run into the trailing meta block.
 		fmt.Fprintln(os.Stderr)
-		if evt.Usage.Total > 0 {
+		if totalTokens(evt.Usage) > 0 {
 			logEvent(colorGreen, "usage", usageFields(evt.Usage)...)
 		}
 		logEvent(colorBlue, "agent:end")

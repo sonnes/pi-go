@@ -478,14 +478,36 @@ func mapStopReason(status responses.ResponseStatus) ai.StopReason {
 	}
 }
 
-// mapUsage converts Responses API usage to ai.Usage.
-func mapUsage(u responses.ResponseUsage) ai.Usage {
-	return ai.Usage{
-		Input:     int(u.InputTokens),
+// mapUsage converts Responses API usage to [ai.Usage], priced with model's
+// rates.
+//
+// The API reports input_tokens inclusive of the cached prefix, so the prefix
+// is subtracted out and billed once at the cache-read rate rather than twice.
+// Cache writes are implicit — the API reports no token count for them, so
+// there is nothing to bill. Reasoning tokens are already counted in
+// output_tokens and bill at the output rate.
+func mapUsage(model ai.Model, u responses.ResponseUsage) ai.Usage {
+	cacheRead := int(u.InputTokensDetails.CachedTokens)
+
+	usage := ai.Usage{
+		Input:     int(u.InputTokens) - cacheRead,
 		Output:    int(u.OutputTokens),
-		Total:     int(u.TotalTokens),
-		CacheRead: int(u.InputTokensDetails.CachedTokens),
+		CacheRead: cacheRead,
 	}
+
+	rates := model.Cost
+	usage.Cost = ai.UsageCost{
+		Input:     perMillion(usage.Input, rates.Input),
+		Output:    perMillion(usage.Output, rates.Output),
+		CacheRead: perMillion(usage.CacheRead, rates.CacheRead),
+	}
+
+	return usage
+}
+
+// perMillion prices tokens at rate, which is quoted per million tokens.
+func perMillion(tokens int, rate float64) float64 {
+	return float64(tokens) * rate / 1_000_000
 }
 
 // mapThinkingLevel converts ai.ThinkingLevel to OpenAI reasoning effort.

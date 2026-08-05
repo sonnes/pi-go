@@ -15,7 +15,6 @@ type rawLine struct {
 	Message   json.RawMessage `json:"message,omitempty"`
 	Result    string          `json:"result,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
-	CostUSD   float64         `json:"cost_usd,omitempty"`
 	Usage     *rawUsage       `json:"usage,omitempty"`
 }
 
@@ -81,8 +80,9 @@ func parseLine(data []byte) (rawLine, error) {
 	return line, err
 }
 
-// toAIMessage converts an Anthropic API message to an [ai.Message].
-func toAIMessage(msg anthropicMessage) ai.Message {
+// toAIMessage converts an Anthropic API message to an [ai.Message], pricing
+// its usage against model's rates.
+func toAIMessage(model ai.Model, msg anthropicMessage) ai.Message {
 	m := ai.Message{
 		Role:       ai.Role(msg.Role),
 		StopReason: mapStopReason(msg.StopReason),
@@ -109,8 +109,8 @@ func toAIMessage(msg anthropicMessage) ai.Message {
 			Output:     msg.Usage.OutputTokens,
 			CacheRead:  msg.Usage.CacheReadInputTokens,
 			CacheWrite: msg.Usage.CacheCreationInputTokens,
-			Total:      msg.Usage.InputTokens + msg.Usage.OutputTokens,
 		}
+		m.Usage.Cost = anthropicCost(model, m.Usage)
 	}
 
 	return m
@@ -126,4 +126,26 @@ func mapStopReason(reason string) ai.StopReason {
 	default:
 		return ai.StopReasonStop
 	}
+}
+
+// anthropicCost prices an Anthropic-shaped usage block against model's rates.
+//
+// The CLI relays Anthropic's own usage block, where input_tokens excludes the
+// cached prefix, so the four token kinds are disjoint and each bills exactly
+// once at its own rate. Rates come from the caller's [ai.Model]; the CLI
+// reports only a lump-sum total_cost_usd with no per-category split, so there
+// is nothing to relay instead.
+func anthropicCost(model ai.Model, u ai.Usage) ai.UsageCost {
+	rates := model.Cost
+	return ai.UsageCost{
+		Input:      perMillion(u.Input, rates.Input),
+		Output:     perMillion(u.Output, rates.Output),
+		CacheRead:  perMillion(u.CacheRead, rates.CacheRead),
+		CacheWrite: perMillion(u.CacheWrite, rates.CacheWrite),
+	}
+}
+
+// perMillion prices tokens at rate, which is quoted per million tokens.
+func perMillion(tokens int, rate float64) float64 {
+	return float64(tokens) * rate / 1_000_000
 }

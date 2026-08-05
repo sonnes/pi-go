@@ -65,7 +65,6 @@ func TestMock_TextGeneration(t *testing.T) {
 	assert.Equal(t, "openai-responses", msg.API)
 	assert.Equal(t, 20, msg.Usage.Input)
 	assert.Equal(t, 5, msg.Usage.Output)
-	assert.Equal(t, 25, msg.Usage.Total)
 }
 
 func TestMock_StreamEventSequence(t *testing.T) {
@@ -328,10 +327,11 @@ func TestMock_CachedTokens(t *testing.T) {
 	}, ai.StreamOptions{}).Wait()
 
 	require.NoError(t, err)
-	assert.Equal(t, 100, msg.Usage.Input)
+	// input_tokens includes cached_tokens on the wire; Usage.Input reports
+	// only the uncached remainder so the two never bill twice.
+	assert.Equal(t, 20, msg.Usage.Input)
 	assert.Equal(t, 5, msg.Usage.Output)
 	assert.Equal(t, 80, msg.Usage.CacheRead)
-	assert.Equal(t, 105, msg.Usage.Total)
 }
 
 func TestMock_FailedResponse(t *testing.T) {
@@ -416,4 +416,32 @@ func TestMock_MultiTurnToolCallConversion(t *testing.T) {
 	assert.Contains(t, capturedBody, "function_call")
 	assert.Contains(t, capturedBody, "function_call_output")
 	assert.Contains(t, capturedBody, "call_abc")
+}
+
+func TestMock_UsageCost(t *testing.T) {
+	events := []string{
+		`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"Hi"}`,
+		`{"type":"response.output_text.done","output_index":0,"content_index":0,"text":"Hi"}`,
+		`{"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":1000,"output_tokens":500,"total_tokens":1500,"input_tokens_details":{"cached_tokens":200}}}}`,
+	}
+
+	p, cleanup := newMockProvider(t, events)
+	defer cleanup()
+
+	model := testModel()
+	model.Cost = ai.Cost{Input: 2, Output: 8, CacheRead: 0.5}
+
+	msg, err := p.StreamText(context.Background(), model, ai.Prompt{
+		Messages: []ai.Message{ai.UserMessage("hi")},
+	}, ai.StreamOptions{}).Wait()
+
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+
+	// 800 uncached input tokens, not 1000 — the 200 cached ones bill at the
+	// cache rate only.
+	cost := msg.Usage.Cost
+	assert.InDelta(t, 0.0016, cost.Input, 1e-9)
+	assert.InDelta(t, 0.004, cost.Output, 1e-9)
+	assert.InDelta(t, 0.0001, cost.CacheRead, 1e-9)
 }

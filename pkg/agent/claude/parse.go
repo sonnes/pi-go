@@ -25,7 +25,6 @@ type rawLine struct {
 	Event     json.RawMessage  `json:"event,omitempty"`
 	Result    string           `json:"result,omitempty"`
 	IsError   bool             `json:"is_error,omitempty"`
-	CostUSD   float64          `json:"cost_usd,omitempty"`
 	Usage     *anthropic.Usage `json:"usage,omitempty"`
 
 	// control_request lines (CLI → client, e.g. can_use_tool).
@@ -92,7 +91,7 @@ func parseLine(data []byte) (rawLine, error) {
 
 // toAIMessage converts an Anthropic API message (as decoded by the
 // anthropic SDK) to an [ai.Message].
-func toAIMessage(msg anthropic.Message) ai.Message {
+func toAIMessage(model ai.Model, msg anthropic.Message) ai.Message {
 	m := ai.Message{
 		Role:       ai.RoleAssistant,
 		StopReason: mapStopReason(string(msg.StopReason)),
@@ -120,26 +119,33 @@ func toAIMessage(msg anthropic.Message) ai.Message {
 		}
 	}
 
-	m.Usage = usageFromAnthropic(&msg.Usage)
+	m.Usage = usageFromAnthropic(model, &msg.Usage)
 
 	return m
 }
 
 // usageFromAnthropic converts an [anthropic.Usage] into [ai.Usage]. Pass
 // nil to signal "no usage reported" (returns the zero value).
-func usageFromAnthropic(u *anthropic.Usage) ai.Usage {
+func usageFromAnthropic(model ai.Model, u *anthropic.Usage) ai.Usage {
 	if u == nil {
 		return ai.Usage{}
 	}
-	in := int(u.InputTokens)
-	out := int(u.OutputTokens)
-	return ai.Usage{
-		Input:      in,
-		Output:     out,
+	usage := ai.Usage{
+		Input:      int(u.InputTokens),
+		Output:     int(u.OutputTokens),
 		CacheRead:  int(u.CacheReadInputTokens),
 		CacheWrite: int(u.CacheCreationInputTokens),
-		Total:      in + out,
 	}
+
+	rates := model.Cost
+	usage.Cost = ai.UsageCost{
+		Input:      perMillion(usage.Input, rates.Input),
+		Output:     perMillion(usage.Output, rates.Output),
+		CacheRead:  perMillion(usage.CacheRead, rates.CacheRead),
+		CacheWrite: perMillion(usage.CacheWrite, rates.CacheWrite),
+	}
+
+	return usage
 }
 
 // mapStopReason converts Anthropic API stop reasons to [ai.StopReason].
@@ -161,6 +167,9 @@ func mapStopReason(reason string) ai.StopReason {
 // same turn as the assistant's tool call, matching the Default agent's
 // event protocol.
 type parser struct {
+	// model is the caller's [ai.Model], retained for its Cost rates: the
+	// CLI reports token counts but no per-category cost.
+	model       ai.Model
 	usage       ai.Usage
 	messages    []ai.Message
 	toolResults []ai.Message
@@ -351,7 +360,7 @@ func (m *parser) handleAssistant(line rawLine) []agent.Event {
 		return nil
 	}
 
-	aiMsg := toAIMessage(msg)
+	aiMsg := toAIMessage(m.model, msg)
 	// Per-line usage from the CLI is a streaming snapshot — output_tokens
 	// is typically 0 here. Drop it; the result line carries the final
 	// authoritative usage for the entire turn.
@@ -497,12 +506,7 @@ func (m *parser) handleResult(line rawLine) []agent.Event {
 
 	// Capture usage.
 	if line.Usage != nil {
-		m.usage = usageFromAnthropic(line.Usage)
-	}
-
-	// Map cost.
-	if line.CostUSD > 0 {
-		m.usage.Cost.Total = line.CostUSD
+		m.usage = usageFromAnthropic(m.model, line.Usage)
 	}
 
 	// Handle error results.
@@ -564,4 +568,9 @@ func (m *parser) lastMessageHasText(text string) bool {
 		return m.messages[i].Text() == text
 	}
 	return false
+}
+
+// perMillion prices tokens at rate, which is quoted per million tokens.
+func perMillion(tokens int, rate float64) float64 {
+	return float64(tokens) * rate / 1_000_000
 }

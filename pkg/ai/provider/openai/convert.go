@@ -260,15 +260,34 @@ func mapStopReason(reason string) ai.StopReason {
 	}
 }
 
-// mapUsage converts OpenAI usage to Usage.
-func mapUsage(u openai.CompletionUsage) ai.Usage {
+// mapUsage converts OpenAI usage to [ai.Usage], priced with model's rates.
+//
+// The API reports prompt_tokens inclusive of the cached prefix, so the prefix
+// is subtracted out and billed once at the cache-read rate rather than twice.
+// Cache writes are implicit — the API reports no token count for them, so
+// there is nothing to bill. Reasoning tokens are already counted in
+// completion_tokens and bill at the output rate.
+func mapUsage(model ai.Model, u openai.CompletionUsage) ai.Usage {
 	usage := ai.Usage{
 		Input:  int(u.PromptTokens),
 		Output: int(u.CompletionTokens),
-		Total:  int(u.TotalTokens),
 	}
 	if u.PromptTokensDetails.CachedTokens > 0 {
 		usage.CacheRead = int(u.PromptTokensDetails.CachedTokens)
+		usage.Input -= usage.CacheRead
 	}
+
+	rates := model.Cost
+	usage.Cost = ai.UsageCost{
+		Input:     perMillion(usage.Input, rates.Input),
+		Output:    perMillion(usage.Output, rates.Output),
+		CacheRead: perMillion(usage.CacheRead, rates.CacheRead),
+	}
+
 	return usage
+}
+
+// perMillion prices tokens at rate, which is quoted per million tokens.
+func perMillion(tokens int, rate float64) float64 {
+	return float64(tokens) * rate / 1_000_000
 }

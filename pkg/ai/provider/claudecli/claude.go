@@ -288,7 +288,7 @@ func (p *Provider) GenerateObject(
 		return nil, err
 	}
 
-	raw, usage, parseErr := collectObjectResult(stdout)
+	raw, usage, parseErr := collectObjectResult(model, stdout)
 	cleanupErr := cleanup()
 	if parseErr != nil {
 		return nil, parseErr
@@ -357,7 +357,7 @@ func pumpAIEvents(
 			if err := json.Unmarshal(line.Message, &msg); err != nil {
 				continue
 			}
-			aiMsg := toAIMessage(msg)
+			aiMsg := toAIMessage(model, msg)
 			aiMsg.Model = model.ID
 			skipped := partial.finish(push, &contentIdx)
 			emitContentBlocks(push, aiMsg.Content, &contentIdx, skipped)
@@ -371,11 +371,8 @@ func pumpAIEvents(
 					Output:     line.Usage.OutputTokens,
 					CacheRead:  line.Usage.CacheReadInputTokens,
 					CacheWrite: line.Usage.CacheCreationInputTokens,
-					Total:      line.Usage.InputTokens + line.Usage.OutputTokens,
 				}
-			}
-			if line.CostUSD > 0 {
-				usage.Cost.Total = line.CostUSD
+				usage.Cost = anthropicCost(model, usage)
 			}
 			if line.IsError {
 				resultErr = fmt.Errorf("claude: %s", line.Result)
@@ -616,7 +613,7 @@ func emitContentBlocks(
 // collectObjectResult reads NDJSON lines from stdout and returns the
 // final JSON text. It prefers the `result` line's Result field and
 // falls back to the concatenated text of the last assistant message.
-func collectObjectResult(stdout io.Reader) (string, ai.Usage, error) {
+func collectObjectResult(model ai.Model, stdout io.Reader) (string, ai.Usage, error) {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
@@ -655,11 +652,8 @@ func collectObjectResult(stdout io.Reader) (string, ai.Usage, error) {
 					Output:     line.Usage.OutputTokens,
 					CacheRead:  line.Usage.CacheReadInputTokens,
 					CacheWrite: line.Usage.CacheCreationInputTokens,
-					Total:      line.Usage.InputTokens + line.Usage.OutputTokens,
 				}
-			}
-			if line.CostUSD > 0 {
-				usage.Cost.Total = line.CostUSD
+				usage.Cost = anthropicCost(model, usage)
 			}
 			if line.IsError {
 				resultErr = fmt.Errorf("claude: %s", line.Result)

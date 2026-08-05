@@ -29,6 +29,11 @@ const toolCallNDJSON = `{"type":"system","subtype":"init","session_id":"s1"}
 {"type":"result","subtype":"success","result":"It's a Go file.","usage":{"input_tokens":100,"output_tokens":30}}
 `
 
+const cachedUsageNDJSON = `{"type":"system","subtype":"init","session_id":"s1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hi"}],"stop_reason":"end_turn","usage":{"input_tokens":800,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":100}}}
+{"type":"result","subtype":"success","result":"Hi","usage":{"input_tokens":800,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":100}}
+`
+
 const thinkingNDJSON = `{"type":"system","subtype":"init","session_id":"s1"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Let me ponder..."},{"type":"text","text":"The answer is 42."}],"stop_reason":"end_turn"}}
 {"type":"result","subtype":"success","result":"The answer is 42."}
@@ -766,4 +771,38 @@ func aiEventTypes(events []ai.Event) []ai.EventType {
 		types[i] = e.Type
 	}
 	return types
+}
+
+func TestStreamText_UsageCost(t *testing.T) {
+	p := New()
+	_, _, restore := stubSend(p, cachedUsageNDJSON, nil)
+	defer restore()
+
+	model := ai.Model{
+		ID:   "sonnet",
+		Cost: ai.Cost{Input: 3, Output: 15, CacheRead: 0.3, CacheWrite: 3.75},
+	}
+
+	stream := p.StreamText(
+		context.Background(),
+		model,
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{},
+	)
+
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+
+	assert.Equal(t, 800, msg.Usage.Input)
+	assert.Equal(t, 200, msg.Usage.CacheRead)
+	assert.Equal(t, 100, msg.Usage.CacheWrite)
+
+	// The CLI relays Anthropic's own usage block: four disjoint kinds,
+	// each billed once at its own rate.
+	cost := msg.Usage.Cost
+	assert.InDelta(t, 0.0024, cost.Input, 1e-9)
+	assert.InDelta(t, 0.0075, cost.Output, 1e-9)
+	assert.InDelta(t, 0.00006, cost.CacheRead, 1e-9)
+	assert.InDelta(t, 0.000375, cost.CacheWrite, 1e-9)
 }

@@ -161,7 +161,8 @@ func TestGenerateText(t *testing.T) {
 	}
 	assert.True(t, found, "response %q does not contain expected Portuguese greeting", text)
 
-	assert.NotZero(t, msg.Usage.Total, "expected non-zero total tokens")
+	assert.NotZero(t, msg.Usage.Input, "expected non-zero input tokens")
+	assert.NotZero(t, msg.Usage.Output, "expected non-zero output tokens")
 	assert.Equal(t, ai.StopReasonStop, msg.StopReason)
 	assert.Equal(t, ai.RoleAssistant, msg.Role)
 }
@@ -207,7 +208,8 @@ func TestStreamText(t *testing.T) {
 	assert.True(t, found, "response %q does not contain expected Portuguese greeting", response)
 
 	require.NotNil(t, finalMsg, "expected final message")
-	assert.NotZero(t, finalMsg.Usage.Total, "expected non-zero total tokens")
+	assert.NotZero(t, finalMsg.Usage.Input, "expected non-zero input tokens")
+	assert.NotZero(t, finalMsg.Usage.Output, "expected non-zero output tokens")
 	assert.Equal(t, ai.StopReasonStop, finalMsg.StopReason)
 }
 
@@ -240,7 +242,8 @@ func TestGenerateObject(t *testing.T) {
 	assert.Equal(t, 30, person.Age)
 	assert.Equal(t, "Paris", person.City)
 
-	assert.NotZero(t, resp.Usage.Total, "expected non-zero total tokens")
+	assert.NotZero(t, resp.Usage.Input, "expected non-zero input tokens")
+	assert.NotZero(t, resp.Usage.Output, "expected non-zero output tokens")
 }
 
 func TestToolCall(t *testing.T) {
@@ -479,12 +482,6 @@ func TestUsageTokens(t *testing.T) {
 
 	assert.NotZero(t, msg.Usage.Input, "expected non-zero input tokens")
 	assert.NotZero(t, msg.Usage.Output, "expected non-zero output tokens")
-	assert.Equal(
-		t,
-		msg.Usage.Input+msg.Usage.Output,
-		msg.Usage.Total,
-		"total should equal input + output",
-	)
 }
 
 func TestThinking(t *testing.T) {

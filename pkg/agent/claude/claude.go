@@ -20,6 +20,10 @@ import (
 type Agent struct {
 	cfg config
 
+	// model is the caller's [ai.Model], retained for its Cost rates: the
+	// CLI reports token counts but no per-category cost.
+	model ai.Model
+
 	// newTransport is the factory for the CLI subprocess. Overridden in tests.
 	newTransport func(ctx context.Context, cfg config) (transportIface, error)
 
@@ -109,6 +113,7 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	}
 
 	return &Agent{
+		model:        model,
 		cfg:          cfg,
 		newTransport: newTransport,
 		sessionID:    cfg.sessionID,
@@ -364,7 +369,7 @@ func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 	scanner := bufio.NewScanner(t.stdout())
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
-	p := &parser{}
+	p := &parser{model: a.model}
 	var turnSessionID string
 
 	for scanner.Scan() {
@@ -412,7 +417,7 @@ func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 				sessionID: turnSessionID,
 				err:       p.err,
 			})
-			p = &parser{}
+			p = &parser{model: a.model}
 			turnSessionID = ""
 		}
 	}

@@ -427,7 +427,7 @@ func (p *Provider) StreamText(
 				resp := event.Response
 				stopReason = mapStopReason(resp.Status)
 				if resp.Usage.TotalTokens > 0 {
-					usage = mapUsage(resp.Usage)
+					usage = mapUsage(model, resp.Usage)
 				}
 
 			case "response.failed":
@@ -532,8 +532,7 @@ func (p *Provider) GenerateObject(
 		return nil, errors.New("openai-responses: no object generated")
 	}
 
-	usage := mapUsage(response.Usage)
-	usage.Cost = ai.CalculateCost(model, usage)
+	usage := mapUsage(model, response.Usage)
 
 	return &ai.ObjectResponse{
 		Raw:   raw,

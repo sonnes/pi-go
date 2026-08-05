@@ -334,7 +334,8 @@ func TestUsageTokens(t *testing.T) {
 
 	assert.NotZero(t, msg.Usage.Input, "expected non-zero input tokens")
 	assert.NotZero(t, msg.Usage.Output, "expected non-zero output tokens")
-	assert.NotZero(t, msg.Usage.Total, "expected non-zero total tokens")
+	assert.NotZero(t, msg.Usage.Input, "expected non-zero input tokens")
+	assert.NotZero(t, msg.Usage.Output, "expected non-zero output tokens")
 }
 
 func TestContextCancellation(t *testing.T) {

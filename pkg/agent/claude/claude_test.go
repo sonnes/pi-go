@@ -621,7 +621,8 @@ func TestAgent_Run_FullToolLoop(t *testing.T) {
 	assert.Equal(t, "It's a Go file.", last.Messages[2].Text())
 	assert.Equal(t, 100, last.Usage.Input)
 	assert.Equal(t, 30, last.Usage.Output)
-	assert.InDelta(t, 0.002, last.Usage.Cost.Total, 0.0001)
+	// The CLI reports only a lump-sum cost, which pi-go no longer maps.
+	assert.Zero(t, last.Usage.Cost)
 
 	var turnEnds []agent.Event
 	for _, e := range events {

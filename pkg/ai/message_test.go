@@ -96,11 +96,9 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	original.Usage = ai.Usage{
 		Input:  100,
 		Output: 50,
-		Total:  150,
 		Cost: ai.UsageCost{
 			Input:  0.001,
 			Output: 0.002,
-			Total:  0.003,
 		},
 	}
 
@@ -118,8 +116,8 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, original.StopReason, decoded.StopReason)
 	assert.Equal(t, original.Usage.Input, decoded.Usage.Input)
 	assert.Equal(t, original.Usage.Output, decoded.Usage.Output)
-	assert.Equal(t, original.Usage.Total, decoded.Usage.Total)
-	assert.InDelta(t, original.Usage.Cost.Total, decoded.Usage.Cost.Total, 0.0001)
+	assert.InDelta(t, original.Usage.Cost.Input, decoded.Usage.Cost.Input, 0.0001)
+	assert.InDelta(t, original.Usage.Cost.Output, decoded.Usage.Cost.Output, 0.0001)
 
 	require.Len(t, decoded.Content, 3)
 

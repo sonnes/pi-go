@@ -37,7 +37,6 @@ func TestParseLine(t *testing.T) {
 				Subtype:   "success",
 				Result:    "Hello!",
 				SessionID: "sess-123",
-				CostUSD:   0.005,
 				Usage: &anthropic.Usage{
 					InputTokens:  100,
 					OutputTokens: 50,
@@ -88,7 +87,6 @@ func TestParseLine(t *testing.T) {
 			assert.Equal(t, tt.want.Subtype, got.Subtype)
 			assert.Equal(t, tt.want.SessionID, got.SessionID)
 			assert.Equal(t, tt.want.Result, got.Result)
-			assert.InDelta(t, tt.want.CostUSD, got.CostUSD, 0.0001)
 			if tt.want.Usage != nil {
 				require.NotNil(t, got.Usage)
 				assert.Equal(t, tt.want.Usage.InputTokens, got.Usage.InputTokens)
@@ -164,7 +162,6 @@ func TestToAIMessage(t *testing.T) {
 					Output:     50,
 					CacheRead:  200,
 					CacheWrite: 300,
-					Total:      150,
 				},
 			},
 		},
@@ -218,7 +215,7 @@ func TestToAIMessage(t *testing.T) {
 			var msg anthropic.Message
 			require.NoError(t, json.Unmarshal([]byte(tt.rawJSON), &msg))
 
-			got := toAIMessage(msg)
+			got := toAIMessage(ai.Model{}, msg)
 			assert.Equal(t, tt.want.Role, got.Role)
 			assert.Equal(t, tt.want.StopReason, got.StopReason)
 			assert.Equal(t, tt.want.Usage, got.Usage)
@@ -361,7 +358,6 @@ func TestMapper_Usage(t *testing.T) {
 
 	assert.Equal(t, 100, m.usage.Input)
 	assert.Equal(t, 50, m.usage.Output)
-	assert.Equal(t, 150, m.usage.Total)
 }
 
 func TestMapper_Messages(t *testing.T) {
@@ -515,21 +511,6 @@ func TestMapper_ResultNewText(t *testing.T) {
 	assert.Contains(t, types, agent.EventMessageEnd)
 }
 
-func TestMapper_ResultCostUSD(t *testing.T) {
-	m := &parser{}
-	m.handleLine(rawLine{
-		Type:    "result",
-		Subtype: "success",
-		CostUSD: 0.0042,
-		Usage: &anthropic.Usage{
-			InputTokens:  100,
-			OutputTokens: 50,
-		},
-	})
-
-	assert.InDelta(t, 0.0042, m.usage.Cost.Total, 0.0001)
-}
-
 func TestMapper_FullConversationWithTools(t *testing.T) {
 	m := &parser{}
 	var allEvents []agent.Event
@@ -546,7 +527,6 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 		Subtype: "success",
 		Result:  "It's a Go file.",
 		Usage:   &anthropic.Usage{InputTokens: 500, OutputTokens: 50},
-		CostUSD: 0.001,
 	})
 
 	types := make([]agent.EventType, len(allEvents))
@@ -579,7 +559,6 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 	assert.Equal(t, ai.RoleAssistant, m.messages[0].Role)
 	assert.Equal(t, ai.RoleToolResult, m.messages[1].Role)
 	assert.Equal(t, ai.RoleAssistant, m.messages[2].Role)
-	assert.InDelta(t, 0.001, m.usage.Cost.Total, 0.0001)
 }
 
 func TestMapper_UserToolResultArrayContent(t *testing.T) {
@@ -682,7 +661,6 @@ func TestMapper_StaleAssistantUsageDropped(t *testing.T) {
 	require.NotNil(t, msgEnd.Message)
 	assert.Equal(t, 3, msgEnd.Message.Usage.Input)
 	assert.Equal(t, 25, msgEnd.Message.Usage.Output)
-	assert.Equal(t, 28, msgEnd.Message.Usage.Total)
 	assert.Equal(t, 5000, msgEnd.Message.Usage.CacheWrite)
 }
 
@@ -743,7 +721,6 @@ func TestMapper_UsageOnlyOnLastAssistantLine(t *testing.T) {
 	// Last (text) message — turn-level usage.
 	assert.Equal(t, 3, ends[1].Message.Usage.Input)
 	assert.Equal(t, 25, ends[1].Message.Usage.Output)
-	assert.Equal(t, 28, ends[1].Message.Usage.Total)
 	assert.Equal(t, 5000, ends[1].Message.Usage.CacheWrite)
 }
 
@@ -785,7 +762,6 @@ func TestMapper_UsageOnResultCreatedMessage(t *testing.T) {
 	assert.Equal(t, "Answer text.", last.Message.Text())
 	assert.Equal(t, 10, last.Message.Usage.Input)
 	assert.Equal(t, 5, last.Message.Usage.Output)
-	assert.Equal(t, 15, last.Message.Usage.Total)
 }
 
 // --- stream_event (partial message) tests ---
@@ -997,4 +973,31 @@ func makeUserToolResultLine(t *testing.T, toolUseID, content string) rawLine {
 		toolUseID, content,
 	)
 	return rawLine{Type: "user", Message: json.RawMessage(body)}
+}
+
+func TestMapper_UsageCost(t *testing.T) {
+	m := &parser{
+		model: ai.Model{
+			ID:   "sonnet",
+			Cost: ai.Cost{Input: 3, Output: 15, CacheRead: 0.3, CacheWrite: 3.75},
+		},
+	}
+	m.handleLine(rawLine{
+		Type:    "result",
+		Subtype: "success",
+		Usage: &anthropic.Usage{
+			InputTokens:              800,
+			OutputTokens:             500,
+			CacheReadInputTokens:     200,
+			CacheCreationInputTokens: 100,
+		},
+	})
+
+	// The CLI relays Anthropic's own usage block: four disjoint kinds,
+	// each billed once at its own rate.
+	cost := m.usage.Cost
+	assert.InDelta(t, 0.0024, cost.Input, 1e-9)
+	assert.InDelta(t, 0.0075, cost.Output, 1e-9)
+	assert.InDelta(t, 0.00006, cost.CacheRead, 1e-9)
+	assert.InDelta(t, 0.000375, cost.CacheWrite, 1e-9)
 }

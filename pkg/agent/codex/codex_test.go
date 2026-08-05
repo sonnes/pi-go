@@ -115,8 +115,10 @@ func TestAgent_Run_SimpleText(t *testing.T) {
 	last := events[len(events)-1]
 	require.Len(t, last.Messages, 1)
 	assert.Equal(t, "Hello!", last.Messages[0].Text())
-	assert.Equal(t, 10, last.Usage.Input)
-	assert.Equal(t, 5, last.Usage.Output)
+	// input_tokens includes cached, output_tokens includes reasoning; the
+	// categories are reported disjoint so a sum double-counts nothing.
+	assert.Equal(t, 7, last.Usage.Input)
+	assert.Equal(t, 3, last.Usage.Output)
 	assert.Equal(t, 3, last.Usage.CacheRead)
 	assert.Equal(t, 2, last.Usage.Reasoning)
 	assert.Equal(t, "thread-1", a.SessionID())
@@ -507,4 +509,26 @@ func collectRun(t *testing.T, s *agent.Stream) ([]agent.Event, error) {
 		t.Fatal("timed out waiting for the run to finish")
 		return nil, nil
 	}
+}
+
+func TestAgent_Run_UsageCost(t *testing.T) {
+	a := New(ai.Model{
+		ID:   "gpt-5.4",
+		Name: "gpt-5.4",
+		Cost: ai.Cost{Input: 2, Output: 8, CacheRead: 0.5},
+	})
+	_, restore := stubRunner(a, simpleTurnJSONL)
+	defer restore()
+	defer a.Close()
+
+	events, err := collectRun(t, a.Run(context.Background(), ai.UserMessage("hi")))
+	require.NoError(t, err)
+
+	// 7 uncached input, 3 non-reasoning output, 3 cache read, 2 reasoning.
+	// Reasoning bills at the output rate: OpenAI counts it as output.
+	cost := events[len(events)-1].Usage.Cost
+	assert.InDelta(t, 0.000014, cost.Input, 1e-12)
+	assert.InDelta(t, 0.000024, cost.Output, 1e-12)
+	assert.InDelta(t, 0.0000015, cost.CacheRead, 1e-12)
+	assert.InDelta(t, 0.000016, cost.Reasoning, 1e-12)
 }

@@ -643,17 +643,21 @@ func emitMessages(push func(Event), msgs []ai.Message, input bool) {
 // addUsage sums two [ai.Usage] values.
 func addUsage(a, b ai.Usage) ai.Usage {
 	return ai.Usage{
-		Input:      a.Input + b.Input,
-		Output:     a.Output + b.Output,
-		CacheRead:  a.CacheRead + b.CacheRead,
-		CacheWrite: a.CacheWrite + b.CacheWrite,
-		Total:      a.Total + b.Total,
+		Input:       a.Input + b.Input,
+		Output:      a.Output + b.Output,
+		CacheRead:   a.CacheRead + b.CacheRead,
+		CacheWrite:  a.CacheWrite + b.CacheWrite,
+		Reasoning:   a.Reasoning + b.Reasoning,
+		InputAudio:  a.InputAudio + b.InputAudio,
+		OutputAudio: a.OutputAudio + b.OutputAudio,
 		Cost: ai.UsageCost{
-			Input:      a.Cost.Input + b.Cost.Input,
-			Output:     a.Cost.Output + b.Cost.Output,
-			CacheRead:  a.Cost.CacheRead + b.Cost.CacheRead,
-			CacheWrite: a.Cost.CacheWrite + b.Cost.CacheWrite,
-			Total:      a.Cost.Total + b.Cost.Total,
+			Input:       a.Cost.Input + b.Cost.Input,
+			Output:      a.Cost.Output + b.Cost.Output,
+			CacheRead:   a.Cost.CacheRead + b.Cost.CacheRead,
+			CacheWrite:  a.Cost.CacheWrite + b.Cost.CacheWrite,
+			Reasoning:   a.Cost.Reasoning + b.Cost.Reasoning,
+			InputAudio:  a.Cost.InputAudio + b.Cost.InputAudio,
+			OutputAudio: a.Cost.OutputAudio + b.Cost.OutputAudio,
 		},
 	}
 }

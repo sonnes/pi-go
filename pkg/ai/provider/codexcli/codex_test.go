@@ -136,11 +136,12 @@ func TestStreamText_SimpleText(t *testing.T) {
 	assert.Equal(t, "Hello!", msg.Text())
 	assert.Equal(t, "codex-cli", msg.API)
 	assert.Equal(t, "gpt-5.4", msg.Model)
-	assert.Equal(t, 10, msg.Usage.Input)
-	assert.Equal(t, 5, msg.Usage.Output)
+	// input_tokens includes cached, output_tokens includes reasoning; the
+	// categories are reported disjoint so a sum double-counts nothing.
+	assert.Equal(t, 7, msg.Usage.Input)
+	assert.Equal(t, 3, msg.Usage.Output)
 	assert.Equal(t, 3, msg.Usage.CacheRead)
 	assert.Equal(t, 2, msg.Usage.Reasoning)
-	assert.Equal(t, 15, msg.Usage.Total)
 }
 
 func TestStreamText_CommandExecution(t *testing.T) {
@@ -431,4 +432,34 @@ func aiEventTypes(events []ai.Event) []ai.EventType {
 		types[i] = e.Type
 	}
 	return types
+}
+
+func TestStreamText_UsageCost(t *testing.T) {
+	p := New()
+	_, _, restore := stubSend(p, simpleTextJSONL, nil)
+	defer restore()
+
+	model := ai.Model{
+		ID:   "gpt-5.4",
+		Cost: ai.Cost{Input: 2, Output: 8, CacheRead: 0.5},
+	}
+
+	stream := p.StreamText(
+		context.Background(),
+		model,
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{},
+	)
+
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+
+	// 7 uncached input, 3 non-reasoning output, 3 cache read, 2 reasoning.
+	// Reasoning bills at the output rate: OpenAI counts it as output.
+	cost := msg.Usage.Cost
+	assert.InDelta(t, 0.000014, cost.Input, 1e-12)
+	assert.InDelta(t, 0.000024, cost.Output, 1e-12)
+	assert.InDelta(t, 0.0000015, cost.CacheRead, 1e-12)
+	assert.InDelta(t, 0.000016, cost.Reasoning, 1e-12)
 }

@@ -371,7 +371,7 @@ func (p *Provider) StreamText(
 			}
 
 			if resp.UsageMetadata != nil && resp.UsageMetadata.TotalTokenCount > 0 {
-				usage = mapUsage(resp.UsageMetadata)
+				usage = mapUsage(model, resp.UsageMetadata)
 			}
 
 			if len(resp.Candidates) > 0 && resp.Candidates[0].FinishReason != "" {
@@ -812,17 +812,39 @@ func mapToGenaiSchema(m map[string]any) *genai.Schema {
 	return schema
 }
 
-// mapUsage converts Google usage metadata to Usage.
-func mapUsage(meta *genai.GenerateContentResponseUsageMetadata) ai.Usage {
+// mapUsage converts Google usage metadata to [ai.Usage], priced with model's
+// rates.
+//
+// The API reports promptTokenCount inclusive of the cached prefix, so the
+// prefix is subtracted out and billed once at the cache-read rate rather than
+// twice. Explicit caches are billed for storage when created, not per
+// response, so there is no per-response cache-write charge.
+func mapUsage(model ai.Model, meta *genai.GenerateContentResponseUsageMetadata) ai.Usage {
 	if meta == nil {
 		return ai.Usage{}
 	}
-	return ai.Usage{
-		Input:     int(meta.PromptTokenCount),
+
+	cacheRead := int(meta.CachedContentTokenCount)
+
+	usage := ai.Usage{
+		Input:     int(meta.PromptTokenCount) - cacheRead,
 		Output:    int(meta.CandidatesTokenCount),
-		Total:     int(meta.TotalTokenCount),
-		CacheRead: int(meta.CachedContentTokenCount),
+		CacheRead: cacheRead,
 	}
+
+	rates := model.Cost
+	usage.Cost = ai.UsageCost{
+		Input:     perMillion(usage.Input, rates.Input),
+		Output:    perMillion(usage.Output, rates.Output),
+		CacheRead: perMillion(usage.CacheRead, rates.CacheRead),
+	}
+
+	return usage
+}
+
+// perMillion prices tokens at rate, which is quoted per million tokens.
+func perMillion(tokens int, rate float64) float64 {
+	return float64(tokens) * rate / 1_000_000
 }
 
 // mapStopReason converts Google finish reason to StopReason.
@@ -919,8 +941,7 @@ func (p *Provider) GenerateObject(
 		}
 	}
 
-	usage := mapUsage(response.UsageMetadata)
-	usage.Cost = ai.CalculateCost(model, usage)
+	usage := mapUsage(model, response.UsageMetadata)
 
 	log.Debug(
 		"[GOOGLE] object completed",

@@ -369,7 +369,7 @@ func TestNewDefault_MultipleOptions(t *testing.T) {
 
 // Test 1: Simple text response — no tools, verify messages + history.
 func TestRun_SimpleTextResponse(t *testing.T) {
-	usage := ai.Usage{Input: 10, Output: 20, Total: 30}
+	usage := ai.Usage{Input: 10, Output: 20}
 	registerMock(t, textStream("Hello!", usage))
 
 	a := New(testModel())
@@ -854,11 +854,11 @@ func TestRun_UsageAccumulation(t *testing.T) {
 	registerMock(t,
 		toolCallStream(
 			[]ai.ToolCall{toolCall},
-			ai.Usage{Input: 10, Output: 5, Total: 15},
+			ai.Usage{Input: 10, Output: 5},
 		),
 		textStream(
 			"done",
-			ai.Usage{Input: 20, Output: 10, Total: 30},
+			ai.Usage{Input: 20, Output: 10},
 		),
 	)
 
@@ -878,7 +878,6 @@ func TestRun_UsageAccumulation(t *testing.T) {
 	require.NotNil(t, agentEnd)
 	assert.Equal(t, 30, agentEnd.Usage.Input)
 	assert.Equal(t, 15, agentEnd.Usage.Output)
-	assert.Equal(t, 45, agentEnd.Usage.Total)
 }
 
 // Test 24: Run with zero messages continues from existing history.
@@ -1067,7 +1066,7 @@ func TestRun_IncrementalStreamingEvents(t *testing.T) {
 			Role:       ai.RoleAssistant,
 			Content:    []ai.Content{ai.Text{Text: "Hello world"}},
 			StopReason: ai.StopReasonStop,
-			Usage:      ai.Usage{Input: 10, Output: 5, Total: 15},
+			Usage:      ai.Usage{Input: 10, Output: 5},
 		}
 		push(ai.Event{Type: ai.EventTextStart, ContentIndex: 0})
 		push(ai.Event{Type: ai.EventTextDelta, ContentIndex: 0, Delta: "Hello"})
@@ -1249,4 +1248,43 @@ func TestPrompt_Error(t *testing.T) {
 	_, err := Prompt(t.Context(), a, "hi")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "boom")
+}
+
+func TestAddUsage_SumsEveryField(t *testing.T) {
+	a := ai.Usage{
+		Input:       1,
+		Output:      2,
+		CacheRead:   3,
+		CacheWrite:  4,
+		Reasoning:   5,
+		InputAudio:  6,
+		OutputAudio: 7,
+		Cost: ai.UsageCost{
+			Input:       0.1,
+			Output:      0.2,
+			CacheRead:   0.3,
+			CacheWrite:  0.4,
+			Reasoning:   0.5,
+			InputAudio:  0.6,
+			OutputAudio: 0.7,
+		},
+	}
+
+	sum := addUsage(a, a)
+
+	assert.Equal(t, 2, sum.Input)
+	assert.Equal(t, 4, sum.Output)
+	assert.Equal(t, 6, sum.CacheRead)
+	assert.Equal(t, 8, sum.CacheWrite)
+	assert.Equal(t, 10, sum.Reasoning)
+	assert.Equal(t, 12, sum.InputAudio)
+	assert.Equal(t, 14, sum.OutputAudio)
+
+	assert.InDelta(t, 0.2, sum.Cost.Input, 1e-9)
+	assert.InDelta(t, 0.4, sum.Cost.Output, 1e-9)
+	assert.InDelta(t, 0.6, sum.Cost.CacheRead, 1e-9)
+	assert.InDelta(t, 0.8, sum.Cost.CacheWrite, 1e-9)
+	assert.InDelta(t, 1.0, sum.Cost.Reasoning, 1e-9)
+	assert.InDelta(t, 1.2, sum.Cost.InputAudio, 1e-9)
+	assert.InDelta(t, 1.4, sum.Cost.OutputAudio, 1e-9)
 }

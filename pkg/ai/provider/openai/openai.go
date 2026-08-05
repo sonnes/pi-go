@@ -105,7 +105,7 @@ func (p *Provider) StreamText(
 			chunk := stream.Current()
 
 			if chunk.Usage.TotalTokens > 0 {
-				usage = mapUsage(chunk.Usage)
+				usage = mapUsage(model, chunk.Usage)
 			}
 
 			if len(chunk.Choices) == 0 {
@@ -467,8 +467,7 @@ func (p *Provider) GenerateObject(
 
 	raw := resp.Choices[0].Message.Content
 
-	usage := mapUsage(resp.Usage)
-	usage.Cost = ai.CalculateCost(model, usage)
+	usage := mapUsage(model, resp.Usage)
 
 	log.Debug(
 		"[OPENAI] object completed",

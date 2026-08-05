@@ -436,7 +436,7 @@ func pumpAIEvents(
 
 		case "turn.completed":
 			if line.Usage != nil {
-				usage = usageFromCodex(*line.Usage)
+				usage = usageFromCodex(model, *line.Usage)
 			}
 
 		case "turn.failed", "error":

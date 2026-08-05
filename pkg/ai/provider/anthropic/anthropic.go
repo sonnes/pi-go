@@ -516,15 +516,7 @@ func buildMessage(model ai.Model, acc *anthropic.Message) *ai.Message {
 		}
 	}
 
-	total := int(acc.Usage.InputTokens + acc.Usage.OutputTokens)
-	usage := ai.Usage{
-		Input:      int(acc.Usage.InputTokens),
-		Output:     int(acc.Usage.OutputTokens),
-		CacheRead:  int(acc.Usage.CacheReadInputTokens),
-		CacheWrite: int(acc.Usage.CacheCreationInputTokens),
-		Total:      total,
-	}
-	usage.Cost = ai.CalculateCost(model, usage)
+	usage := mapUsage(model, acc.Usage)
 
 	return &ai.Message{
 		Role:       ai.RoleAssistant,
@@ -738,15 +730,7 @@ func (p *Provider) GenerateObject(
 		return nil, fmt.Errorf("anthropic: no structured output in response")
 	}
 
-	total := int(response.Usage.InputTokens + response.Usage.OutputTokens)
-	usage := ai.Usage{
-		Input:      int(response.Usage.InputTokens),
-		Output:     int(response.Usage.OutputTokens),
-		CacheRead:  int(response.Usage.CacheReadInputTokens),
-		CacheWrite: int(response.Usage.CacheCreationInputTokens),
-		Total:      total,
-	}
-	usage.Cost = ai.CalculateCost(model, usage)
+	usage := mapUsage(model, response.Usage)
 
 	log.Debug(
 		"[ANTHROPIC] object completed",

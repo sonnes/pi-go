@@ -358,3 +358,33 @@ func convertToolChoice(tc ai.ToolChoice) anthropic.ToolChoiceUnionParam {
 		}
 	}
 }
+
+// mapUsage converts Anthropic usage to [ai.Usage], priced with model's rates.
+//
+// The API reports input_tokens exclusive of the cached prefix, so Input,
+// CacheRead and CacheWrite are already disjoint and each bills exactly once at
+// its own rate — cache writes at a premium over fresh input, cache reads at a
+// discount.
+func mapUsage(model ai.Model, u anthropic.Usage) ai.Usage {
+	usage := ai.Usage{
+		Input:      int(u.InputTokens),
+		Output:     int(u.OutputTokens),
+		CacheRead:  int(u.CacheReadInputTokens),
+		CacheWrite: int(u.CacheCreationInputTokens),
+	}
+
+	rates := model.Cost
+	usage.Cost = ai.UsageCost{
+		Input:      perMillion(usage.Input, rates.Input),
+		Output:     perMillion(usage.Output, rates.Output),
+		CacheRead:  perMillion(usage.CacheRead, rates.CacheRead),
+		CacheWrite: perMillion(usage.CacheWrite, rates.CacheWrite),
+	}
+
+	return usage
+}
+
+// perMillion prices tokens at rate, which is quoted per million tokens.
+func perMillion(tokens int, rate float64) float64 {
+	return float64(tokens) * rate / 1_000_000
+}

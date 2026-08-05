@@ -18,6 +18,10 @@ import (
 type Agent struct {
 	cfg config
 
+	// model is the caller's [ai.Model], retained for its Cost rates: the
+	// CLI reports token counts but no per-category cost.
+	model ai.Model
+
 	runFn func(ctx context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error)
 
 	mu        sync.Mutex
@@ -67,6 +71,7 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	copy(msgs, cfg.history)
 
 	return &Agent{
+		model:     model,
 		cfg:       cfg,
 		runFn:     runCodex,
 		messages:  msgs,
@@ -353,7 +358,7 @@ func (a *Agent) readTurn(stdout io.Reader, push func(agent.Event)) turnResult {
 
 		case "turn.completed":
 			if line.Usage != nil {
-				result.usage = usageFromCodex(*line.Usage)
+				result.usage = usageFromCodex(a.model, *line.Usage)
 			}
 			var lastMessage *ai.Message
 			if lastMessageIndex >= 0 {
