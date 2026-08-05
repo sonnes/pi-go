@@ -453,7 +453,7 @@ func TestStreamText_ConcurrentCalls(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make([]error, n)
 	msgs := make([]*ai.Message, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -467,7 +467,7 @@ func TestStreamText_ConcurrentCalls(t *testing.T) {
 	}
 	wg.Wait()
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		require.NoError(t, errs[i], "call %d", i)
 		require.NotNil(t, msgs[i], "call %d", i)
 		assert.Equal(t, "Hello!", msgs[i].Text(), "call %d", i)

@@ -146,13 +146,13 @@ func TestOpenRouter_GenerateText(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
-	var text string
+	var text strings.Builder
 	for _, c := range msg.Content {
 		if tc, ok := ai.AsContent[ai.Text](c); ok {
-			text += tc.Text
+			text.WriteString(tc.Text)
 		}
 	}
-	assert.NotEmpty(t, text, "expected text content")
+	assert.NotEmpty(t, text.String(), "expected text content")
 	assert.Equal(t, ai.StopReasonStop, msg.StopReason)
 }
 
@@ -350,12 +350,12 @@ func TestOpenRouter_ClaudeUnderlying(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
-	var text string
+	var text strings.Builder
 	for _, c := range msg.Content {
 		if tc, ok := ai.AsContent[ai.Text](c); ok {
-			text += tc.Text
+			text.WriteString(tc.Text)
 		}
 	}
-	assert.NotEmpty(t, text)
+	assert.NotEmpty(t, text.String())
 	assert.Equal(t, ai.StopReasonStop, msg.StopReason)
 }

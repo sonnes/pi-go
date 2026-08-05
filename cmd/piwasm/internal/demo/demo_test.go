@@ -1,6 +1,7 @@
 package demo
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,13 +49,13 @@ func TestRunStreamsDeltasAndDispatchesTheTool(t *testing.T) {
 	assert.Contains(t, kinds(*events), KindDelta, "assistant text should stream")
 	assert.Contains(t, kinds(*events), KindTool, "the scripted turn asks for a tool")
 
-	var streamed string
+	var streamed strings.Builder
 	for _, e := range *events {
 		if e.Kind == KindDelta {
-			streamed += e.Text
+			streamed.WriteString(e.Text)
 		}
 	}
-	assert.NotEmpty(t, streamed)
+	assert.NotEmpty(t, streamed.String())
 }
 
 func TestRunBuildsTheTranscriptTree(t *testing.T) {

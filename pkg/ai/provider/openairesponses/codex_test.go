@@ -100,9 +100,9 @@ func TestCodexCLISource_Load(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
 	token := jwtWithExp(t, time.Now().Add(time.Hour).Unix())
-	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil,
 		`{"tokens":{"access_token":%q,"refresh_token":"ref","account_id":"acct-1"}}`, token,
-	)), 0o600))
+	), 0o600))
 
 	src := codexCLISource{path: path}
 	creds, err := src.load()
@@ -126,9 +126,9 @@ func TestCodexReReadRefresher_ReReads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
 	freshToken := jwtWithExp(t, time.Now().Add(time.Hour).Unix())
-	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil,
 		`{"tokens":{"access_token":%q,"refresh_token":"ref"}}`, freshToken,
-	)), 0o600))
+	), 0o600))
 
 	refresher := codexReReadRefresher(codexCLISource{path: path})
 	got, err := refresher.RefreshToken(t.Context(), oauth.Credentials{AccessToken: "stale"})
@@ -142,9 +142,9 @@ func TestCodexReReadRefresher_ExpiredError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
 	expiredToken := jwtWithExp(t, time.Now().Add(-time.Hour).Unix())
-	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil,
 		`{"tokens":{"access_token":%q,"refresh_token":"ref"}}`, expiredToken,
-	)), 0o600))
+	), 0o600))
 
 	refresher := codexReReadRefresher(codexCLISource{path: path})
 	_, err := refresher.RefreshToken(t.Context(), oauth.Credentials{})

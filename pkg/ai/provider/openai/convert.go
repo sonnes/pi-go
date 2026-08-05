@@ -3,6 +3,7 @@ package openai
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/param"
@@ -134,16 +135,16 @@ func convertFile(f ai.File) (openai.ChatCompletionContentPartUnionParam, bool) {
 
 // convertAssistantMessage converts an assistant message to OpenAI format.
 func convertAssistantMessage(msg ai.Message) openai.ChatCompletionMessageParamUnion {
-	var text string
+	var text strings.Builder
 	var toolCalls []openai.ChatCompletionMessageToolCallUnionParam
 
 	for _, c := range msg.Content {
 		switch v := c.(type) {
 		case ai.Text:
-			text += v.Text
+			text.WriteString(v.Text)
 		case ai.Thinking:
 			// OpenAI doesn't support a separate thinking field in input messages
-			text += v.Thinking
+			text.WriteString(v.Thinking)
 		case ai.ToolCall:
 			args, _ := json.Marshal(v.Arguments)
 			toolCalls = append(
@@ -162,9 +163,9 @@ func convertAssistantMessage(msg ai.Message) openai.ChatCompletionMessageParamUn
 	}
 
 	assistantMsg := &openai.ChatCompletionAssistantMessageParam{}
-	if text != "" {
+	if text.String() != "" {
 		assistantMsg.Content = openai.ChatCompletionAssistantMessageParamContentUnion{
-			OfString: param.NewOpt(text),
+			OfString: param.NewOpt(text.String()),
 		}
 	}
 	if len(toolCalls) > 0 {
@@ -178,13 +179,13 @@ func convertAssistantMessage(msg ai.Message) openai.ChatCompletionMessageParamUn
 
 // convertToolResultMessage converts a tool result message to OpenAI format.
 func convertToolResultMessage(msg ai.Message) openai.ChatCompletionMessageParamUnion {
-	var text string
+	var text strings.Builder
 	for _, c := range msg.Content {
 		if t, ok := ai.AsContent[ai.Text](c); ok {
-			text += t.Text
+			text.WriteString(t.Text)
 		}
 	}
-	return openai.ToolMessage(text, msg.ToolCallID)
+	return openai.ToolMessage(text.String(), msg.ToolCallID)
 }
 
 // convertTools converts ai.ToolInfo definitions to OpenAI tool params.

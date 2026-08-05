@@ -122,22 +122,22 @@ func TestGenerateText(t *testing.T) {
 	require.NotEmpty(t, msg.Content, "expected at least one content block")
 	assert.Equal(t, "google-generative", msg.Provider, "assistant message is tagged with its provider")
 
-	var text string
+	var text strings.Builder
 	for _, c := range msg.Content {
 		if tc, ok := ai.AsContent[ai.Text](c); ok {
-			text += tc.Text
+			text.WriteString(tc.Text)
 		}
 	}
 
 	expectedGreetings := []string{"Olá", "Oi", "olá", "oi"}
 	found := false
 	for _, greeting := range expectedGreetings {
-		if strings.Contains(text, greeting) {
+		if strings.Contains(text.String(), greeting) {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "response %q does not contain expected Portuguese greeting", text)
+	assert.True(t, found, "response %q does not contain expected Portuguese greeting", text.String())
 
 	assert.NotZero(t, msg.Usage.Input, "expected non-zero input tokens")
 	assert.NotZero(t, msg.Usage.Output, "expected non-zero output tokens")

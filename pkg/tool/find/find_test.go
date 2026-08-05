@@ -98,7 +98,7 @@ func TestFind_PathIsFile(t *testing.T) {
 
 func TestFind_Limit(t *testing.T) {
 	dir := t.TempDir()
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%d.go", i)), []byte("x"), 0644)
 		require.NoError(t, err)
 	}

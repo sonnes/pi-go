@@ -2,6 +2,7 @@ package demo
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,16 +37,16 @@ func TestScriptedRepeatsFinalTurnWhenExhausted(t *testing.T) {
 func TestScriptedEmitsTextDeltasThatReconstructTheMessage(t *testing.T) {
 	s := NewScripted([]Turn{{Text: "one two three"}})
 
-	var got string
+	var got strings.Builder
 	stream := s.StreamText(t.Context(), ai.Model{ID: "demo"}, ai.Prompt{}, ai.StreamOptions{})
 	for e, err := range stream.Events() {
 		require.NoError(t, err)
 		if e.Type == ai.EventTextDelta {
-			got += e.Delta
+			got.WriteString(e.Delta)
 		}
 	}
 
-	assert.Equal(t, "one two three", got)
+	assert.Equal(t, "one two three", got.String())
 }
 
 func TestScriptedToolTurnStopsForToolUse(t *testing.T) {

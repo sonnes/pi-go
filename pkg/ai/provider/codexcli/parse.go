@@ -10,7 +10,7 @@ import (
 type rawLine struct {
 	Type     string          `json:"type"`
 	ThreadID string          `json:"thread_id,omitempty"`
-	Item     rawItem         `json:"item,omitempty"`
+	Item     rawItem         `json:"item"`
 	Usage    *rawUsage       `json:"usage,omitempty"`
 	Message  string          `json:"message,omitempty"`
 	Error    json.RawMessage `json:"error,omitempty"`

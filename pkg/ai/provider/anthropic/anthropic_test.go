@@ -144,22 +144,22 @@ func TestGenerateText(t *testing.T) {
 	require.NotNil(t, msg)
 	require.NotEmpty(t, msg.Content, "expected at least one content block")
 
-	var text string
+	var text strings.Builder
 	for _, c := range msg.Content {
 		if tc, ok := c.(ai.Text); ok {
-			text += tc.Text
+			text.WriteString(tc.Text)
 		}
 	}
 
 	expectedGreetings := []string{"Olá", "Oi", "olá", "oi"}
 	found := false
 	for _, greeting := range expectedGreetings {
-		if strings.Contains(text, greeting) {
+		if strings.Contains(text.String(), greeting) {
 			found = true
 			break
 		}
 	}
-	assert.True(t, found, "response %q does not contain expected Portuguese greeting", text)
+	assert.True(t, found, "response %q does not contain expected Portuguese greeting", text.String())
 
 	assert.NotZero(t, msg.Usage.Input, "expected non-zero input tokens")
 	assert.NotZero(t, msg.Usage.Output, "expected non-zero output tokens")

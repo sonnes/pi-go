@@ -218,10 +218,7 @@ func runPureGo(fsys fs.FS, base string, isDir bool, input Input) (string, error)
 				truncated = true
 				break
 			}
-			start := i - ctxLines
-			if start < 0 {
-				start = 0
-			}
+			start := max(i-ctxLines, 0)
 			for j := start; j < i; j++ {
 				out = append(out, fmt.Sprintf("%s:%d-%s", file, j+1, lines[j]))
 			}

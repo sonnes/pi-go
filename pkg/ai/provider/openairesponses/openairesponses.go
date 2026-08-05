@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"strings"
 	"time"
@@ -683,12 +684,8 @@ func mergeHeaders(
 	optsHeaders map[string]string,
 ) []option.RequestOption {
 	merged := make(map[string]string)
-	for k, v := range modelHeaders {
-		merged[k] = v
-	}
-	for k, v := range optsHeaders {
-		merged[k] = v
-	}
+	maps.Copy(merged, modelHeaders)
+	maps.Copy(merged, optsHeaders)
 
 	opts := make([]option.RequestOption, 0, len(merged))
 	for k, v := range merged {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -257,9 +258,7 @@ func exchangeCode(
 	if cfg.ClientSecret != "" {
 		params["client_secret"] = cfg.ClientSecret
 	}
-	for k, v := range cfg.ExtraTokenParams {
-		params[k] = v
-	}
+	maps.Copy(params, cfg.ExtraTokenParams)
 	if cfg.IncludeStateInTokenExchange && state != "" {
 		params["state"] = state
 	}

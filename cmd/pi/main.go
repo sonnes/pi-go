@@ -235,7 +235,7 @@ func parseServerTools(spec string) ([]ai.Tool, error) {
 	}
 
 	var tools []ai.Tool
-	for _, raw := range strings.Split(spec, ",") {
+	for raw := range strings.SplitSeq(spec, ",") {
 		name := strings.TrimSpace(raw)
 		if name == "" {
 			continue

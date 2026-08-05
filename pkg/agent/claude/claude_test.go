@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -432,14 +433,14 @@ func TestAgent_Run_StreamingDeltas(t *testing.T) {
 		agent.EventAgentEnd,
 	}, types)
 
-	var streamed string
+	var streamed strings.Builder
 	for _, e := range events {
 		if e.Type == agent.EventMessageUpdate {
 			require.NotNil(t, e.AssistantEvent)
-			streamed += e.AssistantEvent.Delta
+			streamed.WriteString(e.AssistantEvent.Delta)
 		}
 	}
-	assert.Equal(t, "Hello!", streamed,
+	assert.Equal(t, "Hello!", streamed.String(),
 		"concatenated deltas must reproduce the final text")
 
 	last := events[len(events)-1]

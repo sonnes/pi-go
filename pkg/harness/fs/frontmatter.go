@@ -65,7 +65,7 @@ func (s *stringList) UnmarshalYAML(node *yaml.Node) error {
 			return err
 		}
 		var items []string
-		for _, part := range strings.Split(raw, ",") {
+		for part := range strings.SplitSeq(raw, ",") {
 			if part = strings.TrimSpace(part); part != "" {
 				items = append(items, part)
 			}

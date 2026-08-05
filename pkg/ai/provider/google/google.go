@@ -736,11 +736,12 @@ func buildGroundingOutput(gm *genai.GroundingMetadata) *ai.ServerToolOutput {
 		lines = append(lines, fmt.Sprintf("%d. %s — %s", i+1, chunk.Web.Title, chunk.Web.URI))
 	}
 	if len(lines) > 0 {
-		joined := lines[0]
+		var joined strings.Builder
+		joined.WriteString(lines[0])
 		for _, l := range lines[1:] {
-			joined += "\n" + l
+			joined.WriteString("\n" + l)
 		}
-		out.Content = joined
+		out.Content = joined.String()
 	}
 
 	if data, err := json.Marshal(gm); err == nil {
@@ -934,10 +935,10 @@ func (p *Provider) GenerateObject(
 		return nil, errors.New("google: no response from model")
 	}
 
-	var raw string
+	var raw strings.Builder
 	for _, part := range response.Candidates[0].Content.Parts {
 		if part.Text != "" && !part.Thought {
-			raw += part.Text
+			raw.WriteString(part.Text)
 		}
 	}
 
@@ -951,7 +952,7 @@ func (p *Provider) GenerateObject(
 	)
 
 	return &ai.ObjectResponse{
-		Raw:   raw,
+		Raw:   raw.String(),
 		Usage: usage,
 		Model: model.ID,
 	}, nil

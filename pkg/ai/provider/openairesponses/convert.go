@@ -3,6 +3,8 @@ package openairesponses
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"strings"
 
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
@@ -135,12 +137,12 @@ func convertAssistantMessage(
 	msg ai.Message,
 ) []responses.ResponseInputItemUnionParam {
 	var items []responses.ResponseInputItemUnionParam
-	var text string
+	var text strings.Builder
 
 	for _, c := range msg.Content {
 		switch v := c.(type) {
 		case ai.Text:
-			text += v.Text
+			text.WriteString(v.Text)
 
 		case ai.Thinking:
 			if v.Signature != "" {
@@ -170,13 +172,13 @@ func convertAssistantMessage(
 		}
 	}
 
-	if text != "" {
+	if text.String() != "" {
 		items = append([]responses.ResponseInputItemUnionParam{
 			{
 				OfMessage: &responses.EasyInputMessageParam{
 					Role: responses.EasyInputMessageRoleAssistant,
 					Content: responses.EasyInputMessageContentUnionParam{
-						OfString: param.NewOpt(text),
+						OfString: param.NewOpt(text.String()),
 					},
 				},
 			},
@@ -190,10 +192,10 @@ func convertAssistantMessage(
 func convertToolResultMessage(
 	msg ai.Message,
 ) responses.ResponseInputItemUnionParam {
-	var text string
+	var text strings.Builder
 	for _, c := range msg.Content {
 		if t, ok := ai.AsContent[ai.Text](c); ok {
-			text += t.Text
+			text.WriteString(t.Text)
 		}
 	}
 
@@ -201,7 +203,7 @@ func convertToolResultMessage(
 		OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
 			CallID: msg.ToolCallID,
 			Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
-				OfString: param.NewOpt(text),
+				OfString: param.NewOpt(text.String()),
 			},
 		},
 	}
@@ -380,9 +382,7 @@ func convertOpenRouterTools(tools []ai.ToolInfo) []map[string]any {
 				continue
 			}
 			tool := map[string]any{"type": name}
-			for k, v := range t.ServerConfig {
-				tool[k] = v
-			}
+			maps.Copy(tool, t.ServerConfig)
 			result = append(result, tool)
 			continue
 		}

@@ -728,7 +728,7 @@ func withHeader(e session.Entry, h session.EntryHeader) session.Entry {
 	return v.Interface().(session.Entry)
 }
 
-var headerType = reflect.TypeOf(session.EntryHeader{})
+var headerType = reflect.TypeFor[session.EntryHeader]()
 
 func findHeaderField(v reflect.Value) reflect.Value {
 	t := v.Type()

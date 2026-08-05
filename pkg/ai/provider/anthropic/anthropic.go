@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -640,9 +641,7 @@ func WithBaseURL(baseURL string) Option {
 // WithHeaders sets additional HTTP headers for requests.
 func WithHeaders(headers map[string]string) Option {
 	return func(o *options) {
-		for k, v := range headers {
-			o.headers[k] = v
-		}
+		maps.Copy(o.headers, headers)
 	}
 }
 

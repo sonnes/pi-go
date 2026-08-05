@@ -47,9 +47,9 @@ func TestClaudeCLISource_LoadFromFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "credentials.json")
 	expires := time.Now().Add(time.Hour).UnixMilli()
-	require.NoError(t, os.WriteFile(path, []byte(fmt.Sprintf(
+	require.NoError(t, os.WriteFile(path, fmt.Appendf(nil,
 		`{"claudeAiOauth":{"accessToken":"acc","refreshToken":"ref","expiresAt":%d}}`, expires,
-	)), 0o600))
+	), 0o600))
 
 	// A non-empty path skips the Keychain even on macOS.
 	src := claudeCLISource{path: path}

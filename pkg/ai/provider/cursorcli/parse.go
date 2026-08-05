@@ -13,7 +13,7 @@ type rawLine struct {
 	Subtype   string      `json:"subtype,omitempty"`
 	SessionID string      `json:"session_id,omitempty"`
 	Model     string      `json:"model,omitempty"`
-	Message   rawMessage  `json:"message,omitempty"`
+	Message   rawMessage  `json:"message"`
 	Result    string      `json:"result,omitempty"`
 	IsError   bool        `json:"is_error,omitempty"`
 	CallID    string      `json:"call_id,omitempty"`
