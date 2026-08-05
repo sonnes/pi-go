@@ -17,10 +17,10 @@ type Session[T any] struct {
 
 	// ParentID is the ID of the session this one was forked from, or
 	// empty.
-	ParentID string `json:"parentId,omitempty"`
+	ParentID string `json:"parent_id,omitempty"`
 
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// State is the current application-defined session state.
 	State T `json:"state"`

@@ -14,10 +14,10 @@ type EntryHeader struct {
 	ID string `json:"id"`
 
 	// ParentID is the ID of the parent entry. Empty means root.
-	ParentID string `json:"parentId,omitempty"`
+	ParentID string `json:"parent_id,omitempty"`
 
 	// CreatedAt is when the entry was appended.
-	CreatedAt time.Time `json:"createdAt"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (EntryHeader) entry() {}

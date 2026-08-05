@@ -48,8 +48,8 @@ type compactionWire struct {
 	Type string `json:"type"`
 	EntryHeader
 	Summary      string `json:"summary"`
-	FirstKeptID  string `json:"firstKeptId"`
-	TokensBefore int    `json:"tokensBefore"`
+	FirstKeptID  string `json:"first_kept_id"`
+	TokensBefore int    `json:"tokens_before"`
 }
 
 type stateWire[T any] struct {

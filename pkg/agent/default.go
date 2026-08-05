@@ -182,7 +182,7 @@ func (a *Default) loop(
 			return newMessages, err
 		}
 
-		totalUsage = addUsage(totalUsage, tr.usage)
+		totalUsage = totalUsage.Add(tr.usage)
 
 		a.appendHistory(tr.assistantMsg)
 		newMessages = append(newMessages, tr.assistantMsg)
@@ -637,27 +637,5 @@ func emitMessages(push func(Event), msgs []ai.Message, input bool) {
 			Message: &msgs[i],
 			Input:   input,
 		})
-	}
-}
-
-// addUsage sums two [ai.Usage] values.
-func addUsage(a, b ai.Usage) ai.Usage {
-	return ai.Usage{
-		Input:       a.Input + b.Input,
-		Output:      a.Output + b.Output,
-		CacheRead:   a.CacheRead + b.CacheRead,
-		CacheWrite:  a.CacheWrite + b.CacheWrite,
-		Reasoning:   a.Reasoning + b.Reasoning,
-		InputAudio:  a.InputAudio + b.InputAudio,
-		OutputAudio: a.OutputAudio + b.OutputAudio,
-		Cost: ai.UsageCost{
-			Input:       a.Cost.Input + b.Cost.Input,
-			Output:      a.Cost.Output + b.Cost.Output,
-			CacheRead:   a.Cost.CacheRead + b.Cost.CacheRead,
-			CacheWrite:  a.Cost.CacheWrite + b.Cost.CacheWrite,
-			Reasoning:   a.Cost.Reasoning + b.Cost.Reasoning,
-			InputAudio:  a.Cost.InputAudio + b.Cost.InputAudio,
-			OutputAudio: a.Cost.OutputAudio + b.Cost.OutputAudio,
-		},
 	}
 }

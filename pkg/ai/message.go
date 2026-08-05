@@ -175,7 +175,7 @@ type messageJSON struct {
 	API        string        `json:"api,omitempty"`
 	Provider   string        `json:"provider,omitempty"`
 	Model      string        `json:"model,omitempty"`
-	Usage      *usageJSON    `json:"usage,omitempty"`
+	Usage      *Usage        `json:"usage,omitempty"`
 	StopReason StopReason    `json:"stop_reason,omitempty"`
 	Error      string        `json:"error,omitempty"`
 	ToolCallID string        `json:"tool_call_id,omitempty"`
@@ -220,27 +220,6 @@ type serverToolOutputJSON struct {
 	IsError bool            `json:"is_error,omitempty"`
 }
 
-type usageJSON struct {
-	Input       int       `json:"input,omitempty"`
-	Output      int       `json:"output,omitempty"`
-	CacheRead   int       `json:"cache_read,omitempty"`
-	CacheWrite  int       `json:"cache_write,omitempty"`
-	Reasoning   int       `json:"reasoning,omitempty"`
-	InputAudio  int       `json:"input_audio,omitempty"`
-	OutputAudio int       `json:"output_audio,omitempty"`
-	Cost        *costJSON `json:"cost,omitempty"`
-}
-
-type costJSON struct {
-	Input       float64 `json:"input,omitempty"`
-	Output      float64 `json:"output,omitempty"`
-	CacheRead   float64 `json:"cache_read,omitempty"`
-	CacheWrite  float64 `json:"cache_write,omitempty"`
-	Reasoning   float64 `json:"reasoning,omitempty"`
-	InputAudio  float64 `json:"input_audio,omitempty"`
-	OutputAudio float64 `json:"output_audio,omitempty"`
-}
-
 // MarshalJSON encodes Message to JSON.
 func (m Message) MarshalJSON() ([]byte, error) {
 	j := messageJSON{
@@ -264,27 +243,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 	}
 
 	if m.Usage != (Usage{}) {
-		u := &usageJSON{
-			Input:       m.Usage.Input,
-			Output:      m.Usage.Output,
-			CacheRead:   m.Usage.CacheRead,
-			CacheWrite:  m.Usage.CacheWrite,
-			Reasoning:   m.Usage.Reasoning,
-			InputAudio:  m.Usage.InputAudio,
-			OutputAudio: m.Usage.OutputAudio,
-		}
-		if m.Usage.Cost != (UsageCost{}) {
-			u.Cost = &costJSON{
-				Input:       m.Usage.Cost.Input,
-				Output:      m.Usage.Cost.Output,
-				CacheRead:   m.Usage.Cost.CacheRead,
-				CacheWrite:  m.Usage.Cost.CacheWrite,
-				Reasoning:   m.Usage.Cost.Reasoning,
-				InputAudio:  m.Usage.Cost.InputAudio,
-				OutputAudio: m.Usage.Cost.OutputAudio,
-			}
-		}
-		j.Usage = u
+		j.Usage = &m.Usage
 	}
 
 	return json.Marshal(j)
@@ -323,26 +282,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	}
 
 	if j.Usage != nil {
-		m.Usage = Usage{
-			Input:       j.Usage.Input,
-			Output:      j.Usage.Output,
-			CacheRead:   j.Usage.CacheRead,
-			CacheWrite:  j.Usage.CacheWrite,
-			Reasoning:   j.Usage.Reasoning,
-			InputAudio:  j.Usage.InputAudio,
-			OutputAudio: j.Usage.OutputAudio,
-		}
-		if j.Usage.Cost != nil {
-			m.Usage.Cost = UsageCost{
-				Input:       j.Usage.Cost.Input,
-				Output:      j.Usage.Cost.Output,
-				CacheRead:   j.Usage.Cost.CacheRead,
-				CacheWrite:  j.Usage.Cost.CacheWrite,
-				Reasoning:   j.Usage.Cost.Reasoning,
-				InputAudio:  j.Usage.Cost.InputAudio,
-				OutputAudio: j.Usage.Cost.OutputAudio,
-			}
-		}
+		m.Usage = *j.Usage
 	}
 
 	return nil

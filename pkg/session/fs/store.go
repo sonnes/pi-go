@@ -121,6 +121,13 @@ func (s *FileStore[T]) LoadSession(ctx context.Context, id string) (*session.Ses
 	if st, ok := session.LatestState[T](entries); ok {
 		sess.State = st
 	}
+	// The record line is written once, so the persisted UpdatedAt is the
+	// creation time forever. Recover it from the log, like the state.
+	if n := len(entries); n > 0 {
+		if at := entries[n-1].Header().CreatedAt; at.After(sess.UpdatedAt) {
+			sess.UpdatedAt = at
+		}
+	}
 	return &sess, entries, nil
 }
 

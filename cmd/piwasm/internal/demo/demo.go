@@ -49,7 +49,7 @@ const (
 type Command struct {
 	Kind    string `json:"kind"`
 	Text    string `json:"text,omitempty"`
-	EntryID string `json:"entryId,omitempty"`
+	EntryID string `json:"entry_id,omitempty"`
 	Key     string `json:"key,omitempty"`
 	Model   string `json:"model,omitempty"`
 }
@@ -61,7 +61,7 @@ type Event struct {
 	Text   string `json:"text,omitempty"`
 	Tool   *Tool  `json:"tool,omitempty"`
 	Tree   []Node `json:"tree,omitempty"`
-	LeafID string `json:"leafId,omitempty"`
+	LeafID string `json:"leaf_id,omitempty"`
 	Mode   string `json:"mode,omitempty"`
 	Model  string `json:"model,omitempty"`
 }

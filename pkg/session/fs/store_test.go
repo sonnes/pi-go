@@ -137,6 +137,34 @@ func TestFileStoreStateEventUpdatesSession(t *testing.T) {
 	assert.Equal(t, "renamed", sess2.State.Title)
 }
 
+func TestFileStoreLoadRecoversUpdatedAt(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	store, _ := fs.New[fsState](dir)
+	require.NoError(t, store.CreateSession(ctx, &session.Session[fsState]{
+		ID:        "s1",
+		CreatedAt: fsTS,
+		UpdatedAt: fsTS,
+	}))
+
+	// The record line is written once and never rewritten, so a load has
+	// to recover the last-touched time from the log the way it recovers
+	// the state — otherwise every reloaded session looks untouched since
+	// creation.
+	appended := fsTS.Add(time.Hour)
+	require.NoError(t, store.AppendEntries(ctx, "s1", session.MessageEntry{
+		EntryHeader: session.EntryHeader{ID: "e1", CreatedAt: appended},
+		Message:     ai.UserMessage("hi"),
+	}))
+
+	reopened, _ := fs.New[fsState](dir)
+	sess, _, err := reopened.LoadSession(ctx, "s1")
+	require.NoError(t, err)
+	assert.True(t, appended.Equal(sess.UpdatedAt), "updatedAt follows the last entry")
+	assert.True(t, fsTS.Equal(sess.CreatedAt), "createdAt is untouched")
+}
+
 func TestFileStoreReopen(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()

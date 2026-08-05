@@ -60,25 +60,56 @@ type Cost struct {
 // The categories are disjoint: Input counts uncached input tokens only, so a
 // caller that wants a grand total sums the fields it cares about. There is no
 // Total field, because providers disagree on what belongs in one.
+//
+// The JSON tags are the wire format: [Message] persists usage with them, and
+// so does any application that stores a Usage of its own.
 type Usage struct {
-	Input       int
-	Output      int
-	CacheRead   int
-	CacheWrite  int
-	Reasoning   int
-	InputAudio  int
-	OutputAudio int
-	Cost        UsageCost
+	Input       int       `json:"input,omitempty"`
+	Output      int       `json:"output,omitempty"`
+	CacheRead   int       `json:"cache_read,omitempty"`
+	CacheWrite  int       `json:"cache_write,omitempty"`
+	Reasoning   int       `json:"reasoning,omitempty"`
+	InputAudio  int       `json:"input_audio,omitempty"`
+	OutputAudio int       `json:"output_audio,omitempty"`
+	Cost        UsageCost `json:"cost,omitzero"`
+}
+
+// Add returns the category-wise sum of two usage values — the accumulator
+// for usage across turns and across runs.
+func (u Usage) Add(other Usage) Usage {
+	return Usage{
+		Input:       u.Input + other.Input,
+		Output:      u.Output + other.Output,
+		CacheRead:   u.CacheRead + other.CacheRead,
+		CacheWrite:  u.CacheWrite + other.CacheWrite,
+		Reasoning:   u.Reasoning + other.Reasoning,
+		InputAudio:  u.InputAudio + other.InputAudio,
+		OutputAudio: u.OutputAudio + other.OutputAudio,
+		Cost:        u.Cost.Add(other.Cost),
+	}
 }
 
 // UsageCost contains cost breakdown in USD, mirroring the categories of
 // [Usage]. Like Usage it carries no total; sum the categories.
 type UsageCost struct {
-	Input       float64
-	Output      float64
-	CacheRead   float64
-	CacheWrite  float64
-	Reasoning   float64
-	InputAudio  float64
-	OutputAudio float64
+	Input       float64 `json:"input,omitempty"`
+	Output      float64 `json:"output,omitempty"`
+	CacheRead   float64 `json:"cache_read,omitempty"`
+	CacheWrite  float64 `json:"cache_write,omitempty"`
+	Reasoning   float64 `json:"reasoning,omitempty"`
+	InputAudio  float64 `json:"input_audio,omitempty"`
+	OutputAudio float64 `json:"output_audio,omitempty"`
+}
+
+// Add returns the category-wise sum of two cost breakdowns.
+func (c UsageCost) Add(other UsageCost) UsageCost {
+	return UsageCost{
+		Input:       c.Input + other.Input,
+		Output:      c.Output + other.Output,
+		CacheRead:   c.CacheRead + other.CacheRead,
+		CacheWrite:  c.CacheWrite + other.CacheWrite,
+		Reasoning:   c.Reasoning + other.Reasoning,
+		InputAudio:  c.InputAudio + other.InputAudio,
+		OutputAudio: c.OutputAudio + other.OutputAudio,
+	}
 }
