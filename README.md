@@ -108,6 +108,22 @@ func main() {
 
 The same spec routes to different backends: `"claude/sonnet"` runs a Claude Code subprocess agent, `"codex/gpt-5-codex"` a Codex one, and a plain model ID runs the in-process loop against the provider's API.
 
+## Try the CLI
+
+Launch the interactive terminal UI with a model backed by an installed CLI:
+
+```sh
+make run ARGS="--model claude/sonnet"
+```
+
+The terminal UI renders streamed Markdown, thinking, tool activity, and token usage. Press Enter to send, use the mouse wheel or paging keys to scroll, press Escape to cancel a running turn, and press Ctrl+C while idle to exit.
+
+Prompts passed as arguments stay line-oriented for scripts and redirects:
+
+```sh
+make run ARGS='--model claude/sonnet Summarize README.md' > summary.txt
+```
+
 ## Durable agents
 
 `pkg/durable` turns the agent loop into an agent that survives process restarts. The session ID is the memory boundary — the application decides what it means (a ticket number, a user ID, a thread key). The same ID always resumes the same conversation:

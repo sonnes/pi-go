@@ -16,6 +16,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/urfave/cli/v3"
 
 	"github.com/sonnes/pi-go/pkg/agent"
@@ -105,8 +106,11 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		prompt := strings.Join(args.Slice(), " ")
 		return runPrompt(ctx, a, prompt)
 	}
+	if interactiveTerminal() {
+		return runTUI(ctx, a, model)
+	}
 
-	// Interactive multi-turn.
+	// Line-oriented fallback for piped or redirected input.
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Fprint(os.Stderr, "> ")
 	for scanner.Scan() {
@@ -122,6 +126,12 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	return scanner.Err()
+}
+
+func interactiveTerminal() bool {
+	stdin := term.IsTerminal(os.Stdin.Fd())
+	stdout := term.IsTerminal(os.Stdout.Fd())
+	return stdin && stdout
 }
 
 func createAgent(model string, turns int, tools, serverTools, provider string) (agent.Agent, error) {
