@@ -26,8 +26,8 @@ func (EntryHeader) entry() {}
 func (h EntryHeader) Header() EntryHeader { return h }
 
 // Entry is one node in a session's transcript tree. It is either a
-// [MessageEntry], a [CompactionEntry], a [StateEntry], or an
-// application-defined entry embedding [CustomEntry].
+// [MessageEntry], a [CompactionEntry], or an application-defined entry
+// embedding [CustomEntry].
 //
 // The interface is sealed — external packages extend it by embedding
 // [CustomEntry], not by implementing the markers directly.
@@ -103,31 +103,6 @@ type CompactionEntry struct {
 	TokensBefore int
 }
 
-// StateEntry logs a change to a session's typed state T. It is the single
-// entry type for every session-level change — title, active model, mode,
-// or whatever the application models in T — instead of a separate entry
-// type per field.
-//
-// The current state is the last StateEntry in append order (last-wins),
-// so session state is a property of the session as a whole, not of a
-// position in the tree: rewinding or branching does not revert it. Use
-// [LatestState] to fold it from the log.
-//
-// StateEntry is model-invisible: it configures the session and is never
-// sent to the model.
-type StateEntry[T any] struct {
-	EntryHeader
-
-	// State is the session state as of this change.
-	State T
-}
-
-// NewStateEntry wraps a session state value into a [StateEntry].
-// Tree fields are assigned when the entry is appended.
-func NewStateEntry[T any](state T) StateEntry[T] {
-	return StateEntry[T]{State: state}
-}
-
 // AsMessageEntry extracts the [MessageEntry] from an [Entry], if it
 // is one.
 func AsMessageEntry(e Entry) (MessageEntry, bool) {
@@ -144,19 +119,4 @@ func Filter[T Entry](entries []Entry) []T {
 		}
 	}
 	return out
-}
-
-// LatestState folds the current session state from the log: the State of
-// the last [StateEntry] of type T in append order, or (zero, false) if the
-// session has logged none.
-func LatestState[T any](entries []Entry) (T, bool) {
-	var out T
-	found := false
-	for _, e := range entries {
-		if se, ok := e.(StateEntry[T]); ok {
-			out = se.State
-			found = true
-		}
-	}
-	return out, found
 }

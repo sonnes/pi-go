@@ -1,6 +1,6 @@
 ---
 title: "Entries"
-summary: "The four kinds of thing a durable turn can carry, and the two views that read them back"
+summary: "How entry shapes control model visibility, transcript visibility, and persistence"
 read_when:
   - Deciding how to inject a reminder, skill body, or artifact into a turn
   - Working out why something reached the model but not the transcript
@@ -23,15 +23,17 @@ da.Run(ctx, durable.Text("What changed since Friday?"))
 
 `durable.Text`, `durable.Image`, and `durable.File` build the ordinary user entry, mirroring the `ai.UserMessage` constructors one for one.
 
-## The four kinds
+## Entry shapes and input behavior
 
-The two questions above are independent, and every kind of input is one of their four answers.
+The `Entry` interface has three public shapes: `MessageEntry`, `CompactionEntry`, and application types that embed `CustomEntry`. Meta and ephemeral inputs are `MessageEntry` values with different flags, not separate entry types.
+
+For run input, model visibility and persistence are independent. Every input has one of four behaviors:
 
 | Kind | Model sees it | Store keeps it |
 | ---- | ------------- | -------------- |
 | Ordinary message entry | yes | yes |
-| Meta entry | yes | yes, hidden from transcript views |
-| Ephemeral entry | yes, for one run | no |
+| Message entry with `Meta` | yes | yes, hidden from transcript views |
+| Message entry with `Ephemeral` | yes, for one run | no |
 | Custom entry | no | yes |
 
 **Meta and ephemeral are the same idea at two lifetimes.** Both are injected context: the model reads them, a transcript view hides them, because showing a reader the reminder machinery would be noise. They differ only in whether the text should still be there tomorrow.
@@ -59,7 +61,7 @@ Entries reach the model in the order you pass them, so a reminder written before
 
 Nothing above is a flag the reader has to remember, because the projections do the remembering. A path through the tree is read twice, for different audiences:
 
-- `session.ModelView` produces the `[]ai.Message` for the provider. Message entries are in, meta included; custom and state entries are skipped.
+- `session.ModelView` produces the `[]ai.Message` for the provider. Message entries are in, meta included; custom entries are skipped.
 - `session.TranscriptView` produces what a person should see. Injected context — meta and ephemeral alike — is hidden; custom entries are kept.
 
 One log, two audiences, no second copy to keep in sync.
@@ -76,7 +78,8 @@ Two consequences worth knowing. `Branch` will not target an ephemeral entry, bec
 
 ## Related
 
-- [Sessions](/concepts/durable/sessions) — identity, state, and the store contract
-- [Transcript Tree](/concepts/durable/tree) — the leaf pointer, branching, forking, compaction
-- [ai.Message](/concepts/ai/messages) — what a message entry wraps
-- [Agent History](/concepts/agent/messages) — the plain loop's `[]ai.Message`, and hook-based injection
+- [Sessions](sessions.md) — identity, state, and the store contract
+- [Transcript Tree](tree.md) — the leaf pointer, branching, forking, compaction
+- [Durable Events](events.md) — persistence receipts for stored entries
+- [ai.Message](../ai/messages.md) — what a message entry wraps
+- [Agent History](../agent/messages.md) — the plain loop's `[]ai.Message`, and hook-based injection

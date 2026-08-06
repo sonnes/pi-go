@@ -52,7 +52,7 @@ func PathFrom(byID map[string]Entry, leafID string) []Entry {
 
 // ModelView projects a root→leaf path (see [Path]) into the messages
 // sent to the model: [MessageEntry] values including meta entries;
-// custom and state entries are skipped.
+// custom entries are skipped.
 //
 // When the path contains [CompactionEntry] values, the latest one wins:
 // its summary is emitted as a user message, entries before its

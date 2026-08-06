@@ -10,12 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// codecState is the shared example session state for session-package tests.
-type codecState struct {
-	Title string
-	Model string
-}
-
 // ArtifactEntry is an application-defined custom entry used to test the
 // custom-entry codec path.
 type ArtifactEntry struct {
@@ -28,11 +22,11 @@ func init() {
 	session.RegisterCustom("artifact", ArtifactEntry{})
 }
 
-func roundTrip[T any](t *testing.T, e session.Entry) session.Entry {
+func roundTrip(t *testing.T, e session.Entry) session.Entry {
 	t.Helper()
-	data, err := session.MarshalEntry[T](e)
+	data, err := session.MarshalEntry(e)
 	require.NoError(t, err)
-	got, err := session.UnmarshalEntry[T](data)
+	got, err := session.UnmarshalEntry(data)
 	require.NoError(t, err)
 	return got
 }
@@ -48,7 +42,7 @@ func TestCodecMessageEntry(t *testing.T) {
 		Meta:        true,
 	}
 
-	got := roundTrip[codecState](t, orig)
+	got := roundTrip(t, orig)
 	me, ok := got.(session.MessageEntry)
 	require.True(t, ok)
 	assert.Equal(t, orig.EntryHeader, me.EntryHeader)
@@ -68,7 +62,7 @@ func TestCodecDropsEphemeral(t *testing.T) {
 
 	// Meta is the durable flavor and survives; ephemeral is defined by
 	// never reaching a store, so an entry read back is never ephemeral.
-	got := roundTrip[codecState](t, orig)
+	got := roundTrip(t, orig)
 	me, ok := got.(session.MessageEntry)
 	require.True(t, ok)
 	assert.False(t, me.Ephemeral)
@@ -82,16 +76,7 @@ func TestCodecCompactionEntry(t *testing.T) {
 		FirstKeptID:  "k1",
 		TokensBefore: 42,
 	}
-	got := roundTrip[codecState](t, orig)
-	assert.Equal(t, orig, got)
-}
-
-func TestCodecStateEntry(t *testing.T) {
-	orig := session.StateEntry[codecState]{
-		EntryHeader: session.EntryHeader{ID: "s1", CreatedAt: codecTS},
-		State:       codecState{Title: "T", Model: "M"},
-	}
-	got := roundTrip[codecState](t, orig)
+	got := roundTrip(t, orig)
 	assert.Equal(t, orig, got)
 }
 
@@ -104,7 +89,7 @@ func TestCodecCustomEntryRegistered(t *testing.T) {
 		Title:   "draft",
 		Content: "# Proposal",
 	}
-	got := roundTrip[codecState](t, orig)
+	got := roundTrip(t, orig)
 	ae, ok := got.(ArtifactEntry)
 	require.True(t, ok, "registered custom entry decodes to its concrete type")
 	assert.Equal(t, orig, ae)
@@ -118,7 +103,7 @@ func TestCodecCustomEntryUnregistered(t *testing.T) {
 		},
 		Title: "draft",
 	}
-	got := roundTrip[codecState](t, orig)
+	got := roundTrip(t, orig)
 	ce, ok := got.(session.CustomEntry)
 	require.True(t, ok, "unregistered kind falls back to a bare CustomEntry")
 	assert.Equal(t, "not-registered", ce.Kind)
@@ -126,6 +111,6 @@ func TestCodecCustomEntryUnregistered(t *testing.T) {
 }
 
 func TestCodecUnknownType(t *testing.T) {
-	_, err := session.UnmarshalEntry[codecState]([]byte(`{"type":"bogus","id":"x"}`))
+	_, err := session.UnmarshalEntry([]byte(`{"type":"bogus","id":"x"}`))
 	assert.Error(t, err)
 }

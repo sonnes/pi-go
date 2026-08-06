@@ -43,9 +43,9 @@ func mutate(f func(*ext)) agent.Option {
 }
 
 // Agent is a persistent agent instance: an inner [agent.Agent] loop
-// bound to a [session.Session]. Created by [New], never directly. The
-// type parameter T is the session's application-defined state (see
-// [session.Session]).
+// bound to a durable session ID. Created by [New], never directly. The
+// type parameter T binds the agent to the state schema of its
+// [session.Store]; the agent does not load or retain session metadata.
 //
 // Persistence is per message: run input is persisted before the run
 // starts, and every message the loop produces is persisted when its
@@ -64,13 +64,13 @@ type Agent[T any] struct {
 	// registered gets runBase itself.
 	run Runner
 
-	mu      sync.Mutex
-	sess    *session.Session[T]
-	entries []session.Entry
-	index   map[string]session.Entry
-	leafID  string
-	running bool
-	closed  bool
+	mu        sync.Mutex
+	sessionID string
+	entries   []session.Entry
+	index     map[string]session.Entry
+	leafID    string
+	running   bool
+	closed    bool
 }
 
 // newInner builds a fresh inner agent loop over the bound model with the
@@ -90,20 +90,20 @@ func WithStore[T any](s session.Store[T]) agent.Option {
 }
 
 // WithSessionID sets the session ID to create or resume. Without it,
-// [New] generates one, readable via [Agent.Session].
+// [New] generates one, readable via [Agent.SessionID].
 func WithSessionID(id string) agent.Option {
 	return mutate(func(e *ext) { e.sessionID = id })
 }
 
-// WithPublisher sets the [Publisher] that receives the session's
+// WithPublisher sets the [Publisher] that receives session lifecycle
 // events. A forked agent inherits it.
 func WithPublisher(p Publisher) agent.Option {
 	return mutate(func(e *ext) { e.publisher = p })
 }
 
-// publish delivers a session event to the publisher, if any. Callers
-// must not hold a.mu — Publish runs application code that may call
-// back into the agent.
+// publish delivers a lifecycle event when a publisher is configured.
+// Callers must not hold a.mu because Publish may call back into the
+// agent.
 func (a *Agent[T]) publish(evt Event) {
 	if a.publisher != nil {
 		a.publisher.Publish(evt)
@@ -112,8 +112,8 @@ func (a *Agent[T]) publish(evt Event) {
 
 // New returns a durable [Agent], creating its session if it does not
 // exist and hydrating history from the store otherwise. The resume
-// point is the last appended entry. Publishes session_init to the
-// [WithPublisher] publisher.
+// point is the last appended entry. It publishes [EventSessionInit]
+// after the session is ready.
 //
 // Everything but the factory is optional: without [WithStore] the
 // session lives in a fresh in-memory store, and without
@@ -145,11 +145,11 @@ func New[T any](
 		sessionID = newEntryID()
 	}
 
-	sess, entries, err := store.LoadSession(ctx, sessionID)
+	entries, err := store.LoadEntries(ctx, sessionID)
 	switch {
 	case errors.Is(err, session.ErrSessionNotFound):
 		now := time.Now()
-		sess = &session.Session[T]{
+		sess := &session.Session[T]{
 			ID:        sessionID,
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -177,7 +177,7 @@ func New[T any](
 		lm:        lm,
 		baseOpts:  opts,
 		publisher: dcfg.publisher,
-		sess:      sess,
+		sessionID: sessionID,
 		entries:   entries,
 		index:     index,
 		leafID:    leaf,
@@ -205,18 +205,15 @@ func New[T any](
 // model. Tree fields are assigned on append.
 //
 // Entries reach the model in the order given, and every kind but
-// ephemeral is written as given. State changes belong in
-// [Agent.SetState] and compaction in [Agent.Compact] — those maintain
-// in-memory state and publish their session events, which Run does not.
+// ephemeral is written as given. Compaction belongs in [Agent.Compact].
 //
 // The persistence receipts on the boundary events carry only durable
 // entries, so an ephemeral one is absent from them; read it back from
 // [Agent.Entries] instead.
 //
 // The stream is turn-scoped: inner agent events lifted under
-// [EventAgent], with persistence receipts on the boundary events.
-// Session events go to the [WithPublisher] publisher. A persist
-// failure fails the run loudly.
+// [EventAgent], with persistence receipts on the boundary events. A
+// persist failure fails the run loudly.
 //
 // Any [Middleware] registered with [WithMiddleware] wraps this call.
 // The chain runs synchronously, on the caller's goroutine, before the
@@ -324,37 +321,8 @@ func (a *Agent[T]) Close() error {
 
 // --- durable verbs ---
 
-// Session returns a copy of the session this instance is bound to,
-// including its current [session.Session.State].
-func (a *Agent[T]) Session() *session.Session[T] {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	cp := *a.sess
-	return &cp
-}
-
-// SetState records a session-state change by appending a
-// [session.StateEntry] to the log. State is last-wins and
-// position-independent — the fold of the log (see [session.LatestState]),
-// not reverted by [Agent.Branch]. Publishes session_updated.
-func (a *Agent[T]) SetState(ctx context.Context, state T) error {
-	a.mu.Lock()
-	entries, err := a.persistLocked(ctx, session.NewStateEntry(state))
-	if err != nil {
-		a.mu.Unlock()
-		return err
-	}
-	a.sess.State = state
-	leaf := a.leafID
-	a.mu.Unlock()
-
-	a.publish(Event{
-		Type:    EventSessionUpdated,
-		Entries: entries,
-		LeafID:  leaf,
-	})
-	return nil
-}
+// SessionID returns the durable session ID this agent is bound to.
+func (a *Agent[T]) SessionID() string { return a.sessionID }
 
 // LeafID returns the ID of the entry the leaf pointer is on, or
 // empty for a fresh session. Capture it before a risky turn and pass
@@ -399,10 +367,11 @@ func (a *Agent[T]) Append(ctx context.Context, entries ...session.Entry) error {
 // Branch moves the leaf pointer to an earlier entry. Zero-copy and
 // in-session: the next turn grows a sibling branch, and the abandoned
 // branch stays in the tree. Edit, retry, and rewind are all this.
-// Publishes session_branched.
 //
 // The leaf position is in-memory; reopening a session resumes at the
 // last appended entry.
+//
+// Branch publishes [EventSessionBranched] after moving the leaf.
 func (a *Agent[T]) Branch(ctx context.Context, entryID string) error {
 	a.mu.Lock()
 
@@ -411,13 +380,13 @@ func (a *Agent[T]) Branch(ctx context.Context, entryID string) error {
 		return fmt.Errorf("durable: entry %q not found", entryID)
 	}
 
-	from := a.leafID
+	fromID := a.leafID
 	a.leafID = entryID
 	a.mu.Unlock()
 
 	a.publish(Event{
 		Type:   EventSessionBranched,
-		FromID: from,
+		FromID: fromID,
 		LeafID: entryID,
 	})
 	return nil
@@ -425,22 +394,22 @@ func (a *Agent[T]) Branch(ctx context.Context, entryID string) error {
 
 // Fork copies the active path into a new session with the given ID
 // and returns a fresh [Agent] bound to it. The new session records
-// this one as [session.Session.ParentID]. Returns
+// this one as [session.Session.ParentID] and starts with zero-valued
+// application state. Returns
 // [session.ErrSessionExists] if the ID is taken.
 //
-// The child inherits this agent's publisher. A successful fork
-// publishes session_forked for the source, then session_init for the
-// child.
+// The child inherits the publisher. A successful fork publishes
+// [EventSessionForked] for the source followed by [EventSessionInit]
+// for the child.
 func (a *Agent[T]) Fork(ctx context.Context, newID string) (*Agent[T], error) {
 	a.mu.Lock()
 	path := session.PathFrom(a.index, a.leafID)
 	now := time.Now()
 	newSess := &session.Session[T]{
 		ID:        newID,
-		ParentID:  a.sess.ID,
+		ParentID:  a.sessionID,
 		CreatedAt: now,
 		UpdatedAt: now,
-		State:     a.sess.State,
 	}
 	a.mu.Unlock()
 
@@ -476,7 +445,7 @@ func (a *Agent[T]) Fork(ctx context.Context, newID string) (*Agent[T], error) {
 		lm:        a.lm,
 		baseOpts:  a.baseOpts,
 		publisher: a.publisher,
-		sess:      newSess,
+		sessionID: newID,
 		entries:   copied,
 		index:     index,
 		leafID:    parent,
@@ -490,7 +459,7 @@ func (a *Agent[T]) Fork(ctx context.Context, newID string) (*Agent[T], error) {
 	a.publish(Event{
 		Type:      EventSessionForked,
 		SessionID: newID,
-		ParentID:  a.sess.ID,
+		ParentID:  a.sessionID,
 	})
 	child.publish(Event{
 		Type:      EventSessionInit,
@@ -528,7 +497,7 @@ func CompactPrompt(s string) CompactOption {
 // on the active path. Nothing is deleted — the full tree stays
 // rewindable. The summary is written by an ephemeral agent from the
 // session's own factory; custom entries pass through untouched.
-// Publishes session_compacted.
+// Compact publishes [EventSessionCompacted] after appending the summary.
 func (a *Agent[T]) Compact(ctx context.Context, opts ...CompactOption) error {
 	cfg := compactConfig{
 		prompt: defaultCompactPrompt,
@@ -582,13 +551,13 @@ func (a *Agent[T]) Compact(ctx context.Context, opts ...CompactOption) error {
 		a.mu.Unlock()
 		return err
 	}
-	leaf := a.leafID
+	leafID := a.leafID
 	a.mu.Unlock()
 
 	a.publish(Event{
 		Type:    EventSessionCompacted,
 		Entries: entries,
-		LeafID:  leaf,
+		LeafID:  leafID,
 	})
 	return nil
 }
@@ -596,8 +565,8 @@ func (a *Agent[T]) Compact(ctx context.Context, opts ...CompactOption) error {
 // --- internals ---
 
 // inputMessages projects run input for the model: the message entries
-// in the order given, ephemeral ones included. Custom and state entries
-// carry no message and are skipped, matching [session.ModelView].
+// in the order given, ephemeral ones included. Custom entries carry no
+// message and are skipped, matching [session.ModelView].
 func inputMessages(entries []session.Entry) []ai.Message {
 	var msgs []ai.Message
 	for _, e := range entries {
@@ -655,7 +624,7 @@ func (a *Agent[T]) persistLocked(ctx context.Context, entries ...session.Entry) 
 	}
 
 	if len(durables) > 0 {
-		if err := a.store.AppendEntries(ctx, a.sess.ID, durables...); err != nil {
+		if err := a.store.AppendEntries(ctx, a.sessionID, durables...); err != nil {
 			return nil, err
 		}
 	}
@@ -665,7 +634,6 @@ func (a *Agent[T]) persistLocked(ctx context.Context, entries ...session.Entry) 
 		a.index[e.Header().ID] = e
 	}
 	a.leafID = parent
-	a.sess.UpdatedAt = now
 	return durables, nil
 }
 

@@ -12,7 +12,6 @@ import (
 const (
 	typeMessage    = "message"
 	typeCompaction = "compaction"
-	typeState      = "state"
 	typeCustom     = "custom"
 )
 
@@ -52,15 +51,8 @@ type compactionWire struct {
 	TokensBefore int    `json:"tokens_before"`
 }
 
-type stateWire[T any] struct {
-	Type string `json:"type"`
-	EntryHeader
-	State T `json:"state"`
-}
-
 // MarshalEntry encodes an [Entry] to a single JSON object tagged by type.
-// T is the session state type, needed to encode a [StateEntry].
-func MarshalEntry[T any](e Entry) ([]byte, error) {
+func MarshalEntry(e Entry) ([]byte, error) {
 	switch v := e.(type) {
 	case MessageEntry:
 		return json.Marshal(messageWire{
@@ -76,12 +68,6 @@ func MarshalEntry[T any](e Entry) ([]byte, error) {
 			Summary:      v.Summary,
 			FirstKeptID:  v.FirstKeptID,
 			TokensBefore: v.TokensBefore,
-		})
-	case StateEntry[T]:
-		return json.Marshal(stateWire[T]{
-			Type:        typeState,
-			EntryHeader: v.EntryHeader,
-			State:       v.State,
 		})
 	default:
 		return marshalCustom(e)
@@ -104,10 +90,9 @@ func marshalCustom(e Entry) ([]byte, error) {
 }
 
 // UnmarshalEntry decodes a single JSON object produced by [MarshalEntry].
-// T is the session state type, needed to decode a [StateEntry]. Custom
-// entries are reconstructed via the type registered with [RegisterCustom];
-// unregistered kinds decode to a bare [CustomEntry].
-func UnmarshalEntry[T any](data []byte) (Entry, error) {
+// Custom entries are reconstructed via the type registered with
+// [RegisterCustom]; unregistered kinds decode to a bare [CustomEntry].
+func UnmarshalEntry(data []byte) (Entry, error) {
 	var probe struct {
 		Type string `json:"type"`
 		Kind string `json:"kind"`
@@ -134,12 +119,6 @@ func UnmarshalEntry[T any](data []byte) (Entry, error) {
 			FirstKeptID:  w.FirstKeptID,
 			TokensBefore: w.TokensBefore,
 		}, nil
-	case typeState:
-		var w stateWire[T]
-		if err := json.Unmarshal(data, &w); err != nil {
-			return nil, err
-		}
-		return StateEntry[T]{EntryHeader: w.EntryHeader, State: w.State}, nil
 	case typeCustom:
 		return unmarshalCustom(data, probe.Kind)
 	default:

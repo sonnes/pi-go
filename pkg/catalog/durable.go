@@ -13,8 +13,8 @@ import (
 // [GenerateObject], it is a function rather than a method because Go methods
 // cannot be generic; T is the session state type.
 //
-// Pass durable options ([durable.WithStore], [durable.WithSessionID],
-// [durable.WithPublisher]) alongside agent options.
+// Pass durable options ([durable.WithStore], [durable.WithSessionID])
+// alongside agent options.
 func DurableAgent[T any](
 	ctx context.Context,
 	c *Catalog,

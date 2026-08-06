@@ -186,15 +186,14 @@ func TestModelView(t *testing.T) {
 		assert.Equal(t, "hello", msgs[2].Text())
 	})
 
-	t.Run("custom and state entries are skipped", func(t *testing.T) {
+	t.Run("custom entries are skipped", func(t *testing.T) {
 		path := []session.Entry{
 			msgEntry("e1", "", 1, ai.UserMessage("hi")),
 			viewEntry{
 				CustomEntry: session.CustomEntry{EntryHeader: header("e2", "e1", 2), Kind: "note"},
 				Note:        "invisible",
 			},
-			session.StateEntry[string]{EntryHeader: header("e3", "e2", 3), State: "title"},
-			msgEntry("e4", "e3", 4, ai.AssistantMessage(ai.Text{Text: "hello"})),
+			msgEntry("e3", "e2", 3, ai.AssistantMessage(ai.Text{Text: "hello"})),
 		}
 
 		msgs := session.ModelView(path)

@@ -109,7 +109,7 @@ func TestAgentForwardsCallerOptions(t *testing.T) {
 	a, err := h.Agent(ctx, durable.WithSessionID("caller-chosen"), agent.WithMaxTurns(1))
 	require.NoError(t, err)
 
-	assert.Equal(t, "caller-chosen", a.Session().ID)
+	assert.Equal(t, "caller-chosen", a.SessionID())
 }
 
 // --- seeding ---
@@ -350,7 +350,7 @@ func TestDurableVerbsPassThrough(t *testing.T) {
 	require.NoError(t, err)
 	defer a.Close()
 
-	assert.Equal(t, "s1", a.Session().ID)
+	assert.Equal(t, "s1", a.SessionID())
 	assert.Empty(t, a.LeafID())
 
 	_, err = a.Run(ctx, durable.Text("hi")).Wait()
@@ -359,12 +359,9 @@ func TestDurableVerbsPassThrough(t *testing.T) {
 	leaf := a.LeafID()
 	assert.NotEmpty(t, leaf)
 
-	require.NoError(t, a.SetState(ctx, "titled"))
-	assert.Equal(t, "titled", a.Session().State)
-
 	forked, err := a.Fork(ctx, "s2")
 	require.NoError(t, err)
-	assert.Equal(t, "s1", forked.Session().ParentID)
+	assert.Equal(t, "s2", forked.SessionID())
 
 	require.NoError(t, a.Branch(ctx, leaf))
 	assert.Equal(t, leaf, a.LeafID())

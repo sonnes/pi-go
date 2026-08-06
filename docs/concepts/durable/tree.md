@@ -43,7 +43,9 @@ The leaf lives in memory. Reopening a session resumes at the last appended entry
 
 Branching explores an alternative inside one session. `Fork` lifts the active path into a separate session, re-chained with fresh entry IDs, recording the original as its parent.
 
-Reach for it when the alternative should have its own identity — a what-if the user might come back to, a sub-conversation with its own lifetime — rather than a sibling branch that shares the original's ID. The child inherits the publisher, so its events flow where the parent's do.
+Reach for it when the alternative should have its own identity — a what-if the user might come back to, a sub-conversation with its own lifetime — rather than a sibling branch that shares the original's ID.
+
+The child session starts with zero-valued application state. The durable agent copies entries because it owns the transcript working set, but it does not load the source `Session[T]` record. Applications that want inherited metadata update the child explicitly through the store.
 
 ## Compaction summarizes without deleting
 
@@ -55,6 +57,7 @@ Nothing is removed, which is the property worth understanding. The summary chang
 
 ## Related
 
-- [Entries](/concepts/durable/entries) — what the nodes are, and which of them the model and reader each see
-- [Sessions](/concepts/durable/sessions) — identity, state, and the store the tree is written to
-- [Agent State](/concepts/agent/agent-state) — reading state during and after a run
+- [Entries](entries.md) — what the nodes are, and which of them the model and reader each see
+- [Sessions](sessions.md) — identity, state, and the store the tree is written to
+- [Durable Events](events.md) — notifications when the leaf or tree changes
+- [Agent State](../agent/agent-state.md) — reading state during and after a run

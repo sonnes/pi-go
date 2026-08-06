@@ -6,10 +6,9 @@ import "time"
 // conversation. The state type T is application-defined — a title, an
 // active model, a mode, or any struct the app tracks per session.
 //
-// State is the current (last-wins) snapshot. Every change to it is also
-// logged as a [StateEntry] on the session's entry log, so the change
-// history is auditable and the current value is recoverable from the log
-// via [LatestState].
+// Session records are mutable independently of the session's append-only
+// entry log. Applications replace a record through [Store.UpdateSession],
+// while durable agents operate on the log without caching this record.
 type Session[T any] struct {
 	// ID identifies the session. The application chooses what it
 	// represents — a user ID, ticket number, or random identifier.

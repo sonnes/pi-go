@@ -25,7 +25,7 @@ Cancelling the context passed to `Run` aborts the run; the stream ends with the 
 
 ## Event lifecycle
 
-Each run's stream carries one bracket pair. Session lifecycle events do not exist at this layer — backend/session lifetime is the caller's concern (see `pkg/durable` for persistent sessions). For CLI agents, `agent_start` carries the backend's `SessionID` once known.
+Each run's stream carries one bracket pair. Session lifecycle events do not exist at this layer because backend and session lifetimes belong to the caller. Durable agents expose those notifications through a separate publisher; see [Durable Events](../durable/events.md). For CLI agents, `agent_start` carries the backend's `SessionID` once known.
 
 Caller-supplied input messages are **not** echoed as `message_start` / `message_end` events — the caller already has them; they are appended to history before the run begins. Only messages produced inside the loop (assistant outputs, tool results, hook-injected follow-ups) are emitted. The `Event.Input` flag marks messages a `HookBeforeStop` injected, so consumers persisting from the event stream can distinguish follow-ups from model output.
 
@@ -94,5 +94,6 @@ Go doesn't have discriminated unions. Events are a single `Event` struct with a 
 
 ## Related
 
-- [Agent](/concepts/agent/agent) — construction, options, entry points
-- [Agent State](/concepts/agent/agent-state) — runtime state observability
+- [Agent](agent.md) — construction, options, entry points
+- [Agent State](agent-state.md) — runtime state observability
+- [Durable Events](../durable/events.md) — persistence receipts and session lifecycle notifications

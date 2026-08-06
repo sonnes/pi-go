@@ -98,7 +98,7 @@ func Agent(spec string, opts ...agent.Option) (agent.Agent, error) {
 
 // DurableAgent builds a session-backed durable agent for a "<kind>/<model>"
 // spec from the default catalog. Pass durable options ([durable.WithStore],
-// [durable.WithSessionID], [durable.WithPublisher]) alongside agent options.
+// [durable.WithSessionID]) alongside agent options.
 func DurableAgent[T any](ctx context.Context, spec string, opts ...agent.Option) (*durable.Agent[T], error) {
 	ensureProviders()
 	return catalog.DurableAgent[T](ctx, Default, spec, opts...)

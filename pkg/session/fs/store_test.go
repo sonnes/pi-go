@@ -3,6 +3,7 @@ package fs_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -35,7 +36,9 @@ func TestFileStoreCreateAndLoad(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 
-	_, _, err = store.LoadSession(ctx, "s1")
+	_, err = store.LoadSession(ctx, "s1")
+	assert.ErrorIs(t, err, session.ErrSessionNotFound)
+	_, err = store.LoadEntries(ctx, "s1")
 	assert.ErrorIs(t, err, session.ErrSessionNotFound)
 
 	require.NoError(t, store.CreateSession(ctx, &session.Session[fsState]{
@@ -45,18 +48,27 @@ func TestFileStoreCreateAndLoad(t *testing.T) {
 		State:     fsState{Title: "T", Model: "M"},
 	}))
 
-	sess, entries, err := store.LoadSession(ctx, "s1")
+	sess, err := store.LoadSession(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, "s1", sess.ID)
 	assert.Equal(t, fsState{Title: "T", Model: "M"}, sess.State)
 	assert.True(t, fsTS.Equal(sess.CreatedAt))
+	entries, err := store.LoadEntries(ctx, "s1")
+	require.NoError(t, err)
 	assert.Empty(t, entries)
 
-	// One file per session: the record is line 1 of the log itself.
+	// Session metadata and append-only entries have separate files.
 	files, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
-	assert.Equal(t, "s1.jsonl", files[0].Name())
+	assert.Equal(t, "s1", files[0].Name())
+	assert.True(t, files[0].IsDir())
+
+	files, err = os.ReadDir(filepath.Join(dir, "s1"))
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	assert.Equal(t, "entries.jsonl", files[0].Name())
+	assert.Equal(t, "session.json", files[1].Name())
 }
 
 func TestFileStoreAppendUnknownSession(t *testing.T) {
@@ -73,6 +85,12 @@ func TestFileStoreCreateExists(t *testing.T) {
 	assert.ErrorIs(t, err, session.ErrSessionExists)
 }
 
+func TestFileStoreUpdateUnknownSession(t *testing.T) {
+	store, _ := fs.New[fsState](t.TempDir())
+	err := store.UpdateSession(context.Background(), &session.Session[fsState]{ID: "nope"})
+	assert.ErrorIs(t, err, session.ErrSessionNotFound)
+}
+
 func TestFileStoreEntriesRoundTrip(t *testing.T) {
 	store, _ := fs.New[fsState](t.TempDir())
 	ctx := context.Background()
@@ -82,62 +100,55 @@ func TestFileStoreEntriesRoundTrip(t *testing.T) {
 		EntryHeader: session.EntryHeader{ID: "e1", CreatedAt: fsTS},
 		Message:     ai.UserMessage("hi"),
 	}
-	st := session.StateEntry[fsState]{
-		EntryHeader: session.EntryHeader{ID: "e2", ParentID: "e1", CreatedAt: fsTS},
-		State:       fsState{Title: "T"},
-	}
 	art := ArtifactEntry{
 		CustomEntry: session.CustomEntry{
-			EntryHeader: session.EntryHeader{ID: "e3", ParentID: "e2", CreatedAt: fsTS},
+			EntryHeader: session.EntryHeader{ID: "e2", ParentID: "e1", CreatedAt: fsTS},
 			Kind:        "fs-artifact",
 		},
 		Title: "draft",
 	}
 
-	require.NoError(t, store.AppendEntries(ctx, "s1", msg, st))
+	require.NoError(t, store.AppendEntries(ctx, "s1", msg))
 	require.NoError(t, store.AppendEntries(ctx, "s1", art))
 
-	_, entries, err := store.LoadSession(ctx, "s1")
+	entries, err := store.LoadEntries(ctx, "s1")
 	require.NoError(t, err)
-	require.Len(t, entries, 3)
+	require.Len(t, entries, 2)
 
 	m, ok := entries[0].(session.MessageEntry)
 	require.True(t, ok)
 	assert.Equal(t, "hi", m.Text())
 	assert.Equal(t, "e1", m.ID)
 
-	s2, ok := entries[1].(session.StateEntry[fsState])
-	require.True(t, ok)
-	assert.Equal(t, "T", s2.State.Title)
-	assert.Equal(t, "e1", s2.ParentID)
-
-	a, ok := entries[2].(ArtifactEntry)
+	a, ok := entries[1].(ArtifactEntry)
 	require.True(t, ok)
 	assert.Equal(t, "draft", a.Title)
-	assert.Equal(t, "e3", a.ID)
+	assert.Equal(t, "e2", a.ID)
 }
 
-func TestFileStoreStateEventUpdatesSession(t *testing.T) {
+func TestFileStoreUpdateSession(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
 
 	store, _ := fs.New[fsState](dir)
 	require.NoError(t, store.CreateSession(ctx, &session.Session[fsState]{ID: "s1", State: fsState{Title: "init"}}))
-	require.NoError(t, store.AppendEntries(ctx, "s1", session.NewStateEntry(fsState{Title: "renamed", Model: "opus"})))
+	require.NoError(t, store.UpdateSession(ctx, &session.Session[fsState]{
+		ID:    "s1",
+		State: fsState{Title: "renamed", Model: "opus"},
+	}))
 
-	sess, _, err := store.LoadSession(ctx, "s1")
+	sess, err := store.LoadSession(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, "renamed", sess.State.Title)
 	assert.Equal(t, "opus", sess.State.Model)
 
-	// The updated state is persisted to the record, not just folded in memory.
 	reopened, _ := fs.New[fsState](dir)
-	sess2, _, err := reopened.LoadSession(ctx, "s1")
+	sess2, err := reopened.LoadSession(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, "renamed", sess2.State.Title)
 }
 
-func TestFileStoreLoadRecoversUpdatedAt(t *testing.T) {
+func TestFileStoreAppendDoesNotUpdateSession(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
 
@@ -148,10 +159,6 @@ func TestFileStoreLoadRecoversUpdatedAt(t *testing.T) {
 		UpdatedAt: fsTS,
 	}))
 
-	// The record line is written once and never rewritten, so a load has
-	// to recover the last-touched time from the log the way it recovers
-	// the state — otherwise every reloaded session looks untouched since
-	// creation.
 	appended := fsTS.Add(time.Hour)
 	require.NoError(t, store.AppendEntries(ctx, "s1", session.MessageEntry{
 		EntryHeader: session.EntryHeader{ID: "e1", CreatedAt: appended},
@@ -159,9 +166,9 @@ func TestFileStoreLoadRecoversUpdatedAt(t *testing.T) {
 	}))
 
 	reopened, _ := fs.New[fsState](dir)
-	sess, _, err := reopened.LoadSession(ctx, "s1")
+	sess, err := reopened.LoadSession(ctx, "s1")
 	require.NoError(t, err)
-	assert.True(t, appended.Equal(sess.UpdatedAt), "updatedAt follows the last entry")
+	assert.True(t, fsTS.Equal(sess.UpdatedAt), "appending entries leaves session metadata untouched")
 	assert.True(t, fsTS.Equal(sess.CreatedAt), "createdAt is untouched")
 }
 
@@ -179,9 +186,11 @@ func TestFileStoreReopen(t *testing.T) {
 	// A fresh store over the same directory (a new process) sees the data.
 	second, err := fs.New[fsState](dir)
 	require.NoError(t, err)
-	sess, entries, err := second.LoadSession(ctx, "s1")
+	sess, err := second.LoadSession(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, "T", sess.State.Title)
+	entries, err := second.LoadEntries(ctx, "s1")
+	require.NoError(t, err)
 	require.Len(t, entries, 1)
 }
 
@@ -189,8 +198,11 @@ func TestFileStoreInvalidID(t *testing.T) {
 	store, _ := fs.New[fsState](t.TempDir())
 	ctx := context.Background()
 
-	_, _, err := store.LoadSession(ctx, "a/b")
+	_, err := store.LoadSession(ctx, "a/b")
+	assert.Error(t, err)
+	_, err = store.LoadEntries(ctx, "a/b")
 	assert.Error(t, err)
 	assert.Error(t, store.CreateSession(ctx, &session.Session[fsState]{ID: "../escape"}))
+	assert.Error(t, store.UpdateSession(ctx, &session.Session[fsState]{ID: "../escape"}))
 	assert.Error(t, store.AppendEntries(ctx, "", session.NewMessageEntry(ai.UserMessage("x"))))
 }

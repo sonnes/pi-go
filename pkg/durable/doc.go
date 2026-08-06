@@ -13,6 +13,11 @@
 //     or deleted. Edit, retry, rewind, [Agent.Fork], and [Agent.Compact]
 //     all derive from the same mechanism.
 //
+// A durable [Agent] retains only its session ID and transcript working
+// state. Applications own the mutable [session.Session] record through
+// [session.Store]; keeping it outside the agent avoids stale metadata and
+// keeps application state out of transcript control flow.
+//
 // Persistence is per message: run input is persisted before the run
 // starts, and every message the loop produces is persisted when it
 // completes. Input is [session.Entry] values rather than messages, so
@@ -30,11 +35,11 @@
 // survives a crash. Ephemeral entries are the one thing receipts never
 // carry: there is nothing durable to attest to.
 //
-// Session events (session_init, session_updated, session_branched,
-// session_forked, session_compacted) are delivered to the [Publisher]
-// injected via [WithPublisher] at the moment their mutation commits.
-// The application owns delivery — forward, fan out, or drop; without a
-// publisher they are discarded. There is no broker.
+// Session lifecycle mutations happen outside a run, so [WithPublisher]
+// sends their events through a separate [Publisher]. [New],
+// [Agent.Branch], [Agent.Fork], and [Agent.Compact] publish only after
+// their effect commits. Session metadata updates do not publish because
+// applications perform them directly through [session.Store].
 //
 // A crash can leave an assistant tool call without its results; the
 // model view repairs it on resume by synthesizing interrupted tool
@@ -64,7 +69,7 @@
 // untouched. The two do not overlap.
 //
 // See docs/concepts/durable/ for the design rationale: entries.md on the
-// input kinds and the views that read them, sessions.md on identity,
-// state, and the store contract, and tree.md on branching, forking, and
-// compaction.
+// input kinds and views, sessions.md on ownership and storage, tree.md on
+// branching and compaction, and events.md on run receipts and lifecycle
+// publishing.
 package durable

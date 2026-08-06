@@ -118,18 +118,7 @@ func collect(t *testing.T, s *durable.Stream) ([]durable.Event, []ai.Message, er
 	return events, msgs, err
 }
 
-// ofType filters durable events by type.
-func ofType(events []durable.Event, et durable.EventType) []durable.Event {
-	var out []durable.Event
-	for _, e := range events {
-		if e.Type == et {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-// recordingPublisher captures session events as they are published.
+// recordingPublisher captures lifecycle events as they are published.
 type recordingPublisher struct {
 	mu     sync.Mutex
 	events []durable.Event
@@ -141,10 +130,17 @@ func (p *recordingPublisher) Publish(e durable.Event) {
 	p.events = append(p.events, e)
 }
 
-func (p *recordingPublisher) all() []durable.Event {
+func (p *recordingPublisher) ofType(eventType durable.EventType) []durable.Event {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return append([]durable.Event(nil), p.events...)
+
+	var events []durable.Event
+	for _, event := range p.events {
+		if event.Type == eventType {
+			events = append(events, event)
+		}
+	}
+	return events
 }
 
 // liftedOf filters lifted agent events by inner type.
@@ -176,7 +172,6 @@ func openTestAgent(
 	return da
 }
 
-// openWithPublisher opens a test agent with a recording publisher.
 func openWithPublisher(
 	t *testing.T,
 	store session.Store[testState],
@@ -184,17 +179,18 @@ func openWithPublisher(
 	prov ai.TextProvider,
 ) (*durable.Agent[testState], *recordingPublisher) {
 	t.Helper()
-	pub := &recordingPublisher{}
+
+	publisher := &recordingPublisher{}
 	da, err := durable.New[testState](
 		t.Context(),
 		testLM(prov),
 		durable.WithStore(store),
 		durable.WithSessionID(id),
-		durable.WithPublisher(pub),
+		durable.WithPublisher(publisher),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = da.Close() })
-	return da, pub
+	return da, publisher
 }
 
 // mustMessage extracts the message entry from e, failing the test if it
@@ -249,7 +245,7 @@ func TestRun_EventsAndPersistence(t *testing.T) {
 	assert.Len(t, liftedOf(events, agent.EventAgentEnd), 1)
 
 	// Store holds user + assistant entries, chained parent → child.
-	_, entries, err := store.LoadSession(t.Context(), "s1")
+	entries, err := store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 	user, ok := session.AsMessageEntry(entries[0])
@@ -297,7 +293,7 @@ func TestRun_ToolLoopPersistsEveryMessage(t *testing.T) {
 	}
 
 	// Store: user, assistant(tool_use), tool_result, assistant.
-	_, entries, err := store.LoadSession(t.Context(), "s1")
+	entries, err := store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, err)
 	require.Len(t, entries, 4)
 	roles := make([]ai.Role, 0, 4)
@@ -326,7 +322,7 @@ func TestRun_ProviderErrorKeepsInputOnly(t *testing.T) {
 	assert.ErrorIs(t, err, assert.AnError)
 
 	// Input persisted before the run; nothing else landed.
-	_, entries, lerr := store.LoadSession(t.Context(), "s1")
+	entries, lerr := store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, lerr)
 	require.Len(t, entries, 1)
 }
@@ -419,7 +415,7 @@ func TestAppend_KeepsEphemeralOutOfTheStore(t *testing.T) {
 	assert.NotEmpty(t, entries[0].Header().ID)
 	assert.Empty(t, da.LeafID())
 
-	_, stored, err := store.LoadSession(t.Context(), "s1")
+	stored, err := store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, err)
 	assert.Empty(t, stored)
 
@@ -437,7 +433,7 @@ func TestAppend_KeepsEphemeralOutOfTheStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, entries, 4)
 
-	_, stored, err = store.LoadSession(t.Context(), "s1")
+	stored, err = store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, err)
 	require.Len(t, stored, 2)
 	first, ok := session.AsMessageEntry(stored[0])
@@ -502,7 +498,7 @@ func TestRun_EphemeralInputReachesModelUnpersisted(t *testing.T) {
 	require.Len(t, entries, 3)
 	assert.True(t, mustMessage(t, entries[0]).Ephemeral)
 
-	_, stored, err := store.LoadSession(t.Context(), "s1")
+	stored, err := store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, err)
 	require.Len(t, stored, 2)
 	user, ok := session.AsMessageEntry(stored[0])
@@ -561,7 +557,7 @@ func TestRun_EphemeralOnlyInputRunsWithoutPersisting(t *testing.T) {
 	assert.Equal(t, "nudged", reply.Message.Text())
 	assert.Equal(t, leaf, reply.Header().ParentID)
 
-	_, stored, err := store.LoadSession(t.Context(), "s1")
+	stored, err := store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, err)
 	assert.Len(t, stored, 3)
 }
@@ -579,23 +575,14 @@ func TestNew_ResumeHydratesHistory(t *testing.T) {
 	leafBefore := da.LeafID()
 	require.NoError(t, da.Close())
 
-	// Process B: same ID resumes the same conversation; session_init
-	// is published at Open with the resume leaf.
-	pub := &recordingPublisher{}
-	da, err = durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"), durable.WithPublisher(pub))
+	// Process B: same ID resumes the same conversation at the stored leaf.
+	da, err = durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"))
 	require.NoError(t, err)
 	defer da.Close()
+	assert.Equal(t, leafBefore, da.LeafID())
 
-	inits := ofType(pub.all(), durable.EventSessionInit)
-	require.Len(t, inits, 1)
-	assert.Equal(t, "u42", inits[0].SessionID)
-	assert.Equal(t, leafBefore, inits[0].LeafID)
-
-	events, _, err := collect(t, da.Run(t.Context(), durable.Text("What's my name?")))
+	_, _, err = collect(t, da.Run(t.Context(), durable.Text("What's my name?")))
 	require.NoError(t, err)
-
-	// The run stream carries no session events.
-	assert.Empty(t, ofType(events, durable.EventSessionInit))
 
 	// The model saw the full prior conversation plus the new question.
 	p := prov.prompt(1)
@@ -613,12 +600,36 @@ func TestNew_Defaults(t *testing.T) {
 	require.NoError(t, err)
 	defer da.Close()
 
-	assert.NotEmpty(t, da.Session().ID)
+	assert.NotEmpty(t, da.SessionID())
 
 	run(t, da, "hi")
 	entries, err := da.Entries(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, entries, 2)
+}
+
+func TestNew_PublishesSessionInit(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	da, publisher := openWithPublisher(t, store, "s1", &mockProvider{})
+
+	events := publisher.ofType(durable.EventSessionInit)
+	require.Len(t, events, 1)
+	assert.Equal(t, "s1", events[0].SessionID)
+	assert.Equal(t, da.LeafID(), events[0].LeafID)
+}
+
+func TestRunDoesNotUpdateSessionMetadata(t *testing.T) {
+	store := session.NewMemoryStore[testState]()
+	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	before, err := store.LoadSession(t.Context(), "s1")
+	require.NoError(t, err)
+	run(t, da, "hi")
+	after, err := store.LoadSession(t.Context(), "s1")
+	require.NoError(t, err)
+
+	assert.Equal(t, before, after)
 }
 
 func TestNew_StoreTypeMismatch(t *testing.T) {
@@ -658,7 +669,7 @@ func TestNew_TwoInstancesGrowSiblingBranches(t *testing.T) {
 
 	// Both appended from the same resume leaf: the log holds two
 	// sibling branches, nothing lost, nothing overwritten.
-	_, entries, err := store.LoadSession(t.Context(), "shared")
+	entries, err := store.LoadEntries(t.Context(), "shared")
 	require.NoError(t, err)
 	require.Len(t, entries, 6)
 
@@ -710,41 +721,6 @@ func TestMessages_RepairsDanglingToolCalls(t *testing.T) {
 	assert.Equal(t, ai.RoleToolResult, p.Messages[2].Role)
 }
 
-// --- session verbs ---
-
-func TestSetState(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
-	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
-	da, pub := openWithPublisher(t, store, "s1", prov)
-
-	require.NoError(t, da.SetState(t.Context(), testState{Title: "Refund"}))
-	assert.Equal(t, "Refund", da.Session().State.Title)
-
-	// State folded into the store record.
-	sess, _, err := store.LoadSession(t.Context(), "s1")
-	require.NoError(t, err)
-	assert.Equal(t, "Refund", sess.State.Title)
-
-	// session_updated was published at the SetState call, carrying the
-	// appended StateEntry — no run needed.
-	published := pub.all()
-	updated := ofType(published, durable.EventSessionUpdated)
-	require.Len(t, updated, 1)
-	require.Len(t, updated[0].Entries, 1)
-	_, isState := updated[0].Entries[0].(session.StateEntry[testState])
-	assert.True(t, isState)
-	assert.Equal(t, da.LeafID(), updated[0].LeafID)
-
-	// session_init preceded it.
-	require.NotEmpty(t, published)
-	assert.Equal(t, durable.EventSessionInit, published[0].Type)
-
-	// The run stream carries no session events.
-	events, _, err := collect(t, da.Run(t.Context(), durable.Text("hi")))
-	require.NoError(t, err)
-	assert.Empty(t, ofType(events, durable.EventSessionUpdated))
-}
-
 func TestBranch(t *testing.T) {
 	store := session.NewMemoryStore[testState]()
 	prov := &mockProvider{responses: []*ai.EventStream{
@@ -752,21 +728,19 @@ func TestBranch(t *testing.T) {
 		textStream("second answer"),
 		textStream("third answer"),
 	}}
-	da, pub := openWithPublisher(t, store, "s1", prov)
+	da, publisher := openWithPublisher(t, store, "s1", prov)
 
 	run(t, da, "first question")
 	checkpoint := da.LeafID()
 
 	run(t, da, "second question")
 	fromLeaf := da.LeafID()
-
 	require.NoError(t, da.Branch(t.Context(), checkpoint))
 
-	// session_branched published at the Branch call.
-	branched := ofType(pub.all(), durable.EventSessionBranched)
-	require.Len(t, branched, 1)
-	assert.Equal(t, checkpoint, branched[0].LeafID)
-	assert.Equal(t, fromLeaf, branched[0].FromID)
+	events := publisher.ofType(durable.EventSessionBranched)
+	require.Len(t, events, 1)
+	assert.Equal(t, fromLeaf, events[0].FromID)
+	assert.Equal(t, checkpoint, events[0].LeafID)
 
 	_, _, err := collect(t, da.Run(t.Context(), durable.Text("third question")))
 	require.NoError(t, err)
@@ -799,27 +773,33 @@ func TestFork(t *testing.T) {
 		textStream("alt answer"),
 		textStream("src answer"),
 	}}
-	da, pub := openWithPublisher(t, store, "src", prov)
+	da, publisher := openWithPublisher(t, store, "src", prov)
 
 	run(t, da, "question")
+	source, err := store.LoadSession(t.Context(), "src")
+	require.NoError(t, err)
+	source.State.Title = "source state"
+	require.NoError(t, store.UpdateSession(t.Context(), source))
 
 	alt, err := da.Fork(t.Context(), "alt")
 	require.NoError(t, err)
 	defer alt.Close()
 
-	assert.Equal(t, "src", alt.Session().ParentID)
+	child, err := store.LoadSession(t.Context(), "alt")
+	require.NoError(t, err)
+	assert.Equal(t, "src", child.ParentID)
+	assert.Empty(t, child.State.Title, "forked session state starts at its zero value")
+	assert.Equal(t, "alt", alt.SessionID())
 
-	// The fork publishes on the source's publisher: session_forked for
-	// the source, session_init for the inherited child.
-	published := pub.all()
-	forked := ofType(published, durable.EventSessionForked)
+	forked := publisher.ofType(durable.EventSessionForked)
 	require.Len(t, forked, 1)
 	assert.Equal(t, "alt", forked[0].SessionID)
 	assert.Equal(t, "src", forked[0].ParentID)
-	inits := ofType(published, durable.EventSessionInit)
-	require.Len(t, inits, 2)
-	assert.Equal(t, "alt", inits[1].SessionID)
-	assert.Equal(t, alt.LeafID(), inits[1].LeafID)
+
+	initialized := publisher.ofType(durable.EventSessionInit)
+	require.Len(t, initialized, 2)
+	assert.Equal(t, "alt", initialized[1].SessionID)
+	assert.Equal(t, alt.LeafID(), initialized[1].LeafID)
 
 	// The fork carries the active path with fresh IDs.
 	srcEntries, err := da.Entries(t.Context())
@@ -840,15 +820,10 @@ func TestFork(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, srcAfter, len(srcEntries))
 
-	// Taken ID fails, and a failed fork publishes nothing new.
+	// Taken ID fails without changing the source.
 	_, err = da.Fork(t.Context(), "alt")
 	assert.ErrorIs(t, err, session.ErrSessionExists)
-	assert.Len(t, ofType(pub.all(), durable.EventSessionForked), 1)
-
-	// The source's run stream carries no session events.
-	events, _, err := collect(t, da.Run(t.Context(), durable.Text("back to src")))
-	require.NoError(t, err)
-	assert.Empty(t, ofType(events, durable.EventSessionForked))
+	run(t, da, "back to src")
 }
 
 // --- custom entries / views ---
@@ -896,19 +871,19 @@ func TestCompact(t *testing.T) {
 		textStream("answer two"),
 		textStream("summary of turn one"), // summarizer call
 	}}
-	da, pub := openWithPublisher(t, store, "s1", prov)
+	da, publisher := openWithPublisher(t, store, "s1", prov)
 
 	run(t, da, "question one")
 	run(t, da, "question two")
 
 	require.NoError(t, da.Compact(t.Context(), durable.KeepTurns(1)))
 
-	// session_compacted published at the Compact call.
-	compacted := ofType(pub.all(), durable.EventSessionCompacted)
-	require.Len(t, compacted, 1)
-	require.Len(t, compacted[0].Entries, 1)
-	_, isComp := compacted[0].Entries[0].(session.CompactionEntry)
-	assert.True(t, isComp)
+	events := publisher.ofType(durable.EventSessionCompacted)
+	require.Len(t, events, 1)
+	require.Len(t, events[0].Entries, 1)
+	_, ok := events[0].Entries[0].(session.CompactionEntry)
+	assert.True(t, ok)
+	assert.Equal(t, da.LeafID(), events[0].LeafID)
 
 	// The summarizer saw only the compacted prefix plus an instruction.
 	p := prov.prompt(2)
@@ -983,15 +958,20 @@ func TestNew_ResumeFromFileStore(t *testing.T) {
 	da, err := durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
 	require.NoError(t, err)
 	run(t, da, "I'm Ravi.")
-	require.NoError(t, da.SetState(t.Context(), testState{Title: "Intro"}))
+	sess, err := store.LoadSession(t.Context(), "u1")
+	require.NoError(t, err)
+	sess.State.Title = "Intro"
+	require.NoError(t, store.UpdateSession(t.Context(), sess))
 	require.NoError(t, da.Close())
 
-	// Reopen: entries and state round-trip through the JSONL codec.
+	// Reopen: entries and session metadata round-trip independently.
 	da, err = durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
 	require.NoError(t, err)
 	defer da.Close()
 
-	assert.Equal(t, "Intro", da.Session().State.Title)
+	sess, err = store.LoadSession(t.Context(), "u1")
+	require.NoError(t, err)
+	assert.Equal(t, "Intro", sess.State.Title)
 
 	run(t, da, "My name?")
 	p := prov.prompt(1)

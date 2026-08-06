@@ -37,40 +37,56 @@ func (s *MemoryStore[T]) CreateSession(ctx context.Context, sess *Session[T]) er
 	return nil
 }
 
+// UpdateSession implements [Store].
+func (s *MemoryStore[T]) UpdateSession(ctx context.Context, sess *Session[T]) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.sessions[sess.ID]; !ok {
+		return ErrSessionNotFound
+	}
+	cp := *sess
+	s.sessions[sess.ID] = &cp
+	return nil
+}
+
 // LoadSession implements [Store].
-func (s *MemoryStore[T]) LoadSession(ctx context.Context, id string) (*Session[T], []Entry, error) {
+func (s *MemoryStore[T]) LoadSession(ctx context.Context, id string) (*Session[T], error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	sess, ok := s.sessions[id]
 	if !ok {
-		return nil, nil, ErrSessionNotFound
+		return nil, ErrSessionNotFound
 	}
 	cp := *sess
-
-	src := s.entries[id]
-	entries := make([]Entry, len(src))
-	copy(entries, src)
-
-	return &cp, entries, nil
+	return &cp, nil
 }
 
-// AppendEntries implements [Store]. When the batch includes a
-// [StateEntry], the session's current State is updated to the latest one
-// (last-wins).
+// LoadEntries implements [Store].
+func (s *MemoryStore[T]) LoadEntries(ctx context.Context, sessionID string) ([]Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.sessions[sessionID]; !ok {
+		return nil, ErrSessionNotFound
+	}
+
+	src := s.entries[sessionID]
+	entries := make([]Entry, len(src))
+	copy(entries, src)
+	return entries, nil
+}
+
+// AppendEntries implements [Store].
 func (s *MemoryStore[T]) AppendEntries(ctx context.Context, sessionID string, entries ...Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	sess, ok := s.sessions[sessionID]
-	if !ok {
+	if _, ok := s.sessions[sessionID]; !ok {
 		return ErrSessionNotFound
 	}
 
 	s.entries[sessionID] = append(s.entries[sessionID], entries...)
-
-	if st, ok := LatestState[T](entries); ok {
-		sess.State = st
-	}
 	return nil
 }

@@ -1,11 +1,9 @@
 // Package fs is a filesystem-backed [session.Store] implementation.
 //
-// Each session is a single JSONL file, <id>.jsonl: the first line is the
-// [session.Session] record, written once by CreateSession; every
-// following line is one log entry, append-only. Session state changes
-// are [session.StateEntry] lines like any other entry, and the current
-// state is folded from the log on load — nothing is ever rewritten, the
-// file only grows.
+// Each session has its own directory. Mutable session metadata lives in
+// session.json, while entries.jsonl is an append-only transcript log. The
+// split lets metadata updates rewrite one snapshot without rewriting or
+// interpreting transcript history.
 //
 // Custom entry types must be registered with [session.RegisterCustom]
 // before they can be read back.
@@ -26,9 +24,14 @@ import (
 	"github.com/sonnes/pi-go/pkg/session"
 )
 
-// FileStore persists each session as one append-only JSONL file under a
-// root directory. T is the session state type (see [session.Session]).
-// Safe for concurrent use.
+const (
+	sessionFilename = "session.json"
+	entriesFilename = "entries.jsonl"
+)
+
+// FileStore persists mutable session records separately from append-only
+// entry logs. T is the session state type (see [session.Session]). Safe
+// for concurrent use.
 type FileStore[T any] struct {
 	mu   sync.Mutex
 	root string
@@ -45,14 +48,14 @@ func New[T any](dir string) (*FileStore[T], error) {
 	return &FileStore[T]{root: dir}, nil
 }
 
-// CreateSession implements [session.Store]. It writes the session record
-// as the first line of a new log file; O_EXCL makes the existence check
-// atomic.
+// CreateSession implements [session.Store]. It creates the session's
+// directory, metadata file, and empty entry log. Directory creation is
+// the atomic existence check.
 func (s *FileStore[T]) CreateSession(ctx context.Context, sess *session.Session[T]) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path, err := s.path(sess.ID)
+	dir, err := s.sessionDir(sess.ID)
 	if err != nil {
 		return err
 	}
@@ -61,46 +64,104 @@ func (s *FileStore[T]) CreateSession(ctx context.Context, sess *session.Session[
 		return err
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if errors.Is(err, os.ErrExist) {
+	if err := os.Mkdir(dir, 0o755); errors.Is(err, os.ErrExist) {
 		return session.ErrSessionExists
+	} else if err != nil {
+		return err
+	}
+
+	created := false
+	defer func() {
+		if !created {
+			_ = os.RemoveAll(dir)
+		}
+	}()
+
+	sessionPath := filepath.Join(dir, sessionFilename)
+	if err := os.WriteFile(sessionPath, data, 0o644); err != nil {
+		return err
+	}
+	entriesPath := filepath.Join(dir, entriesFilename)
+	if err := os.WriteFile(entriesPath, nil, 0o644); err != nil {
+		return err
+	}
+
+	created = true
+	return nil
+}
+
+// UpdateSession implements [session.Store]. It replaces the mutable
+// session record without touching the entry log.
+func (s *FileStore[T]) UpdateSession(ctx context.Context, sess *session.Session[T]) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path, err := s.sessionPath(sess.ID)
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(sess)
+	if err != nil {
+		return err
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o644)
+	if errors.Is(err, os.ErrNotExist) {
+		return session.ErrSessionNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(append(data, '\n')); err != nil {
+	if _, err := f.Write(data); err != nil {
 		f.Close()
 		return err
 	}
 	return f.Close()
 }
 
-// LoadSession implements [session.Store]. The returned session's State is
-// the fold of the log: the latest [session.StateEntry] wins.
-func (s *FileStore[T]) LoadSession(ctx context.Context, id string) (*session.Session[T], []session.Entry, error) {
+// LoadSession implements [session.Store].
+func (s *FileStore[T]) LoadSession(ctx context.Context, id string) (*session.Session[T], error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path, err := s.path(id)
+	path, err := s.sessionPath(id)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, session.ErrSessionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var sess session.Session[T]
+	if err := json.Unmarshal(data, &sess); err != nil {
+		return nil, fmt.Errorf("fs: decode session %q: %w", id, err)
+	}
+	return &sess, nil
+}
+
+// LoadEntries implements [session.Store].
+func (s *FileStore[T]) LoadEntries(ctx context.Context, sessionID string) ([]session.Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path, err := s.entriesPath(sessionID)
+	if err != nil {
+		return nil, err
 	}
 	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, session.ErrSessionNotFound
+		return nil, session.ErrSessionNotFound
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
-
-	var sess session.Session[T]
-	if err := dec.Decode(&sess); err != nil {
-		return nil, nil, fmt.Errorf("fs: decode session %q: %w", id, err)
-	}
-
 	var entries []session.Entry
 	for {
 		var raw json.RawMessage
@@ -109,42 +170,31 @@ func (s *FileStore[T]) LoadSession(ctx context.Context, id string) (*session.Ses
 			break
 		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("fs: decode entry in %q: %w", id, err)
+			return nil, fmt.Errorf("fs: decode entry in %q: %w", sessionID, err)
 		}
-		e, err := session.UnmarshalEntry[T](raw)
+		e, err := session.UnmarshalEntry(raw)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		entries = append(entries, e)
 	}
-
-	if st, ok := session.LatestState[T](entries); ok {
-		sess.State = st
-	}
-	// The record line is written once, so the persisted UpdatedAt is the
-	// creation time forever. Recover it from the log, like the state.
-	if n := len(entries); n > 0 {
-		if at := entries[n-1].Header().CreatedAt; at.After(sess.UpdatedAt) {
-			sess.UpdatedAt = at
-		}
-	}
-	return &sess, entries, nil
+	return entries, nil
 }
 
 // AppendEntries implements [session.Store]. Entries are marshaled one per
-// line and appended to the session's log; the session must already exist.
+// line and appended without changing the session record.
 func (s *FileStore[T]) AppendEntries(ctx context.Context, sessionID string, entries ...session.Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	path, err := s.path(sessionID)
+	path, err := s.entriesPath(sessionID)
 	if err != nil {
 		return err
 	}
 
 	var buf bytes.Buffer
 	for _, e := range entries {
-		line, err := session.MarshalEntry[T](e)
+		line, err := session.MarshalEntry(e)
 		if err != nil {
 			return err
 		}
@@ -166,11 +216,27 @@ func (s *FileStore[T]) AppendEntries(ctx context.Context, sessionID string, entr
 	return f.Close()
 }
 
-func (s *FileStore[T]) path(id string) (string, error) {
+func (s *FileStore[T]) sessionDir(id string) (string, error) {
 	if err := validateID(id); err != nil {
 		return "", err
 	}
-	return filepath.Join(s.root, id+".jsonl"), nil
+	return filepath.Join(s.root, id), nil
+}
+
+func (s *FileStore[T]) sessionPath(id string) (string, error) {
+	dir, err := s.sessionDir(id)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, sessionFilename), nil
+}
+
+func (s *FileStore[T]) entriesPath(id string) (string, error) {
+	dir, err := s.sessionDir(id)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, entriesFilename), nil
 }
 
 // validateID rejects session IDs that are unsafe as filenames.

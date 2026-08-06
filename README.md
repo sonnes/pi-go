@@ -18,8 +18,6 @@ Pi-go started as a Go port of [Mario Zechner](https://github.com/badlogic)'s [pi
 - **Interface-based agents.** `agent.Agent` is a contract, not a class. Subprocess CLIs (`claude`, `codex`, `cursor-agent`) plug in as first-class agents that work with subscription logins rather than API keys, and mocks are trivial.
 - **Unified hooks and per-tool parallelism.** Five lifecycle events share one `Hook` signature, and each tool declares whether it is safe for parallel execution instead of a single global mode.
 
-The newest layer, durable agents, is inspired by [Flue](https://github.com/withastro/flue), the Astro team's open agent framework and its durable-execution model: record every step of a session in a durable log, and any process can pick the conversation up exactly where it left off. Pi-go adapts that idea to Go — an append-only transcript tree behind a small `Store` interface, with branching, forking, and compaction all derived from a single leaf-pointer mechanism.
-
 ## Pick your layer
 
 The SDK is a stack. Start at the top; drop down when you need control.
@@ -129,13 +127,13 @@ make run ARGS='--model claude/sonnet Summarize README.md' > summary.txt
 `pkg/durable` turns the agent loop into an agent that survives process restarts. The session ID is the memory boundary — the application decides what it means (a ticket number, a user ID, a thread key). The same ID always resumes the same conversation:
 
 ```go
-// ChatState is whatever the app tracks per session; changes are
-// logged in the transcript like everything else.
+// ChatState is whatever the app tracks per session. The store persists
+// it separately from the transcript.
 type ChatState struct {
     Title string
 }
 
-store := session.NewMemoryStore[ChatState]() // or fs.New (JSONL files), or your own Store
+store := session.NewMemoryStore[ChatState]() // or fs.New, or your own Store
 
 // Monday, process A.
 da, err := pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
@@ -155,7 +153,7 @@ msgs, _ := da.Run(ctx, durable.Text("What's my name?")).Wait()
 
 `Run` takes session entries rather than messages, so a turn can carry more than what the user typed. `durable.Text` builds the ordinary user entry. The same slot also takes injected context — text the model reads but the transcript hides — in two flavors that differ only in whether it survives a restart: set `Meta` on the entry for the durable kind, like a skill body or an expanded command, and pass it through `durable.Ephemeral` for the kind computed fresh each turn, like a reminder built from live state, which the model sees once and the store never holds.
 
-Following Flue's durable-execution model, persistence is per message: run input is persisted before the run starts, and every message the loop produces is persisted when it completes. Run events double as durability receipts — a `message_end` is forwarded only after its entries are in the store, so anything a consumer has seen complete survives a crash. If a crash leaves an assistant tool call without its results, the model view repairs it on resume by synthesizing interrupted tool results.
+Persistence is per message so a completed stream event is also a durability boundary. Run input is written before execution starts, and every message the loop produces is written before its `message_end` is forwarded. Anything a consumer has seen complete therefore survives a crash. If a crash leaves an assistant tool call without its results, the model view repairs it on resume by synthesizing interrupted tool results.
 
 The transcript is an append-only tree with a leaf pointer marking the active position. History is never mutated or deleted, and one mechanism covers a family of operations:
 
@@ -164,7 +162,9 @@ The transcript is an append-only tree with a leaf pointer marking the active pos
 - **`Compact`** appends a summary entry that shrinks the model context — nothing is deleted, rewind still works.
 - **`Append`** persists application-defined entries (artifacts, UI state) in the tree without ever sending them to the model.
 
-Sessions carry typed application state (`Session[T]` — a title, active model, whatever the app tracks), and the `Store` contract is small: implement it over your database, or use the built-in memory and filesystem (JSONL) stores.
+[`WithPublisher`](docs/concepts/durable/events.md) observes lifecycle mutations that happen outside a run. It receives initialization, branch, fork, and compaction events synchronously after each effect commits. Forked agents inherit the publisher. Run events stay on the run stream, while application-owned session metadata updates stay explicit store operations and do not publish.
+
+The store separates the mutable `Session[T]` record from the append-only transcript. Applications own metadata such as titles and active models; durable agents retain only the session ID and entry tree needed to run the conversation. This keeps metadata updates out of conversation history and avoids caching application state inside a live agent. Implement the five-method `Store[T]` over your database, or use the built-in memory and filesystem stores.
 
 ## Providers
 

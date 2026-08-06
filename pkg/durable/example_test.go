@@ -15,7 +15,7 @@ import (
 )
 
 // ChatState is the example session state — whatever the app tracks per
-// session. Changes to it are logged as a single session.StateEntry.
+// session. Applications read and update it through the session store.
 type ChatState struct {
 	Title string
 	Model string
@@ -178,7 +178,8 @@ func ExampleAgent_Fork() {
 	defer alt.Close()
 
 	_, _ = alt.Run(ctx, durable.Text("What if we refund instead of reshipping?")).Wait()
-	fmt.Println(alt.Session().ParentID)
+	child, _ := store.LoadSession(ctx, alt.SessionID())
+	fmt.Println(child.ParentID)
 }
 
 // ExampleAgent_Compact shows shrinking the model context without
@@ -201,8 +202,7 @@ func ExampleAgent_Compact() {
 
 // ExampleAgent_Run shows streaming: the run stream is turn-scoped —
 // lifted inner agent events with persistence receipts riding the
-// boundary events. Session events go to the publisher (see
-// [ExampleWithPublisher]).
+// boundary events. Lifecycle events go to the publisher.
 func ExampleAgent_Run() {
 	store := session.NewMemoryStore[ChatState]()
 	ctx := context.Background()
@@ -225,43 +225,35 @@ func ExampleAgent_Run() {
 	}
 }
 
-// ExampleWithPublisher shows session-event delivery: the application
-// injects a publisher and owns what happens next — forward to a
-// websocket, log, or fan out. Events arrive at the mutation, not on
-// the next run.
+// ExampleWithPublisher shows lifecycle events delivered after their
+// mutations commit. The application decides whether to log, forward,
+// or fan them out.
 func ExampleWithPublisher() {
 	store := session.NewMemoryStore[ChatState]()
 	ctx := context.Background()
 
-	pub := durable.PublisherFunc(func(e durable.Event) {
-		fmt.Printf("%s leaf=%q\n", e.Type, e.LeafID)
+	publisher := durable.PublisherFunc(func(event durable.Event) {
+		switch event.Type {
+		case durable.EventSessionInit:
+			fmt.Printf("initialized %s\n", event.SessionID)
+		case durable.EventSessionBranched:
+			fmt.Printf("branched from %s to %s\n", event.FromID, event.LeafID)
+		case durable.EventSessionForked:
+			fmt.Printf("forked %s from %s\n", event.SessionID, event.ParentID)
+		case durable.EventSessionCompacted:
+			fmt.Printf("compacted at %s\n", event.LeafID)
+		}
 	})
 
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("chat-2"), durable.WithPublisher(pub))
-	defer da.Close()
-
-	// → session_init leaf=""
-	_ = da.SetState(ctx, ChatState{Title: "Jokes"})
-	// → session_updated leaf="<state entry id>"
-}
-
-// ExampleAgent_SetState shows logging a session-state change — here a
-// title and model edit — as a single session.StateEntry. State is
-// last-wins and survives across processes; branching does not revert it.
-func ExampleAgent_SetState() {
-	store := session.NewMemoryStore[ChatState]()
-	ctx := context.Background()
-
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
-	defer da.Close()
-
-	err := da.SetState(ctx, ChatState{
-		Title: "Refund for order 1234",
-		Model: "claude-opus-4-6",
-	})
+	da, err := durable.New[ChatState](
+		ctx,
+		newAssistant(),
+		durable.WithStore(store),
+		durable.WithSessionID("chat-2"),
+		durable.WithPublisher(publisher),
+	)
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Println(da.Session().State.Title)
+	defer da.Close()
 }

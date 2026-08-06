@@ -10,9 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type codecState struct {
+	Title string
+	Model string
+}
+
 func TestMemoryStoreLoadNotFound(t *testing.T) {
 	s := session.NewMemoryStore[codecState]()
-	_, _, err := s.LoadSession(context.Background(), "nope")
+	_, err := s.LoadSession(context.Background(), "nope")
+	assert.ErrorIs(t, err, session.ErrSessionNotFound)
+	_, err = s.LoadEntries(context.Background(), "nope")
 	assert.ErrorIs(t, err, session.ErrSessionNotFound)
 }
 
@@ -25,9 +32,11 @@ func TestMemoryStoreCreateAndLoad(t *testing.T) {
 		State: codecState{Title: "T"},
 	}))
 
-	sess, entries, err := s.LoadSession(ctx, "s1")
+	sess, err := s.LoadSession(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, "T", sess.State.Title)
+	entries, err := s.LoadEntries(ctx, "s1")
+	require.NoError(t, err)
 	assert.Empty(t, entries)
 }
 
@@ -45,14 +54,18 @@ func TestMemoryStoreLoadIsolation(t *testing.T) {
 	require.NoError(t, s.CreateSession(ctx, &session.Session[codecState]{ID: "s1", State: codecState{Title: "T"}}))
 	require.NoError(t, s.AppendEntries(ctx, "s1", session.NewMessageEntry(ai.UserMessage("a"))))
 
-	sess, entries, err := s.LoadSession(ctx, "s1")
+	sess, err := s.LoadSession(ctx, "s1")
+	require.NoError(t, err)
+	entries, err := s.LoadEntries(ctx, "s1")
 	require.NoError(t, err)
 
 	// Mutating the returned copies must not affect the store.
 	sess.State.Title = "mutated"
 	entries[0] = session.NewMessageEntry(ai.UserMessage("mutated"))
 
-	sess2, entries2, err := s.LoadSession(ctx, "s1")
+	sess2, err := s.LoadSession(ctx, "s1")
+	require.NoError(t, err)
+	entries2, err := s.LoadEntries(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, "T", sess2.State.Title)
 	m, _ := session.AsMessageEntry(entries2[0])
@@ -65,17 +78,26 @@ func TestMemoryStoreAppendUnknownSession(t *testing.T) {
 	assert.ErrorIs(t, err, session.ErrSessionNotFound)
 }
 
-func TestMemoryStoreStateEventUpdatesSession(t *testing.T) {
+func TestMemoryStoreUpdateSession(t *testing.T) {
 	s := session.NewMemoryStore[codecState]()
 	ctx := context.Background()
 	require.NoError(t, s.CreateSession(ctx, &session.Session[codecState]{ID: "s1", State: codecState{Title: "init"}}))
 
-	require.NoError(t, s.AppendEntries(ctx, "s1", session.NewStateEntry(codecState{Title: "renamed", Model: "opus"})))
+	require.NoError(t, s.UpdateSession(ctx, &session.Session[codecState]{
+		ID:    "s1",
+		State: codecState{Title: "renamed", Model: "opus"},
+	}))
 
-	sess, _, err := s.LoadSession(ctx, "s1")
+	sess, err := s.LoadSession(ctx, "s1")
 	require.NoError(t, err)
 	assert.Equal(t, "renamed", sess.State.Title)
 	assert.Equal(t, "opus", sess.State.Model)
+}
+
+func TestMemoryStoreUpdateUnknownSession(t *testing.T) {
+	s := session.NewMemoryStore[codecState]()
+	err := s.UpdateSession(context.Background(), &session.Session[codecState]{ID: "nope"})
+	assert.ErrorIs(t, err, session.ErrSessionNotFound)
 }
 
 func TestMemoryStoreAppendOrder(t *testing.T) {
@@ -86,7 +108,7 @@ func TestMemoryStoreAppendOrder(t *testing.T) {
 	require.NoError(t, s.AppendEntries(ctx, "s1", session.NewMessageEntry(ai.UserMessage("a"))))
 	require.NoError(t, s.AppendEntries(ctx, "s1", session.NewMessageEntry(ai.UserMessage("b"))))
 
-	_, entries, err := s.LoadSession(ctx, "s1")
+	entries, err := s.LoadEntries(ctx, "s1")
 	require.NoError(t, err)
 	require.Len(t, entries, 2)
 	m0, _ := session.AsMessageEntry(entries[0])

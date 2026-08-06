@@ -23,13 +23,19 @@ own, and the layer below it is always reachable.
 | Registry   | `pkg/catalog`                | Own your catalog: providers, models, agent factories, spec resolution  |
 | Agent loop | `pkg/agent`                  | Tools, hooks, turn management, run streams                             |
 | Direct LLM | `pkg/ai`                     | Single calls: text, structured objects, images, speech                 |
-| Durability | `pkg/durable`, `pkg/session` | Agents that survive restarts; branch, fork, compact                    |
+| Durability | `pkg/durable`, `pkg/session` | Persistent transcripts with application-owned session metadata        |
 
 Choosing a layer is mostly a question of how much wiring you want to own.
 `pkg/pi` decides things for you — which providers exist, where credentials
 come from, what a bare model ID means. `pkg/catalog` hands those decisions
 back. Below that, `pkg/agent` and `pkg/ai` have no opinion about
 configuration at all.
+
+For durable agents, start with [Sessions](concepts/durable/sessions.md) for
+the ownership boundary. Then read [Entries](concepts/durable/entries.md),
+[Transcript Tree](concepts/durable/tree.md), and
+[Durable Events](concepts/durable/events.md) for input visibility,
+branching, and notifications.
 
 ## What these docs are for
 
