@@ -1,13 +1,13 @@
 // Package session provides the persistence primitives for durable agent
-// conversations: the [Session] identity and state, the [Entry] transcript
+// conversations: the [Session] existence record, the [Entry] transcript
 // tree, and the [Store] contract an application implements over its
 // database.
 //
-// [Session] is generic over an application-defined state type T (a title,
-// active model, mode, or any struct). The record is mutable through
-// [Store.UpdateSession] and stored independently of its append-only entry
-// log. This keeps application metadata out of transcript parent chains
-// and lets a durable agent run without caching application state.
+// [Session] records that a conversation exists and where it was forked
+// from. It carries no application state — metadata like titles, modes,
+// or model choices belongs to the application's own storage, keyed by
+// the session ID. [Store] is exactly the contract the durable agent
+// consumes: create a session, load its entries, append to its log.
 //
 // The transcript is an append-only tree. Every [Entry] embeds an
 // [EntryHeader] carrying its ID, parent ID, and timestamp; the parent

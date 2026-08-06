@@ -19,11 +19,6 @@ import (
 	"github.com/sonnes/pi-go/pkg/session"
 )
 
-// ProjectState is the example session state.
-type ProjectState struct {
-	Title string
-}
-
 // Example shows the whole composition: a project directory read by
 // convention, a skill invoked on demand, and the default prompt
 // builders wiring it all into one loop.
@@ -39,7 +34,7 @@ func Example() {
 	// convention puts it in.
 	proj := os.DirFS(dir)
 
-	h, err := harness.New[ProjectState](
+	h, err := harness.New(
 		harness.WithCatalog(exampleCatalog()),
 		harness.WithDefaultModel("mock/small"),
 		harness.WithWorkDir(dir),
@@ -93,7 +88,7 @@ func Example() {
 func ExampleHarness_Agent() {
 	ctx := context.Background()
 
-	h, err := harness.New[ProjectState](
+	h, err := harness.New(
 		harness.WithCatalog(exampleCatalog()),
 		harness.WithDefaultModel("mock/small"),
 		harness.WithSkills(def.Skills(def.Skill{
@@ -120,7 +115,7 @@ func ExampleHarness_Agent() {
 func ExampleHarness_Agent_perBuild() {
 	ctx := context.Background()
 
-	h, err := harness.New[ProjectState](
+	h, err := harness.New(
 		harness.WithCatalog(exampleCatalog()),
 		harness.WithDefaultModel("mock/small"),
 		// The user's own skills, available to every session.
@@ -160,7 +155,7 @@ func ExampleWithMiddleware() {
 		}
 	}
 
-	_, err := harness.New[ProjectState](
+	_, err := harness.New(
 		harness.WithCatalog(exampleCatalog()),
 		harness.WithDefaultModel("mock/small"),
 		durable.WithMiddleware(remind),

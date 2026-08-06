@@ -45,7 +45,7 @@ Branching explores an alternative inside one session. `Fork` lifts the active pa
 
 Reach for it when the alternative should have its own identity — a what-if the user might come back to, a sub-conversation with its own lifetime — rather than a sibling branch that shares the original's ID.
 
-The child session starts with zero-valued application state. The durable agent copies entries because it owns the transcript working set, but it does not load the source `Session[T]` record. Applications that want inherited metadata update the child explicitly through the store.
+The durable agent copies entries because it owns the transcript working set; the child's record carries only its ID, its parent's ID, and a creation time. Any application metadata the child should inherit is the application's to copy, in its own storage.
 
 ## Compaction summarizes without deleting
 
@@ -58,6 +58,6 @@ Nothing is removed, which is the property worth understanding. The summary chang
 ## Related
 
 - [Entries](entries.md) — what the nodes are, and which of them the model and reader each see
-- [Sessions](sessions.md) — identity, state, and the store the tree is written to
+- [Sessions](sessions.md) — identity, lineage, and the store the tree is written to
 - [Durable Events](events.md) — notifications when the leaf or tree changes
 - [Agent State](../agent/agent-state.md) — reading state during and after a run

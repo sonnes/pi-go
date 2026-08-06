@@ -78,7 +78,7 @@ Two consequences worth knowing. `Branch` will not target an ephemeral entry, bec
 
 ## Related
 
-- [Sessions](sessions.md) — identity, state, and the store contract
+- [Sessions](sessions.md) — identity, lineage, and the store contract
 - [Transcript Tree](tree.md) — the leaf pointer, branching, forking, compaction
 - [Durable Events](events.md) — persistence receipts for stored entries
 - [ai.Message](../ai/messages.md) — what a message entry wraps

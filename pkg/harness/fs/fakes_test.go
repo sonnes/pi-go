@@ -66,7 +66,7 @@ func envFor(t *testing.T, opts ...agent.Option) *prompt.Env {
 		harness.WithDefaultModel("mock/small"),
 		harness.WithPromptBuilder(captureEnv(&captured)),
 	}
-	h, err := harness.New[any](append(base, opts...)...)
+	h, err := harness.New(append(base, opts...)...)
 	require.NoError(t, err)
 
 	_, err = h.Agent(context.Background())

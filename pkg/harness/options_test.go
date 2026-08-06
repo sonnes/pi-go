@@ -15,7 +15,7 @@ import (
 
 func TestOptionsMixLayers(t *testing.T) {
 	p := &mockProvider{}
-	store := session.NewMemoryStore[any]()
+	store := session.NewMemoryStore()
 
 	opts := []agent.Option{
 		WithCatalog(testCatalog(p)),

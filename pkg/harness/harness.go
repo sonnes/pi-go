@@ -24,10 +24,7 @@ import (
 // The configuration it holds is a baseline. [Harness.Agent] accepts the
 // same options and overlays them per build, which is what lets one
 // harness serve many working directories.
-//
-// T is the session state type, propagated to the [durable.Agent] behind
-// every agent it mints.
-type Harness[T any] struct {
+type Harness struct {
 	base     *ext
 	baseline *build
 	opts     []agent.Option
@@ -37,9 +34,6 @@ type Harness[T any] struct {
 // baseline with that build's overlay applied, with the model resolved
 // and the toolbox indexed. Everything downstream of [Harness.Agent] —
 // resolution, prompt building — reads a build, never the harness.
-//
-// It carries no type parameter: nothing below the durable agent needs
-// the session state type.
 type build struct {
 	lm      ai.LanguageModel
 	workDir string
@@ -64,7 +58,7 @@ type build struct {
 // present, the default model must resolve, and no tool may claim a
 // reserved name. Everything about the artifacts themselves is checked
 // per build, since resolvers run fresh every time.
-func New[T any](opts ...agent.Option) (*Harness[T], error) {
+func New(opts ...agent.Option) (*Harness, error) {
 	cfg := agent.ApplyOptions(opts...)
 	if cfg.SystemPrompt != "" {
 		return nil, errCallerSystemPrompt
@@ -76,7 +70,7 @@ func New[T any](opts ...agent.Option) (*Harness[T], error) {
 		return nil, err
 	}
 
-	return &Harness[T]{
+	return &Harness{
 		base:     base,
 		baseline: baseline,
 		opts:     opts,
@@ -141,7 +135,7 @@ func compile(e *ext) (*build, error) {
 // overlay compiles the baseline with the caller's per-build options
 // merged in. A build that overlays nothing reuses the baseline, so the
 // common path costs no work.
-func (h *Harness[T]) overlay(opts []agent.Option) (*build, error) {
+func (h *Harness) overlay(opts []agent.Option) (*build, error) {
 	if len(opts) == 0 {
 		return h.baseline, nil
 	}

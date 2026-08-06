@@ -81,13 +81,6 @@ type Node struct {
 	Children []Node `json:"children,omitempty"`
 }
 
-// State is the demo's session state. The demo does not use it, but
-// durable sessions are generic over one, and a session that carries
-// nothing still has to carry something.
-type State struct {
-	Runs int `json:"runs"`
-}
-
 // WeatherInput is the tool's input — a Go type, not a hand-written
 // schema. DefineTool derives the JSON schema from it at init.
 type WeatherInput struct {
@@ -104,7 +97,7 @@ type WeatherOutput struct {
 // Demo owns one durable session and the provider behind it.
 type Demo struct {
 	emit  func(Event)
-	store session.Store[State]
+	store session.Store
 
 	mode  string
 	model string
@@ -113,7 +106,7 @@ type Demo struct {
 	// scripted is kept across resets so its cursor can be rewound.
 	scripted *Scripted
 
-	agent *durable.Agent[State]
+	agent *durable.Agent
 	seq   int
 }
 
@@ -128,7 +121,7 @@ func New(ctx context.Context, emit func(Event)) (*Demo, error) {
 
 	d := &Demo{
 		emit:     emit,
-		store:    session.NewMemoryStore[State](),
+		store:    session.NewMemoryStore(),
 		mode:     ModeScripted,
 		model:    "scripted/demo",
 		scripted: scripted,
@@ -166,7 +159,7 @@ var weatherTool = ai.DefineTool(
 func (d *Demo) open(ctx context.Context) error {
 	d.seq++
 
-	a, err := durable.New[State](
+	a, err := durable.New(
 		ctx,
 		d.lm,
 		agent.WithTools(weatherTool),
@@ -294,7 +287,7 @@ func (d *Demo) reset(ctx context.Context) error {
 	}
 
 	d.scripted.Reset()
-	d.store = session.NewMemoryStore[State]()
+	d.store = session.NewMemoryStore()
 
 	return d.open(ctx)
 }

@@ -127,16 +127,10 @@ make run ARGS='--model claude/sonnet Summarize README.md' > summary.txt
 `pkg/durable` turns the agent loop into an agent that survives process restarts. The session ID is the memory boundary — the application decides what it means (a ticket number, a user ID, a thread key). The same ID always resumes the same conversation:
 
 ```go
-// ChatState is whatever the app tracks per session. The store persists
-// it separately from the transcript.
-type ChatState struct {
-    Title string
-}
-
-store := session.NewMemoryStore[ChatState]() // or fs.New, or your own Store
+store := session.NewMemoryStore() // or fs.New, or your own Store
 
 // Monday, process A.
-da, err := pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
+da, err := pi.DurableAgent(ctx, "claude-sonnet-4-5",
     durable.WithStore(store),
     durable.WithSessionID("user-42"),
 )
@@ -144,7 +138,7 @@ _, _ = da.Run(ctx, durable.Text("My name is Ravi. Remember it.")).Wait()
 da.Close()
 
 // Thursday, process B. Same ID — same conversation.
-da, _ = pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
+da, _ = pi.DurableAgent(ctx, "claude-sonnet-4-5",
     durable.WithStore(store),
     durable.WithSessionID("user-42"),
 )
@@ -162,9 +156,9 @@ The transcript is an append-only tree with a leaf pointer marking the active pos
 - **`Compact`** appends a summary entry that shrinks the model context — nothing is deleted, rewind still works.
 - **`Append`** persists application-defined entries (artifacts, UI state) in the tree without ever sending them to the model.
 
-[`WithPublisher`](docs/concepts/durable/events.md) observes lifecycle mutations that happen outside a run. It receives initialization, branch, fork, and compaction events synchronously after each effect commits. Forked agents inherit the publisher. Run events stay on the run stream, while application-owned session metadata updates stay explicit store operations and do not publish.
+[`WithPublisher`](docs/concepts/durable/events.md) observes lifecycle mutations that happen outside a run. It receives initialization, branch, fork, and compaction events synchronously after each effect commits. Forked agents inherit the publisher. Run events stay on the run stream.
 
-The store separates the mutable `Session[T]` record from the append-only transcript. Applications own metadata such as titles and active models; durable agents retain only the session ID and entry tree needed to run the conversation. This keeps metadata updates out of conversation history and avoids caching application state inside a live agent. Implement the five-method `Store[T]` over your database, or use the built-in memory and filesystem stores.
+The store holds a session existence record and the append-only transcript; application metadata such as titles and active models lives in the application's own storage, keyed by the session ID. This keeps metadata out of conversation history and out of the SDK entirely. Implement the three-method `Store` over your database, or use the built-in memory and filesystem stores.
 
 ## Providers
 

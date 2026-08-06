@@ -19,10 +19,6 @@ import (
 
 // --- test doubles ---
 
-type testState struct {
-	Title string
-}
-
 // mockProvider returns scripted [ai.EventStream] responses in order and
 // records every prompt it receives.
 type mockProvider struct {
@@ -156,17 +152,17 @@ func liftedOf(events []durable.Event, at agent.EventType) []durable.Event {
 
 func openTestAgent(
 	t *testing.T,
-	store session.Store[testState],
+	store session.Store,
 	id string,
 	prov ai.TextProvider,
 	extra ...agent.Option,
-) *durable.Agent[testState] {
+) *durable.Agent {
 	t.Helper()
 	opts := append(
 		[]agent.Option{durable.WithStore(store), durable.WithSessionID(id)},
 		extra...,
 	)
-	da, err := durable.New[testState](t.Context(), testLM(prov), opts...)
+	da, err := durable.New(t.Context(), testLM(prov), opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = da.Close() })
 	return da
@@ -174,14 +170,14 @@ func openTestAgent(
 
 func openWithPublisher(
 	t *testing.T,
-	store session.Store[testState],
+	store session.Store,
 	id string,
 	prov ai.TextProvider,
-) (*durable.Agent[testState], *recordingPublisher) {
+) (*durable.Agent, *recordingPublisher) {
 	t.Helper()
 
 	publisher := &recordingPublisher{}
-	da, err := durable.New[testState](
+	da, err := durable.New(
 		t.Context(),
 		testLM(prov),
 		durable.WithStore(store),
@@ -203,7 +199,7 @@ func mustMessage(t *testing.T, e session.Entry) session.MessageEntry {
 }
 
 // run drives one turn to completion, failing the test on error.
-func run(t *testing.T, da *durable.Agent[testState], text string) {
+func run(t *testing.T, da *durable.Agent, text string) {
 	t.Helper()
 	_, err := da.Run(t.Context(), durable.Text(text)).Wait()
 	require.NoError(t, err)
@@ -212,7 +208,7 @@ func run(t *testing.T, da *durable.Agent[testState], text string) {
 // --- Open / Run / persistence ---
 
 func TestRun_EventsAndPersistence(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("hello")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -274,7 +270,7 @@ func TestRun_ToolLoopPersistsEveryMessage(t *testing.T) {
 		Name:      "echo",
 		Arguments: map[string]any{"text": "ping"},
 	}
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		toolCallStream(call),
 		textStream("done"),
@@ -314,7 +310,7 @@ func TestRun_ToolLoopPersistsEveryMessage(t *testing.T) {
 }
 
 func TestRun_ProviderErrorKeepsInputOnly(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{errorStream(assert.AnError)}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -328,7 +324,7 @@ func TestRun_ProviderErrorKeepsInputOnly(t *testing.T) {
 }
 
 func TestRun_MetaInputReachesModelNotTranscript(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -364,7 +360,7 @@ func TestRun_MetaInputReachesModelNotTranscript(t *testing.T) {
 }
 
 func TestRun_CustomInputPersistsUnseenByModel(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -400,7 +396,7 @@ func TestRun_CustomInputPersistsUnseenByModel(t *testing.T) {
 }
 
 func TestAppend_KeepsEphemeralOutOfTheStore(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -447,7 +443,7 @@ func TestAppend_KeepsEphemeralOutOfTheStore(t *testing.T) {
 }
 
 func TestBranch_RejectsEphemeralEntry(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -469,7 +465,7 @@ func TestBranch_RejectsEphemeralEntry(t *testing.T) {
 }
 
 func TestRun_EphemeralInputReachesModelUnpersisted(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("ok"),
 		textStream("ok again"),
@@ -528,7 +524,7 @@ func TestRun_EphemeralInputReachesModelUnpersisted(t *testing.T) {
 }
 
 func TestRun_EphemeralOnlyInputRunsWithoutPersisting(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("ok"),
 		textStream("nudged"),
@@ -563,20 +559,20 @@ func TestRun_EphemeralOnlyInputRunsWithoutPersisting(t *testing.T) {
 }
 
 func TestNew_ResumeHydratesHistory(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("nice to meet you, Ravi"),
 		textStream("your name is Ravi"),
 	}}
 
-	da, err := durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"))
+	da, err := durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"))
 	require.NoError(t, err)
 	run(t, da, "My name is Ravi.")
 	leafBefore := da.LeafID()
 	require.NoError(t, da.Close())
 
 	// Process B: same ID resumes the same conversation at the stored leaf.
-	da, err = durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"))
+	da, err = durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"))
 	require.NoError(t, err)
 	defer da.Close()
 	assert.Equal(t, leafBefore, da.LeafID())
@@ -596,7 +592,7 @@ func TestNew_Defaults(t *testing.T) {
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 
 	// No store, no session ID: in-memory store, generated ID.
-	da, err := durable.New[testState](t.Context(), testLM(prov))
+	da, err := durable.New(t.Context(), testLM(prov))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -609,7 +605,7 @@ func TestNew_Defaults(t *testing.T) {
 }
 
 func TestNew_PublishesSessionInit(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	da, publisher := openWithPublisher(t, store, "s1", &mockProvider{})
 
 	events := publisher.ofType(durable.EventSessionInit)
@@ -618,8 +614,8 @@ func TestNew_PublishesSessionInit(t *testing.T) {
 	assert.Equal(t, da.LeafID(), events[0].LeafID)
 }
 
-func TestRunDoesNotUpdateSessionMetadata(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+func TestRunDoesNotTouchSessionRecord(t *testing.T) {
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -632,35 +628,24 @@ func TestRunDoesNotUpdateSessionMetadata(t *testing.T) {
 	assert.Equal(t, before, after)
 }
 
-func TestNew_StoreTypeMismatch(t *testing.T) {
-	other := session.NewMemoryStore[int]()
-	_, err := durable.New[testState](
-		t.Context(),
-		testLM(&mockProvider{}),
-		durable.WithStore(other),
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "store")
-}
-
 func TestNew_TwoInstancesGrowSiblingBranches(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 
 	// Seed one turn so both instances share a common leaf.
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("root answer")}}
-	seed, err := durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("shared"))
+	seed, err := durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("shared"))
 	require.NoError(t, err)
 	run(t, seed, "root question")
 	require.NoError(t, seed.Close())
 
 	// Two independent instances of the same session.
 	provA := &mockProvider{responses: []*ai.EventStream{textStream("answer a")}}
-	a, err := durable.New[testState](t.Context(), testLM(provA), durable.WithStore(store), durable.WithSessionID("shared"))
+	a, err := durable.New(t.Context(), testLM(provA), durable.WithStore(store), durable.WithSessionID("shared"))
 	require.NoError(t, err)
 	defer a.Close()
 
 	provB := &mockProvider{responses: []*ai.EventStream{textStream("answer b")}}
-	b, err := durable.New[testState](t.Context(), testLM(provB), durable.WithStore(store), durable.WithSessionID("shared"))
+	b, err := durable.New(t.Context(), testLM(provB), durable.WithStore(store), durable.WithSessionID("shared"))
 	require.NoError(t, err)
 	defer b.Close()
 
@@ -686,7 +671,7 @@ func TestNew_TwoInstancesGrowSiblingBranches(t *testing.T) {
 // --- repair ---
 
 func TestMessages_RepairsDanglingToolCalls(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("recovered")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -722,7 +707,7 @@ func TestMessages_RepairsDanglingToolCalls(t *testing.T) {
 }
 
 func TestBranch(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("first answer"),
 		textStream("second answer"),
@@ -760,14 +745,14 @@ func TestBranch(t *testing.T) {
 }
 
 func TestBranch_UnknownEntry(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	da := openTestAgent(t, store, "s1", &mockProvider{})
 
 	assert.Error(t, da.Branch(t.Context(), "nope"))
 }
 
 func TestFork(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("answer"),
 		textStream("alt answer"),
@@ -776,10 +761,6 @@ func TestFork(t *testing.T) {
 	da, publisher := openWithPublisher(t, store, "src", prov)
 
 	run(t, da, "question")
-	source, err := store.LoadSession(t.Context(), "src")
-	require.NoError(t, err)
-	source.State.Title = "source state"
-	require.NoError(t, store.UpdateSession(t.Context(), source))
 
 	alt, err := da.Fork(t.Context(), "alt")
 	require.NoError(t, err)
@@ -788,7 +769,6 @@ func TestFork(t *testing.T) {
 	child, err := store.LoadSession(t.Context(), "alt")
 	require.NoError(t, err)
 	assert.Equal(t, "src", child.ParentID)
-	assert.Empty(t, child.State.Title, "forked session state starts at its zero value")
 	assert.Equal(t, "alt", alt.SessionID())
 
 	forked := publisher.ofType(durable.EventSessionForked)
@@ -834,7 +814,7 @@ type artifactEntry struct {
 }
 
 func TestAppend_EntriesAndViews(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -865,7 +845,7 @@ func TestAppend_EntriesAndViews(t *testing.T) {
 // --- compaction ---
 
 func TestCompact(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("answer one"),
 		textStream("answer two"),
@@ -908,7 +888,7 @@ func TestCompact(t *testing.T) {
 }
 
 func TestCompact_CustomPrompt(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("answer one"),
 		textStream("answer two"),
@@ -932,7 +912,7 @@ func TestCompact_CustomPrompt(t *testing.T) {
 }
 
 func TestCompact_NothingToCompact(t *testing.T) {
-	store := session.NewMemoryStore[testState]()
+	store := session.NewMemoryStore()
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("a")}}
 	da := openTestAgent(t, store, "s1", prov)
 
@@ -948,30 +928,26 @@ func TestCompact_NothingToCompact(t *testing.T) {
 // --- fs store round-trip ---
 
 func TestNew_ResumeFromFileStore(t *testing.T) {
-	store, err := fs.New[testState](t.TempDir())
+	store, err := fs.New(t.TempDir())
 	require.NoError(t, err)
 	prov := &mockProvider{responses: []*ai.EventStream{
 		textStream("hello Ravi"),
 		textStream("Ravi"),
 	}}
 
-	da, err := durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
+	da, err := durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
 	require.NoError(t, err)
 	run(t, da, "I'm Ravi.")
-	sess, err := store.LoadSession(t.Context(), "u1")
-	require.NoError(t, err)
-	sess.State.Title = "Intro"
-	require.NoError(t, store.UpdateSession(t.Context(), sess))
 	require.NoError(t, da.Close())
 
-	// Reopen: entries and session metadata round-trip independently.
-	da, err = durable.New[testState](t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
+	// Reopen: the session record and entries survive the restart.
+	da, err = durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
 	require.NoError(t, err)
 	defer da.Close()
 
-	sess, err = store.LoadSession(t.Context(), "u1")
+	sess, err := store.LoadSession(t.Context(), "u1")
 	require.NoError(t, err)
-	assert.Equal(t, "Intro", sess.State.Title)
+	assert.Equal(t, "u1", sess.ID)
 
 	run(t, da, "My name?")
 	p := prov.prompt(1)

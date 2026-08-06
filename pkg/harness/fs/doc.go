@@ -7,7 +7,7 @@
 //
 //	proj := os.DirFS(projectDir)
 //
-//	harness.New[State](
+//	harness.New(
 //	    harness.WithCatalog(cat),
 //	    harness.WithDefaultModel("anthropic/claude-sonnet-4-6"),
 //	    harness.WithAgents(fs.Agents(proj, ".agents/agents")),

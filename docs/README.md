@@ -23,7 +23,7 @@ own, and the layer below it is always reachable.
 | Registry   | `pkg/catalog`                | Own your catalog: providers, models, agent factories, spec resolution  |
 | Agent loop | `pkg/agent`                  | Tools, hooks, turn management, run streams                             |
 | Direct LLM | `pkg/ai`                     | Single calls: text, structured objects, images, speech                 |
-| Durability | `pkg/durable`, `pkg/session` | Persistent transcripts with application-owned session metadata        |
+| Durability | `pkg/durable`, `pkg/session` | Persistent transcripts with branching, forking, and compaction        |
 
 Choosing a layer is mostly a question of how much wiring you want to own.
 `pkg/pi` decides things for you — which providers exist, where credentials

@@ -319,4 +319,3 @@ func varName(id string) string {
 	}
 	return name
 }
-

@@ -39,7 +39,7 @@ func TestMiddlewareOrder(t *testing.T) {
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	var order []string
 
-	da, err := durable.New[testState](
+	da, err := durable.New(
 		t.Context(),
 		testLM(prov),
 		durable.WithMiddleware(record(&order, "first")),
@@ -65,7 +65,7 @@ func TestMiddlewareWrapsRun(t *testing.T) {
 		}
 	}
 
-	da, err := durable.New[testState](t.Context(), testLM(prov), durable.WithMiddleware(inject))
+	da, err := durable.New(t.Context(), testLM(prov), durable.WithMiddleware(inject))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -86,7 +86,7 @@ func TestMiddlewareRunsOnTheCallersGoroutine(t *testing.T) {
 		}
 	}
 
-	da, err := durable.New[testState](t.Context(), testLM(prov), durable.WithMiddleware(mark))
+	da, err := durable.New(t.Context(), testLM(prov), durable.WithMiddleware(mark))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -122,13 +122,13 @@ func TestMiddlewareStateIsPerAgent(t *testing.T) {
 
 	opts := []agent.Option{durable.WithMiddleware(once)}
 
-	a1, err := durable.New[testState](t.Context(), testLM(prov), opts...)
+	a1, err := durable.New(t.Context(), testLM(prov), opts...)
 	require.NoError(t, err)
 	defer a1.Close()
 	_, err = a1.Run(t.Context(), durable.Text("hi")).Wait()
 	require.NoError(t, err)
 
-	a2, err := durable.New[testState](t.Context(), testLM(prov), opts...)
+	a2, err := durable.New(t.Context(), testLM(prov), opts...)
 	require.NoError(t, err)
 	defer a2.Close()
 	_, err = a2.Run(t.Context(), durable.Text("hi")).Wait()
@@ -148,7 +148,7 @@ func TestMiddlewareCanRefuseARun(t *testing.T) {
 		}
 	}
 
-	da, err := durable.New[testState](t.Context(), testLM(prov), durable.WithMiddleware(deny))
+	da, err := durable.New(t.Context(), testLM(prov), durable.WithMiddleware(deny))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -183,8 +183,8 @@ func TestForkCarriesMiddlewareWithFreshClosures(t *testing.T) {
 		}
 	}
 
-	store := session.NewMemoryStore[testState]()
-	parent, err := durable.New[testState](
+	store := session.NewMemoryStore()
+	parent, err := durable.New(
 		t.Context(),
 		testLM(prov),
 		durable.WithStore(store),

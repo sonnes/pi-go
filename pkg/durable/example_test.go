@@ -14,13 +14,6 @@ import (
 	"github.com/sonnes/pi-go/pkg/session"
 )
 
-// ChatState is the example session state — whatever the app tracks per
-// session. Applications read and update it through the session store.
-type ChatState struct {
-	Title string
-	Model string
-}
-
 // OrderQuery and OrderStatus are the typed input/output of the
 // example tool.
 type OrderQuery struct {
@@ -49,7 +42,7 @@ func newAssistant() ai.LanguageModel {
 // Example shows the full flow: a session addressed by ID, resumed
 // across processes.
 func Example() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
 	lookupOrder := ai.DefineTool(
@@ -64,7 +57,7 @@ func Example() {
 	// what it means — a ticket number, user ID, or thread key. The
 	// same ID always resumes the same conversation. Agent options like
 	// tools and system prompt ride alongside the durable options.
-	da, err := durable.New[ChatState](
+	da, err := durable.New(
 		ctx,
 		newAssistant(),
 		durable.WithStore(store),
@@ -87,16 +80,16 @@ func Example() {
 // ExampleNew shows durability: the same session ID picks up the
 // conversation where it left off, even across process restarts.
 func ExampleNew() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
 	// Monday, process A.
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
+	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
 	_, _ = da.Run(ctx, durable.Text("My name is Ravi. Remember it.")).Wait()
 	da.Close()
 
 	// Thursday, process B. Same ID — same conversation.
-	da, _ = durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
+	da, _ = durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
 	defer da.Close()
 
 	msgs, _ := da.Run(ctx, durable.Text("What's my name?")).Wait()
@@ -114,10 +107,10 @@ type ArtifactEntry struct {
 // ExampleAgent_Append shows persisting custom application entries in
 // the session transcript.
 func ExampleAgent_Append() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("doc-7"))
+	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("doc-7"))
 	defer da.Close()
 
 	err := da.Append(ctx, ArtifactEntry{
@@ -139,10 +132,10 @@ func ExampleAgent_Append() {
 // the next turn grows a sibling. The abandoned branch stays in the
 // tree.
 func ExampleAgent_Branch() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
+	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
 	defer da.Close()
 
 	// A checkpoint is just a remembered leaf.
@@ -165,10 +158,10 @@ func ExampleAgent_Branch() {
 // ExampleAgent_Fork shows lifting the active path into a separate
 // session for what-if exploration.
 func ExampleAgent_Fork() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
+	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
 	defer da.Close()
 
 	alt, err := da.Fork(ctx, "ticket-8472-refund")
@@ -186,10 +179,10 @@ func ExampleAgent_Fork() {
 // deleting history: a summary entry is appended and the context
 // builder does the rest.
 func ExampleAgent_Compact() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
+	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
 	defer da.Close()
 
 	// Months-old session? Summarize everything but the recent turns.
@@ -204,10 +197,10 @@ func ExampleAgent_Compact() {
 // lifted inner agent events with persistence receipts riding the
 // boundary events. Lifecycle events go to the publisher.
 func ExampleAgent_Run() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New[ChatState](ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("chat-1"))
+	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("chat-1"))
 	defer da.Close()
 
 	s := da.Run(ctx, durable.Text("Tell me a joke."))
@@ -229,7 +222,7 @@ func ExampleAgent_Run() {
 // mutations commit. The application decides whether to log, forward,
 // or fan them out.
 func ExampleWithPublisher() {
-	store := session.NewMemoryStore[ChatState]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
 	publisher := durable.PublisherFunc(func(event durable.Event) {
@@ -245,7 +238,7 @@ func ExampleWithPublisher() {
 		}
 	})
 
-	da, err := durable.New[ChatState](
+	da, err := durable.New(
 		ctx,
 		newAssistant(),
 		durable.WithStore(store),

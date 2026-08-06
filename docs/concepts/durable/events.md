@@ -49,7 +49,7 @@ publisher := durable.PublisherFunc(func(event durable.Event) {
     }
 })
 
-da, err := durable.New[ChatState](ctx, model,
+da, err := durable.New(ctx, model,
     durable.WithStore(store),
     durable.WithSessionID("user-42"),
     durable.WithPublisher(publisher),
@@ -73,15 +73,15 @@ A successful fork publishes `EventSessionForked` for the source and then `EventS
 
 The package does not buffer, retry, persist, or fan out lifecycle events. Those policies belong to the application because delivery requirements vary independently from transcript persistence. Without `WithPublisher`, lifecycle events are discarded and agent behavior is unchanged.
 
-## Session metadata updates do not publish
+## Application metadata changes do not publish
 
-The durable agent owns the session ID, transcript tree, and active leaf. It does not load or cache the mutable `Session[T]` record. An application changes that record by calling `Store.UpdateSession` directly, so the agent cannot observe the change and does not publish an update event.
+The durable agent owns the session ID, transcript tree, and active leaf. Application metadata lives in the application's own storage and never passes through the agent or its store, so the agent cannot observe a metadata change and does not publish an update event.
 
-If metadata changes need notifications, emit them in the application service that calls `UpdateSession`. This keeps the publisher aligned with mutations the durable agent actually performs and avoids rebuilding a hidden session-state channel.
+If metadata changes need notifications, emit them in the application service that performs them. This keeps the publisher aligned with mutations the durable agent actually performs and avoids rebuilding a hidden session-state channel.
 
 ## Related
 
-- [Sessions](sessions.md) — ownership of session metadata and transcript history
+- [Sessions](sessions.md) — ownership of session records and transcript history
 - [Transcript Tree](tree.md) — how branch, fork, and compaction change the active path
 - [Entries](entries.md) — which values are durable enough to appear in receipts
 - [Agent Streaming](../agent/streaming.md) — the inner event lifecycle lifted onto each run stream

@@ -6,7 +6,7 @@
 //
 // [New] returns a factory, not an agent:
 //
-//	h, err := harness.New[State](
+//	h, err := harness.New(
 //	    harness.WithCatalog(cat),
 //	    harness.WithDefaultModel("anthropic/claude-sonnet-4-6"),
 //	    harness.WithSkills(

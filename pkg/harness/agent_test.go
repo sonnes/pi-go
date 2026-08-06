@@ -119,7 +119,7 @@ func TestSeedInjectedOnFirstRunOnly(t *testing.T) {
 		textStream("one"),
 		textStream("two"),
 	}}
-	store := session.NewMemoryStore[any]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
 	h := newTestHarness(
@@ -162,7 +162,7 @@ func TestSeedInjectedOnFirstRunOnly(t *testing.T) {
 
 func TestSeedSurvivesAFailedFirstRun(t *testing.T) {
 	p := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
-	store := &flakyStore{Store: session.NewMemoryStore[any](), fail: true}
+	store := &flakyStore{Store: session.NewMemoryStore(), fail: true}
 	ctx := context.Background()
 
 	h := newTestHarness(
@@ -201,7 +201,7 @@ func TestResumedSessionDoesNotReseed(t *testing.T) {
 		textStream("one"),
 		textStream("two"),
 	}}
-	store := session.NewMemoryStore[any]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
 	h := newTestHarness(
@@ -304,7 +304,7 @@ func TestSeedIsInnermostMiddleware(t *testing.T) {
 
 func TestSeederRunsEvenWhenTheSessionIsResumed(t *testing.T) {
 	p := &mockProvider{responses: []*ai.EventStream{textStream("one"), textStream("two")}}
-	store := session.NewMemoryStore[any]()
+	store := session.NewMemoryStore()
 	ctx := context.Background()
 
 	seeds := 0

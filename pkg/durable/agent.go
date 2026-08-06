@@ -28,7 +28,7 @@ var slot = agent.Slot[ext]{Key: "durable"}
 
 // ext accumulates durability configuration from the durable options.
 type ext struct {
-	store      any // the session.Store[T], asserted in New
+	store      session.Store
 	sessionID  string
 	publisher  Publisher
 	middleware []Middleware
@@ -43,9 +43,9 @@ func mutate(f func(*ext)) agent.Option {
 }
 
 // Agent is a persistent agent instance: an inner [agent.Agent] loop
-// bound to a durable session ID. Created by [New], never directly. The
-// type parameter T binds the agent to the state schema of its
-// [session.Store]; the agent does not load or retain session metadata.
+// bound to a durable session ID. Created by [New], never directly.
+// The agent owns transcript state only; application metadata lives in
+// the application's own storage, keyed by the session ID.
 //
 // Persistence is per message: run input is persisted before the run
 // starts, and every message the loop produces is persisted when its
@@ -53,8 +53,8 @@ func mutate(f func(*ext)) agent.Option {
 // append succeeds, carrying the entries as its receipt. A crash leaves
 // the store consistent at the last completed message; a dangling tool
 // call is repaired on resume (see [Agent.Messages]).
-type Agent[T any] struct {
-	store     session.Store[T]
+type Agent struct {
+	store     session.Store
 	lm        ai.LanguageModel
 	baseOpts  []agent.Option
 	publisher Publisher
@@ -75,7 +75,7 @@ type Agent[T any] struct {
 
 // newInner builds a fresh inner agent loop over the bound model with the
 // base options plus any extra (e.g. hydrated history).
-func (a *Agent[T]) newInner(extra ...agent.Option) agent.Agent {
+func (a *Agent) newInner(extra ...agent.Option) agent.Agent {
 	opts := make([]agent.Option, 0, len(a.baseOpts)+len(extra))
 	opts = append(opts, a.baseOpts...)
 	opts = append(opts, extra...)
@@ -85,7 +85,7 @@ func (a *Agent[T]) newInner(extra ...agent.Option) agent.Agent {
 // WithStore sets the backing store. Without it, [New] uses a fresh
 // in-memory store — fine for tests and ephemeral agents; pass a
 // persistent store to survive restarts.
-func WithStore[T any](s session.Store[T]) agent.Option {
+func WithStore(s session.Store) agent.Option {
 	return mutate(func(e *ext) { e.store = s })
 }
 
@@ -104,7 +104,7 @@ func WithPublisher(p Publisher) agent.Option {
 // publish delivers a lifecycle event when a publisher is configured.
 // Callers must not hold a.mu because Publish may call back into the
 // agent.
-func (a *Agent[T]) publish(evt Event) {
+func (a *Agent) publish(evt Event) {
 	if a.publisher != nil {
 		a.publisher.Publish(evt)
 	}
@@ -123,21 +123,16 @@ func (a *Agent[T]) publish(evt Event) {
 // the caller owns instance discipline. Two live instances of the same
 // session cannot corrupt it: each appends from its own leaf, so
 // concurrent instances grow sibling branches in the tree.
-func New[T any](
+func New(
 	ctx context.Context,
 	lm ai.LanguageModel,
 	opts ...agent.Option,
-) (*Agent[T], error) {
+) (*Agent, error) {
 	dcfg := slot.From(agent.ApplyOptions(opts...))
 
-	var store session.Store[T]
-	switch s := dcfg.store.(type) {
-	case nil:
-		store = session.NewMemoryStore[T]()
-	case session.Store[T]:
-		store = s
-	default:
-		return nil, fmt.Errorf("durable: store is %T, want session.Store[%T]", dcfg.store, *new(T))
+	store := dcfg.store
+	if store == nil {
+		store = session.NewMemoryStore()
 	}
 
 	sessionID := dcfg.sessionID
@@ -148,13 +143,7 @@ func New[T any](
 	entries, err := store.LoadEntries(ctx, sessionID)
 	switch {
 	case errors.Is(err, session.ErrSessionNotFound):
-		now := time.Now()
-		sess := &session.Session[T]{
-			ID:        sessionID,
-			CreatedAt: now,
-			UpdatedAt: now,
-		}
-		if cerr := store.CreateSession(ctx, sess); cerr != nil {
+		if cerr := store.CreateSession(ctx, sessionID, ""); cerr != nil {
 			return nil, cerr
 		}
 		entries = nil
@@ -172,7 +161,7 @@ func New[T any](
 		index[e.Header().ID] = e
 	}
 
-	a := &Agent[T]{
+	a := &Agent{
 		store:     store,
 		lm:        lm,
 		baseOpts:  opts,
@@ -220,13 +209,13 @@ func New[T any](
 // producer starts — so a middleware that adds entries has done so by
 // the time the stream exists, and one that refuses the run returns
 // [Fail] without a producer ever starting.
-func (a *Agent[T]) Run(ctx context.Context, entries ...session.Entry) *Stream {
+func (a *Agent) Run(ctx context.Context, entries ...session.Entry) *Stream {
 	return a.run(ctx, entries...)
 }
 
 // runBase is the durable run itself — the innermost [Runner], with the
 // middleware chain wrapped around it by [New] and [Agent.Fork].
-func (a *Agent[T]) runBase(ctx context.Context, entries ...session.Entry) *Stream {
+func (a *Agent) runBase(ctx context.Context, entries ...session.Entry) *Stream {
 	return stream.New(func(push func(Event)) ([]ai.Message, error) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -304,7 +293,7 @@ func (a *Agent[T]) runBase(ctx context.Context, entries ...session.Entry) *Strea
 // compaction-aware, meta entries included, custom entries excluded.
 // Dangling tool calls (a crash between an assistant message and its
 // tool results) are repaired with synthesized interrupted results.
-func (a *Agent[T]) Messages() []ai.Message {
+func (a *Agent) Messages() []ai.Message {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.modelViewLocked()
@@ -312,7 +301,7 @@ func (a *Agent[T]) Messages() []ai.Message {
 
 // Close marks the instance closed. A closed agent rejects further
 // runs; call [New] with the same session ID to resume.
-func (a *Agent[T]) Close() error {
+func (a *Agent) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.closed = true
@@ -322,13 +311,13 @@ func (a *Agent[T]) Close() error {
 // --- durable verbs ---
 
 // SessionID returns the durable session ID this agent is bound to.
-func (a *Agent[T]) SessionID() string { return a.sessionID }
+func (a *Agent) SessionID() string { return a.sessionID }
 
 // LeafID returns the ID of the entry the leaf pointer is on, or
 // empty for a fresh session. Capture it before a risky turn and pass
 // it to [Agent.Branch] to rewind — a checkpoint is just a remembered
 // leaf.
-func (a *Agent[T]) LeafID() string {
+func (a *Agent) LeafID() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.leafID
@@ -339,7 +328,7 @@ func (a *Agent[T]) LeafID() string {
 // written to the store — so it can be wider than what a resume would
 // load. Use [session.Tree] to derive the tree, or [Agent.Transcript]
 // for the display view of the active path.
-func (a *Agent[T]) Entries(ctx context.Context) ([]session.Entry, error) {
+func (a *Agent) Entries(ctx context.Context) ([]session.Entry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	out := make([]session.Entry, len(a.entries))
@@ -349,7 +338,7 @@ func (a *Agent[T]) Entries(ctx context.Context) ([]session.Entry, error) {
 
 // Transcript returns the active path for display: root to leaf, meta
 // entries hidden, custom entries included.
-func (a *Agent[T]) Transcript(ctx context.Context) ([]session.Entry, error) {
+func (a *Agent) Transcript(ctx context.Context) ([]session.Entry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	path := session.PathFrom(a.index, a.leafID)
@@ -359,7 +348,7 @@ func (a *Agent[T]) Transcript(ctx context.Context) ([]session.Entry, error) {
 // Append persists custom entries at the leaf without running the
 // loop. Custom entries are not sent to the model. Entries marked
 // [Ephemeral] are recorded in memory but not written to the store.
-func (a *Agent[T]) Append(ctx context.Context, entries ...session.Entry) error {
+func (a *Agent) Append(ctx context.Context, entries ...session.Entry) error {
 	_, err := a.persist(ctx, entries...)
 	return err
 }
@@ -372,7 +361,7 @@ func (a *Agent[T]) Append(ctx context.Context, entries ...session.Entry) error {
 // last appended entry.
 //
 // Branch publishes [EventSessionBranched] after moving the leaf.
-func (a *Agent[T]) Branch(ctx context.Context, entryID string) error {
+func (a *Agent) Branch(ctx context.Context, entryID string) error {
 	a.mu.Lock()
 
 	if _, ok := a.index[entryID]; !ok {
@@ -394,26 +383,18 @@ func (a *Agent[T]) Branch(ctx context.Context, entryID string) error {
 
 // Fork copies the active path into a new session with the given ID
 // and returns a fresh [Agent] bound to it. The new session records
-// this one as [session.Session.ParentID] and starts with zero-valued
-// application state. Returns
+// this one as [session.Session.ParentID]. Returns
 // [session.ErrSessionExists] if the ID is taken.
 //
 // The child inherits the publisher. A successful fork publishes
 // [EventSessionForked] for the source followed by [EventSessionInit]
 // for the child.
-func (a *Agent[T]) Fork(ctx context.Context, newID string) (*Agent[T], error) {
+func (a *Agent) Fork(ctx context.Context, newID string) (*Agent, error) {
 	a.mu.Lock()
 	path := session.PathFrom(a.index, a.leafID)
-	now := time.Now()
-	newSess := &session.Session[T]{
-		ID:        newID,
-		ParentID:  a.sessionID,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
 	a.mu.Unlock()
 
-	if err := a.store.CreateSession(ctx, newSess); err != nil {
+	if err := a.store.CreateSession(ctx, newID, a.sessionID); err != nil {
 		return nil, err
 	}
 
@@ -440,7 +421,7 @@ func (a *Agent[T]) Fork(ctx context.Context, newID string) (*Agent[T], error) {
 		index[e.Header().ID] = e
 	}
 
-	child := &Agent[T]{
+	child := &Agent{
 		store:     a.store,
 		lm:        a.lm,
 		baseOpts:  a.baseOpts,
@@ -498,7 +479,7 @@ func CompactPrompt(s string) CompactOption {
 // rewindable. The summary is written by an ephemeral agent from the
 // session's own factory; custom entries pass through untouched.
 // Compact publishes [EventSessionCompacted] after appending the summary.
-func (a *Agent[T]) Compact(ctx context.Context, opts ...CompactOption) error {
+func (a *Agent) Compact(ctx context.Context, opts ...CompactOption) error {
 	cfg := compactConfig{
 		prompt: defaultCompactPrompt,
 	}
@@ -591,13 +572,13 @@ func inputMessages(entries []session.Entry) []ai.Message {
 // resume and drop everything above it. Being off the chain also keeps
 // them out of the active path, so the transcript, the model view, and
 // [Agent.Fork] skip them for free.
-func (a *Agent[T]) persist(ctx context.Context, entries ...session.Entry) ([]session.Entry, error) {
+func (a *Agent) persist(ctx context.Context, entries ...session.Entry) ([]session.Entry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.persistLocked(ctx, entries...)
 }
 
-func (a *Agent[T]) persistLocked(ctx context.Context, entries ...session.Entry) ([]session.Entry, error) {
+func (a *Agent) persistLocked(ctx context.Context, entries ...session.Entry) ([]session.Entry, error) {
 	now := time.Now()
 	parent := a.leafID
 	recorded := make([]session.Entry, 0, len(entries))
@@ -639,7 +620,7 @@ func (a *Agent[T]) persistLocked(ctx context.Context, entries ...session.Entry) 
 
 // modelViewLocked projects the active path for the model, repairing
 // dangling tool calls. Callers must hold a.mu.
-func (a *Agent[T]) modelViewLocked() []ai.Message {
+func (a *Agent) modelViewLocked() []ai.Message {
 	path := session.PathFrom(a.index, a.leafID)
 	return repairToolCalls(session.ModelView(path))
 }

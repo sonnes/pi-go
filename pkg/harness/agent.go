@@ -37,7 +37,7 @@ import (
 //
 // A session with no history is seeded from the configured
 // [prompt.Seeder] on its first run.
-func (h *Harness[T]) Agent(ctx context.Context, opts ...agent.Option) (*durable.Agent[T], error) {
+func (h *Harness) Agent(ctx context.Context, opts ...agent.Option) (*durable.Agent, error) {
 	b, err := h.overlay(opts)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (h *Harness[T]) Agent(ctx context.Context, opts ...agent.Option) (*durable.
 	}
 	inject := &seedInjector{entries: seed}
 
-	a, err := durable.New[T](
+	a, err := durable.New(
 		ctx,
 		b.lm,
 		h.agentOpts(sys, tools, opts, durable.WithMiddleware(inject.middleware))...,
@@ -91,7 +91,7 @@ func (h *Harness[T]) Agent(ctx context.Context, opts ...agent.Option) (*durable.
 // session would see, or a debugging session asking what a given overlay
 // resolves to, gets the answer without minting an agent. Options
 // overlay the baseline exactly as they do in [Harness.Agent].
-func (h *Harness[T]) Env(ctx context.Context, opts ...agent.Option) (*prompt.Env, error) {
+func (h *Harness) Env(ctx context.Context, opts ...agent.Option) (*prompt.Env, error) {
 	b, err := h.overlay(opts)
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (h *Harness[T]) Env(ctx context.Context, opts ...agent.Option) (*prompt.Env
 // The seed option goes last of all, so the seed middleware is
 // registered after any the caller passed and ends up innermost: every
 // other middleware sees the run before the seed entries are added.
-func (h *Harness[T]) agentOpts(
+func (h *Harness) agentOpts(
 	sys string,
 	tools []ai.Tool,
 	callerOpts []agent.Option,

@@ -59,7 +59,7 @@ func TestNewValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := New[any](tt.opts...)
+			_, err := New(tt.opts...)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.err)
 		})
@@ -73,7 +73,7 @@ func TestCallerSystemPromptIsRejected(t *testing.T) {
 	// The harness owns the system prompt: a caller's WithSystemPrompt
 	// would be silently clobbered by the compiled one, so it is an
 	// error at both option sites.
-	_, err := New[any](
+	_, err := New(
 		WithCatalog(testCatalog(p)),
 		WithDefaultModel("mock/small"),
 		agent.WithSystemPrompt("I own the prompt"),

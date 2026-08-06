@@ -445,7 +445,7 @@ func TestPerBuildRootAppendsToTheBaseline(t *testing.T) {
 	}))
 
 	var captured *prompt.Env
-	h, err := harness.New[any](
+	h, err := harness.New(
 		harness.WithCatalog(testCatalog(&mockProvider{})),
 		harness.WithDefaultModel("mock/small"),
 		harness.WithSkills(fs.Skills(baseline, ".agents/skills")),

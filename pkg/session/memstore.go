@@ -3,55 +3,47 @@ package session
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 // MemoryStore is an in-memory [Store] for tests and examples.
 // Safe for concurrent use; returned sessions and slices are copies, so
 // callers never share mutable state with the store.
-type MemoryStore[T any] struct {
+type MemoryStore struct {
 	mu       sync.Mutex
-	sessions map[string]*Session[T]
+	sessions map[string]*Session
 	entries  map[string][]Entry
 }
 
-var _ Store[any] = (*MemoryStore[any])(nil)
+var _ Store = (*MemoryStore)(nil)
 
 // NewMemoryStore creates an empty [MemoryStore].
-func NewMemoryStore[T any]() *MemoryStore[T] {
-	return &MemoryStore[T]{
-		sessions: make(map[string]*Session[T]),
+func NewMemoryStore() *MemoryStore {
+	return &MemoryStore{
+		sessions: make(map[string]*Session),
 		entries:  make(map[string][]Entry),
 	}
 }
 
 // CreateSession implements [Store].
-func (s *MemoryStore[T]) CreateSession(ctx context.Context, sess *Session[T]) error {
+func (s *MemoryStore) CreateSession(ctx context.Context, id, parentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.sessions[sess.ID]; ok {
+	if _, ok := s.sessions[id]; ok {
 		return ErrSessionExists
 	}
-	cp := *sess
-	s.sessions[sess.ID] = &cp
-	return nil
-}
-
-// UpdateSession implements [Store].
-func (s *MemoryStore[T]) UpdateSession(ctx context.Context, sess *Session[T]) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.sessions[sess.ID]; !ok {
-		return ErrSessionNotFound
+	s.sessions[id] = &Session{
+		ID:        id,
+		ParentID:  parentID,
+		CreatedAt: time.Now(),
 	}
-	cp := *sess
-	s.sessions[sess.ID] = &cp
 	return nil
 }
 
-// LoadSession implements [Store].
-func (s *MemoryStore[T]) LoadSession(ctx context.Context, id string) (*Session[T], error) {
+// LoadSession returns a session's record, or [ErrSessionNotFound] if
+// the session does not exist.
+func (s *MemoryStore) LoadSession(ctx context.Context, id string) (*Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -64,7 +56,7 @@ func (s *MemoryStore[T]) LoadSession(ctx context.Context, id string) (*Session[T
 }
 
 // LoadEntries implements [Store].
-func (s *MemoryStore[T]) LoadEntries(ctx context.Context, sessionID string) ([]Entry, error) {
+func (s *MemoryStore) LoadEntries(ctx context.Context, sessionID string) ([]Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -79,7 +71,7 @@ func (s *MemoryStore[T]) LoadEntries(ctx context.Context, sessionID string) ([]E
 }
 
 // AppendEntries implements [Store].
-func (s *MemoryStore[T]) AppendEntries(ctx context.Context, sessionID string, entries ...Entry) error {
+func (s *MemoryStore) AppendEntries(ctx context.Context, sessionID string, entries ...Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

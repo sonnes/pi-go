@@ -20,13 +20,13 @@ import (
 
 // newTestHarness builds a harness over the mock catalog with the given
 // extra options, failing the test if construction errors.
-func newTestHarness(t *testing.T, p *mockProvider, opts ...agent.Option) *Harness[any] {
+func newTestHarness(t *testing.T, p *mockProvider, opts ...agent.Option) *Harness {
 	t.Helper()
 	base := []agent.Option{
 		WithCatalog(testCatalog(p)),
 		WithDefaultModel("mock/small"),
 	}
-	h, err := New[any](append(base, opts...)...)
+	h, err := New(append(base, opts...)...)
 	require.NoError(t, err)
 	return h
 }
@@ -162,7 +162,7 @@ func (m *mutableResolver) Agents(context.Context) ([]def.Agent, error) {
 // flakyStore fails AppendEntries while fail is set, standing in for a
 // store that was briefly unavailable on a session's first run.
 type flakyStore struct {
-	session.Store[any]
+	session.Store
 	fail bool
 }
 

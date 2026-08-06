@@ -2,7 +2,7 @@
 // survives process restarts.
 //
 // It builds on the persistence primitives in pkg/session — the
-// [session.Session] identity, the [session.Entry] tree, and the
+// [session.Session] existence record, the [session.Entry] tree, and the
 // [session.Store] contract — and adds the agent behavior on top:
 //
 //   - [New] binds a session ID to an inner agent loop, creating the
@@ -14,9 +14,10 @@
 //     all derive from the same mechanism.
 //
 // A durable [Agent] retains only its session ID and transcript working
-// state. Applications own the mutable [session.Session] record through
-// [session.Store]; keeping it outside the agent avoids stale metadata and
-// keeps application state out of transcript control flow.
+// state. Application metadata — titles, modes, model choices — lives in
+// the application's own storage, keyed by the session ID; keeping it
+// outside the SDK avoids stale copies and keeps application state out
+// of transcript control flow.
 //
 // Persistence is per message: run input is persisted before the run
 // starts, and every message the loop produces is persisted when it
@@ -38,8 +39,8 @@
 // Session lifecycle mutations happen outside a run, so [WithPublisher]
 // sends their events through a separate [Publisher]. [New],
 // [Agent.Branch], [Agent.Fork], and [Agent.Compact] publish only after
-// their effect commits. Session metadata updates do not publish because
-// applications perform them directly through [session.Store].
+// their effect commits. Application metadata changes do not publish
+// because they never pass through the agent or its store.
 //
 // A crash can leave an assistant tool call without its results; the
 // model view repairs it on resume by synthesizing interrupted tool
