@@ -34,6 +34,7 @@ const ID = "google-generative"
 type Provider struct {
 	client         *genai.Client
 	apiKey         string
+	baseURL        string
 	httpClient     *http.Client
 	toolCallIDFunc func() string
 }
@@ -44,6 +45,15 @@ type Option func(*Provider)
 // WithAPIKey sets the API key for authentication.
 func WithAPIKey(key string) Option {
 	return func(p *Provider) { p.apiKey = key }
+}
+
+// WithBaseURL sends the provider's traffic somewhere other than Google's own
+// endpoint — a gateway, a proxy, a compatible API.
+//
+// It takes a host, not a versioned path: genai appends its own API version
+// ("v1beta"), so a URL carrying one would be doubled.
+func WithBaseURL(url string) Option {
+	return func(p *Provider) { p.baseURL = url }
 }
 
 // WithHTTPClient sets a custom HTTP client.
@@ -71,6 +81,9 @@ func New(opts ...Option) (*Provider, error) {
 		HTTPClient: p.httpClient,
 		Backend:    genai.BackendGeminiAPI,
 		APIKey:     p.apiKey,
+	}
+	if p.baseURL != "" {
+		cc.HTTPOptions.BaseURL = p.baseURL
 	}
 
 	client, err := genai.NewClient(context.Background(), cc)
