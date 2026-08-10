@@ -19,7 +19,6 @@ See also the design-level concept doc at [docs/concepts/ai/caching.md](../concep
 | OpenAI Responses | ✅ automatic | ✅ | session ID forwarded ([openairesponses.go:339-340](../../pkg/ai/provider/openairesponses/openairesponses.go#L339)) |
 | Google Gemini | ✅ context caching API | ❌ | not wired |
 | Claude CLI | ⚠️ session-level KV | ❌ | |
-| Gemini CLI | ❌ | — | |
 
 ## Provider Documentation
 

@@ -3,10 +3,10 @@ package main
 import (
 	"net/http"
 
+	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openairesponses"
-	"github.com/sonnes/pi-go/pkg/catalog"
 	"github.com/sonnes/pi-go/pkg/pi"
 )
 
@@ -25,11 +25,18 @@ func loginDetectors() []pi.Detector {
 // authFileDetectors builds detectors for the OAuth credentials stored by
 // `pi login`, one per supported provider.
 func authFileDetectors() []pi.Detector {
-	fromFile := func(name string, build func(name string, sc StoredCredential) catalog.Provider) pi.Detector {
+	fromFile := func(
+		providerID string,
+		name string,
+		models []ai.Model,
+		build func(name string, sc StoredCredential) ai.TextProvider,
+	) pi.Detector {
 		return pi.Detector{
-			Name:   name,
-			Source: "~/.pigo/auth.json",
-			Detect: func() (catalog.Provider, bool) {
+			ProviderID: providerID,
+			Name:       name,
+			Source:     "~/.pigo/auth.json",
+			Models:     models,
+			Detect: func() (ai.TextProvider, bool) {
 				stored, err := LoadAuth()
 				if err != nil {
 					return nil, false
@@ -43,13 +50,13 @@ func authFileDetectors() []pi.Detector {
 		}
 	}
 	return []pi.Detector{
-		fromFile("anthropic", func(name string, sc StoredCredential) catalog.Provider {
+		fromFile(anthropic.ID, "anthropic", anthropic.Models(), func(name string, sc StoredCredential) ai.TextProvider {
 			return anthropic.New(anthropic.WithOAuth(
 				sc.ClientID, sc.ToOAuthCredentials(),
 				debugBase(), persistRefresh(name, sc),
 			))
 		}),
-		fromFile("openai", func(name string, sc StoredCredential) catalog.Provider {
+		fromFile(openairesponses.ID, "openai", openairesponses.Models(), func(name string, sc StoredCredential) ai.TextProvider {
 			return openairesponses.NewForCodexOAuth(
 				sc.ClientID, "", sc.ToOAuthCredentials(),
 				debugBase(), persistRefresh(name, sc),
@@ -63,8 +70,20 @@ func authFileDetectors() []pi.Detector {
 // it is just wired into the chain with a source label.
 func cliLoginDetectors() []pi.Detector {
 	return []pi.Detector{
-		{Name: "anthropic", Source: "Claude Code login", Detect: pi.ProviderDetector(anthropic.DetectClaudeCLI)},
-		{Name: "openai", Source: "Codex login", Detect: pi.ProviderDetector(openairesponses.DetectCodexCLI)},
+		{
+			ProviderID: anthropic.ID,
+			Name:       "anthropic",
+			Source:     "Claude Code login",
+			Models:     anthropic.Models(),
+			Detect:     pi.ProviderDetector(anthropic.DetectClaudeCLI),
+		},
+		{
+			ProviderID: openairesponses.ID,
+			Name:       "openai",
+			Source:     "Codex login",
+			Models:     openairesponses.Models(),
+			Detect:     pi.ProviderDetector(openairesponses.DetectCodexCLI),
+		},
 	}
 }
 

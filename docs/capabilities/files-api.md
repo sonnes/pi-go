@@ -17,7 +17,6 @@ read_when:
 | OpenAI Responses | ✅ | ❌ | `FileID` accepted only |
 | Google Gemini | ✅ Files API — 48h retention, free | ❌ | URI accepted as `FileData.fileUri` |
 | Claude CLI | ❌ direct | — | |
-| Gemini CLI | ⚠️ accepts file URIs | ❌ | |
 
 ## Provider Documentation
 

@@ -16,7 +16,6 @@ read_when:
 | OpenAI | ✅ Realtime API (WebRTC / WebSocket); voice + tools | ❌ | not wired |
 | Google Gemini | ✅ Live API; 24-language voice; multimodal realtime | ❌ | not wired |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ❌ | — | |
 
 ## Provider Documentation
 

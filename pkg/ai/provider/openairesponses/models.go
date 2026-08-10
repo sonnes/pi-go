@@ -535,7 +535,7 @@ var models = []ai.Model{
 }
 
 // Models returns the models served by this provider.
-func (p *Provider) Models() []ai.Model {
+func Models() []ai.Model {
 	out := make([]ai.Model, len(models))
 	copy(out, models)
 	return out

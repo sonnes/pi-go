@@ -20,7 +20,6 @@ OpenAI's Responses API and Google's Interactions API can persist conversation st
 | Google Gemini | ✅ Interactions API | ❌ | not wired |
 | Claude CLI | ✅ session JSONL in `~/.claude/projects/` | ❌ | each pi-go call spawns a fresh subprocess ([claude.go:5-8](../../pkg/ai/provider/claudecli/claude.go#L5)); only last user message replayed |
 | Codex CLI | ✅ thread resume via `codex exec resume` | ✅ agent / ❌ provider | `pkg/agent/codex` captures `thread.started` and resumes subsequent sends; `pkg/ai/provider/codexcli` remains stateless and uses `--ephemeral` |
-| Gemini CLI | ✅ session managed by CLI | ❌ | |
 
 ## Provider Documentation
 

@@ -12,14 +12,8 @@ import (
 	"github.com/sonnes/pi-go/pkg/catalog"
 )
 
-// fakeProvider implements catalog.Provider and ai.TextProvider.
-type fakeProvider struct{ id string }
-
-func (f *fakeProvider) ID() string { return f.id }
-
-func (f *fakeProvider) Models() []ai.Model {
-	return []ai.Model{{ID: "m1", Aliases: []string{"latest"}}}
-}
+// fakeProvider implements ai.TextProvider.
+type fakeProvider struct{}
 
 func (f *fakeProvider) StreamText(
 	_ context.Context,
@@ -32,15 +26,11 @@ func (f *fakeProvider) StreamText(
 	})
 }
 
-// textlessProvider registers models but cannot generate text.
-type textlessProvider struct{}
-
-func (textlessProvider) ID() string         { return "textless" }
-func (textlessProvider) Models() []ai.Model { return []ai.Model{{ID: "x"}} }
+var textModels = []ai.Model{{ID: "m1", Aliases: []string{"latest"}}}
 
 func TestLanguageModel_ResolvesAndBinds(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "fake"})
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
 
 	lm, err := c.LanguageModel("fake/m1")
 	require.NoError(t, err)
@@ -53,7 +43,7 @@ func TestLanguageModel_ResolvesAndBinds(t *testing.T) {
 
 func TestLanguageModel_Errors(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(textlessProvider{})
+	c.RegisterModel("textless", ai.Model{ID: "x"})
 
 	_, err := c.LanguageModel("nope/m1")
 	assert.ErrorContains(t, err, "unknown model")
@@ -64,7 +54,7 @@ func TestLanguageModel_Errors(t *testing.T) {
 
 func TestLanguageModel_BareModelID(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "fake"})
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
 
 	// A spec without a provider prefix resolves when exactly one
 	// registered provider serves the model.
@@ -79,8 +69,8 @@ func TestLanguageModel_BareModelID(t *testing.T) {
 
 func TestLanguageModel_BareModelID_Ambiguous(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "alpha"})
-	c.RegisterProvider(&fakeProvider{id: "beta"})
+	c.RegisterTextProvider("alpha", &fakeProvider{}, textModels...)
+	c.RegisterTextProvider("beta", &fakeProvider{}, textModels...)
 
 	_, err := c.LanguageModel("m1")
 	require.Error(t, err)
@@ -92,7 +82,7 @@ func TestLanguageModel_BareModelID_Ambiguous(t *testing.T) {
 
 func TestGenerateText_ViaCatalog(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "fake"})
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
 
 	msg, err := c.GenerateText(context.Background(), "fake/m1", ai.Prompt{})
 	require.NoError(t, err)
@@ -108,7 +98,7 @@ func TestGenerateText_Errors(t *testing.T) {
 
 func TestAgent_DefaultAndCustom(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "fake"})
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
 
 	// Default: any registered model becomes an agent.
 	ag, err := c.Agent("fake/m1")

@@ -27,7 +27,6 @@ import (
 	claudeprov "github.com/sonnes/pi-go/pkg/ai/provider/claudecli"
 	codexprov "github.com/sonnes/pi-go/pkg/ai/provider/codexcli"
 	cursorprov "github.com/sonnes/pi-go/pkg/ai/provider/cursorcli"
-	"github.com/sonnes/pi-go/pkg/catalog"
 	"github.com/sonnes/pi-go/pkg/pi"
 )
 
@@ -181,25 +180,50 @@ func createAPIAgent(model string, turns int, serverToolsSpec, providerHint strin
 // credentials via pkg/pi (honoring providerHint), with the spec used verbatim
 // as the model ID.
 func selectAPISpec(model, providerHint string) (string, error) {
-	register := func(p catalog.Provider, id string) string {
-		pi.Default.RegisterProvider(p)
-		pi.Default.RegisterModel(p.ID(), ai.Model{ID: id, Name: id})
-		return p.ID() + "/" + id
+	register := func(providerID string, p ai.TextProvider, id string) string {
+		pi.Default.RegisterTextProvider(
+			providerID,
+			p,
+			ai.Model{ID: id, Name: id},
+		)
+		return providerID + "/" + id
 	}
 
 	cliProviders := []struct {
-		prefix string
-		label  string
-		build  func(model string) catalog.Provider
+		prefix     string
+		label      string
+		providerID string
+		build      func(model string) ai.TextProvider
 	}{
-		{claudeCLIModelPrefix, "claude-cli", func(m string) catalog.Provider { return claudeprov.New(claudeprov.WithModel(m)) }},
-		{codexCLIModelPrefix, "codex-cli", func(m string) catalog.Provider { return codexprov.New(codexprov.WithModel(m)) }},
-		{cursorCLIModelPrefix, "cursor-cli", func(m string) catalog.Provider { return cursorprov.New(cursorprov.WithModel(m)) }},
+		{
+			prefix:     claudeCLIModelPrefix,
+			label:      "claude-cli",
+			providerID: claudeprov.ID,
+			build: func(m string) ai.TextProvider {
+				return claudeprov.New(claudeprov.WithModel(m))
+			},
+		},
+		{
+			prefix:     codexCLIModelPrefix,
+			label:      "codex-cli",
+			providerID: codexprov.ID,
+			build: func(m string) ai.TextProvider {
+				return codexprov.New(codexprov.WithModel(m))
+			},
+		},
+		{
+			prefix:     cursorCLIModelPrefix,
+			label:      "cursor-cli",
+			providerID: cursorprov.ID,
+			build: func(m string) ai.TextProvider {
+				return cursorprov.New(cursorprov.WithModel(m))
+			},
+		},
 	}
 	for _, e := range cliProviders {
 		if rest, ok := strings.CutPrefix(model, e.prefix); ok {
 			fmt.Fprintf(os.Stderr, "[provider: %s via subprocess]\n", e.label)
-			return register(e.build(rest), rest), nil
+			return register(e.providerID, e.build(rest), rest), nil
 		}
 	}
 

@@ -16,7 +16,6 @@ read_when:
 | OpenAI Responses | — | — | uses base FT'd models |
 | Google Gemini | ✅ supervised tuning (LoRA / full) on Gemini 2.5 Pro/Flash/Flash-lite via Vertex | ❌ | |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ❌ | — | |
 
 ## Provider Documentation
 

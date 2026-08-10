@@ -17,11 +17,10 @@ read_when:
 | Anthropic | ✅ Adaptive Thinking (default on Opus 4.7) — effort `low/med/high/max`; legacy `extended_thinking` with token budget deprecated | ⚠️ | pi-go still maps level → token budget ([anthropic.go:280-294](../../pkg/ai/provider/anthropic/anthropic.go#L280)); does not use new `effort` knob |
 | OpenAI Chat | ✅ `reasoning_effort` on GPT-5.2 / o-series | ✅ | gated by `compat.SupportsReasoningEffort` ([openai.go:308-310](../../pkg/ai/provider/openai/openai.go#L308)) |
 | OpenAI Responses | ✅ `reasoning.effort` (`none/low/med/high/xhigh`) + auto summary | ✅ | ([convert.go:290-301](../../pkg/ai/provider/openairesponses/convert.go#L290), [openairesponses.go:318-326](../../pkg/ai/provider/openairesponses/openairesponses.go#L318)) |
-| Google Gemini | ✅ `thinkingConfig.thinkingBudget` (Gemini 2.5+); `thinking_level` (Gemini 3+) | ⚠️ | budgets only wired in geminicli ([geminicli.go:206-227](../../pkg/ai/provider/geminicli/geminicli.go#L206)); the `google` HTTP provider does not set `thinkingConfig` |
+| Google Gemini | ✅ `thinkingConfig.thinkingBudget` (Gemini 2.5+); `thinking_level` (Gemini 3+) | ⚠️ | the `google` provider does not set `thinkingConfig` |
 | Claude CLI | ✅ `--effort` (`low/medium/high/xhigh/max`, model-dependent) | ✅ | level → `--effort`; `minimal` floors to `low`, `off`/unknown omit the flag ([claudecli claude.go:99](../../pkg/ai/provider/claudecli/claude.go#L99), [agent/claude config.go:71](../../pkg/agent/claude/config.go#L71)) |
 | Codex CLI | ✅ `model_reasoning_effort` (`minimal/low/medium/high/xhigh`) | ✅ | level → `-c model_reasoning_effort`; `off`/unknown omit the override ([codexcli codex.go:112](../../pkg/ai/provider/codexcli/codex.go#L112), [agent/codex config.go:84](../../pkg/agent/codex/config.go#L84)) |
 | Cursor CLI | ❌ no reasoning-effort flag; reasoning bound to the model name (`*-thinking`) | — | `ThinkingLevel` ignored; pass a thinking-capable model instead ([cursorcli cursor.go:129](../../pkg/ai/provider/cursorcli/cursor.go#L129)) |
-| Gemini CLI | ✅ | ✅ | full level→budget mapping |
 
 ## Encrypted Reasoning Passthrough
 
@@ -33,7 +32,6 @@ Providers return reasoning blocks with a signed/encrypted blob. Clients echo the
 | OpenAI Chat | ❌ | — | reasoning kept server-side via stored conversation only |
 | OpenAI Responses | ✅ `reasoning.encrypted_content`; ZDR-compatible | ✅ | `ResponseIncludableReasoningEncryptedContent` ([openairesponses.go:323-325](../../pkg/ai/provider/openairesponses/openairesponses.go#L323)) |
 | Google Gemini | ✅ `thoughtSignature` (Gemini 3+) | ✅ | preserved on Thinking and ToolCall blocks ([google.go:187, 228-229](../../pkg/ai/provider/google/google.go#L187)) |
-| Gemini CLI | ✅ | ✅ | |
 
 ## Provider Documentation
 

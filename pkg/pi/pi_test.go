@@ -12,11 +12,8 @@ import (
 	"github.com/sonnes/pi-go/pkg/pi"
 )
 
-// fakeProvider implements catalog.Provider + ai.TextProvider.
+// fakeProvider implements ai.TextProvider.
 type fakeProvider struct{}
-
-func (fakeProvider) ID() string         { return "fake" }
-func (fakeProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeProvider) StreamText(
 	_ context.Context,
@@ -30,7 +27,7 @@ func (fakeProvider) StreamText(
 }
 
 func TestGenerateText_ViaDefaultCatalog(t *testing.T) {
-	pi.Default.RegisterProvider(fakeProvider{})
+	pi.Default.RegisterTextProvider("fake", fakeProvider{}, ai.Model{ID: "m1"})
 
 	msg, err := pi.GenerateText(
 		context.Background(),
@@ -42,7 +39,7 @@ func TestGenerateText_ViaDefaultCatalog(t *testing.T) {
 }
 
 func TestStreamText_ViaDefaultCatalog(t *testing.T) {
-	pi.Default.RegisterProvider(fakeProvider{})
+	pi.Default.RegisterTextProvider("fake", fakeProvider{}, ai.Model{ID: "m1"})
 
 	msg, err := pi.StreamText(
 		context.Background(),
@@ -54,7 +51,7 @@ func TestStreamText_ViaDefaultCatalog(t *testing.T) {
 }
 
 func TestGenerateImage_ViaDefaultCatalog(t *testing.T) {
-	pi.Default.RegisterProvider(fakeImageProvider{})
+	pi.Default.RegisterImageProvider("img", fakeImageProvider{}, ai.Model{ID: "m1"})
 
 	resp, err := pi.GenerateImage(context.Background(), "img/m1", ai.Prompt{})
 	require.NoError(t, err)
@@ -62,11 +59,8 @@ func TestGenerateImage_ViaDefaultCatalog(t *testing.T) {
 	assert.Equal(t, "image/png", resp.Images[0].MediaType)
 }
 
-// fakeImageProvider implements catalog.Provider + ai.ImageProvider.
+// fakeImageProvider implements ai.ImageProvider.
 type fakeImageProvider struct{}
-
-func (fakeImageProvider) ID() string         { return "img" }
-func (fakeImageProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeImageProvider) GenerateImage(
 	_ context.Context,
@@ -77,12 +71,8 @@ func (fakeImageProvider) GenerateImage(
 	return &ai.ImageResponse{Images: []ai.GeneratedImage{{MediaType: "image/png"}}}, nil
 }
 
-// fakeObjectProvider implements catalog.Provider + ai.TextProvider +
-// ai.ObjectProvider.
+// fakeObjectProvider implements ai.TextProvider + ai.ObjectProvider.
 type fakeObjectProvider struct{}
-
-func (fakeObjectProvider) ID() string         { return "obj" }
-func (fakeObjectProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeObjectProvider) StreamText(
 	_ context.Context,
@@ -106,7 +96,7 @@ func (fakeObjectProvider) GenerateObject(
 }
 
 func TestGenerateObject_ViaDefaultCatalog(t *testing.T) {
-	pi.Default.RegisterProvider(fakeObjectProvider{})
+	pi.Default.RegisterTextProvider("obj", fakeObjectProvider{}, ai.Model{ID: "m1"})
 
 	type point struct {
 		X int `json:"x"`
@@ -116,11 +106,8 @@ func TestGenerateObject_ViaDefaultCatalog(t *testing.T) {
 	assert.Equal(t, 3, res.Object.X)
 }
 
-// fakeSpeechProvider implements catalog.Provider + ai.SpeechProvider.
+// fakeSpeechProvider implements ai.SpeechProvider.
 type fakeSpeechProvider struct{}
-
-func (fakeSpeechProvider) ID() string         { return "tts" }
-func (fakeSpeechProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeSpeechProvider) GenerateSpeech(
 	_ context.Context,
@@ -132,7 +119,7 @@ func (fakeSpeechProvider) GenerateSpeech(
 }
 
 func TestGenerateSpeech_ViaDefaultCatalog(t *testing.T) {
-	pi.Default.RegisterProvider(fakeSpeechProvider{})
+	pi.Default.RegisterSpeechProvider("tts", fakeSpeechProvider{}, ai.Model{ID: "m1"})
 
 	resp, err := pi.GenerateSpeech(context.Background(), "tts/m1", ai.Prompt{})
 	require.NoError(t, err)

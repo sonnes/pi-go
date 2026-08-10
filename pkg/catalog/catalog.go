@@ -1,12 +1,11 @@
-// Package catalog is the public registry for the pi SDK. It holds
-// providers, their models, and custom agent factories, and resolves
+// Package catalog is the public registry for the pi SDK. It holds typed
+// provider capabilities, their models, and custom agent factories, and resolves
 // "<provider>/<model>" specs — or bare model IDs when unambiguous — to
 // callable [ai.LanguageModel]s and [agent.Agent]s.
 //
-// A [Catalog] is the single home for provider identity and routing —
-// the [ai] capability interfaces (TextProvider, ImageProvider, …) carry
-// only behavior. Register a provider once and every model it lists
-// becomes available as both a raw language model and an agent.
+// A [Catalog] keeps an independent provider lookup for each [ai] capability
+// while sharing one model index across them. Registration supplies identity
+// and model metadata explicitly; provider implementations carry only behavior.
 package catalog
 
 import (
@@ -20,44 +19,70 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Provider is what [Catalog.RegisterProvider] accepts: identity plus the
-// list of models it serves. A registered provider must also implement at
-// least one capability interface ([ai.TextProvider], [ai.ImageProvider],
-// …) for its models to resolve to something callable.
-type Provider interface {
-	// ID returns the provider identity, e.g. "anthropic-messages".
-	ID() string
-	// Models returns the models this provider serves.
-	Models() []ai.Model
-}
-
 // Catalog is a registry of providers, models, and agent factories. The
 // zero value is unusable; create one with [New]. Safe for concurrent use.
 type Catalog struct {
-	mu        sync.RWMutex
-	providers map[string]Provider
-	models    map[string]ai.Model      // by "<provider>/<id>" and "<provider>/<alias>"
-	agents    map[string]agent.Factory // by agent kind
+	mu              sync.RWMutex
+	textProviders   map[string]ai.TextProvider
+	imageProviders  map[string]ai.ImageProvider
+	speechProviders map[string]ai.SpeechProvider
+	models          map[string]ai.Model      // by "<provider>/<id>" and "<provider>/<alias>"
+	agents          map[string]agent.Factory // by agent kind
 }
 
 // New returns an empty, ready-to-use catalog.
 func New() *Catalog {
 	return &Catalog{
-		providers: make(map[string]Provider),
-		models:    make(map[string]ai.Model),
-		agents:    make(map[string]agent.Factory),
+		textProviders:   make(map[string]ai.TextProvider),
+		imageProviders:  make(map[string]ai.ImageProvider),
+		speechProviders: make(map[string]ai.SpeechProvider),
+		models:          make(map[string]ai.Model),
+		agents:          make(map[string]agent.Factory),
 	}
 }
 
-// RegisterProvider registers p under its identity and ingests every model
-// it serves (keyed under "<provider>/<id>" and each alias). Last write wins.
-func (c *Catalog) RegisterProvider(p Provider) {
+// RegisterTextProvider registers p for text generation under id and adds
+// models to the shared model index. Last write wins.
+func (c *Catalog) RegisterTextProvider(
+	id string,
+	p ai.TextProvider,
+	models ...ai.Model,
+) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	id := p.ID()
-	c.providers[id] = p
-	for _, m := range p.Models() {
-		c.registerModelLocked(id, m)
+	c.textProviders[id] = p
+	c.registerModelsLocked(id, models)
+}
+
+// RegisterImageProvider registers p for image generation under id and adds
+// models to the shared model index. Last write wins.
+func (c *Catalog) RegisterImageProvider(
+	id string,
+	p ai.ImageProvider,
+	models ...ai.Model,
+) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.imageProviders[id] = p
+	c.registerModelsLocked(id, models)
+}
+
+// RegisterSpeechProvider registers p for speech generation under id and adds
+// models to the shared model index. Last write wins.
+func (c *Catalog) RegisterSpeechProvider(
+	id string,
+	p ai.SpeechProvider,
+	models ...ai.Model,
+) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.speechProviders[id] = p
+	c.registerModelsLocked(id, models)
+}
+
+func (c *Catalog) registerModelsLocked(providerID string, models []ai.Model) {
+	for _, m := range models {
+		c.registerModelLocked(providerID, m)
 	}
 }
 
@@ -83,34 +108,29 @@ func (c *Catalog) RegisterAgent(kind string, f agent.Factory) {
 	c.agents[kind] = f
 }
 
-// resolve looks up the model metadata and its registered provider for a
+// resolve looks up model metadata and its provider id for a
 // spec. A full "<provider>/<model>" spec is looked up directly; a bare
 // model ID (or alias) resolves when exactly one registered provider
-// serves it, and errors listing the full specs when several do.
-// Capability (text/image/object) is asserted by the caller against the
-// returned provider.
-func (c *Catalog) resolve(spec string) (ai.Model, Provider, error) {
+// serves it, and errors listing the full specs when several do. The caller
+// uses the id to select its capability-specific provider map.
+func (c *Catalog) resolve(spec string) (ai.Model, string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if m, ok := c.models[spec]; ok {
 		providerID, _, _ := strings.Cut(spec, "/")
-		p, ok := c.providers[providerID]
-		if !ok {
-			return ai.Model{}, nil, fmt.Errorf("catalog: no provider registered for %q", providerID)
-		}
-		return m, p, nil
+		return m, providerID, nil
 	}
 	return c.resolveBareLocked(spec)
 }
 
 // resolveBareLocked resolves a spec with no provider prefix by scanning
 // every registered key for a matching model ID or alias.
-func (c *Catalog) resolveBareLocked(id string) (ai.Model, Provider, error) {
+func (c *Catalog) resolveBareLocked(id string) (ai.Model, string, error) {
 	var (
 		matches []string
 		found   ai.Model
-		foundP  Provider
+		foundID string
 	)
 	seen := map[string]bool{}
 	for key, m := range c.models {
@@ -118,22 +138,18 @@ func (c *Catalog) resolveBareLocked(id string) (ai.Model, Provider, error) {
 		if modelID != id || seen[providerID] {
 			continue
 		}
-		p, ok := c.providers[providerID]
-		if !ok {
-			continue
-		}
 		seen[providerID] = true
 		matches = append(matches, key)
-		found, foundP = m, p
+		found, foundID = m, providerID
 	}
 	switch len(matches) {
 	case 0:
-		return ai.Model{}, nil, fmt.Errorf("catalog: unknown model %q", id)
+		return ai.Model{}, "", fmt.Errorf("catalog: unknown model %q", id)
 	case 1:
-		return found, foundP, nil
+		return found, foundID, nil
 	default:
 		sort.Strings(matches)
-		return ai.Model{}, nil, fmt.Errorf(
+		return ai.Model{}, "", fmt.Errorf(
 			"catalog: ambiguous model %q: use a full spec (%s)",
 			id,
 			strings.Join(matches, ", "),
@@ -144,13 +160,15 @@ func (c *Catalog) resolveBareLocked(id string) (ai.Model, Provider, error) {
 // LanguageModel resolves a spec to a bound [ai.LanguageModel]. It errors if
 // the spec is unknown or the provider does not support text generation.
 func (c *Catalog) LanguageModel(spec string) (ai.LanguageModel, error) {
-	m, p, err := c.resolve(spec)
+	m, providerID, err := c.resolve(spec)
 	if err != nil {
 		return nil, err
 	}
-	tp, ok := p.(ai.TextProvider)
+	c.mu.RLock()
+	tp, ok := c.textProviders[providerID]
+	c.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("catalog: provider %q does not support text generation", p.ID())
+		return nil, fmt.Errorf("catalog: provider %q does not support text generation", providerID)
 	}
 	return ai.NewLanguageModel(m, tp), nil
 }
@@ -185,13 +203,15 @@ func (c *Catalog) GenerateText(
 // ImageModel resolves a spec to a bound [ai.ImageModel]. It errors if the
 // spec is unknown or the provider does not support image generation.
 func (c *Catalog) ImageModel(spec string) (ai.ImageModel, error) {
-	m, p, err := c.resolve(spec)
+	m, providerID, err := c.resolve(spec)
 	if err != nil {
 		return nil, err
 	}
-	ip, ok := p.(ai.ImageProvider)
+	c.mu.RLock()
+	ip, ok := c.imageProviders[providerID]
+	c.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("catalog: provider %q does not support image generation", p.ID())
+		return nil, fmt.Errorf("catalog: provider %q does not support image generation", providerID)
 	}
 	return ai.NewImageModel(m, ip), nil
 }
@@ -213,13 +233,15 @@ func (c *Catalog) GenerateImage(
 // SpeechModel resolves a spec to a bound [ai.SpeechModel]. It errors if the
 // spec is unknown or the provider does not support speech generation.
 func (c *Catalog) SpeechModel(spec string) (ai.SpeechModel, error) {
-	m, p, err := c.resolve(spec)
+	m, providerID, err := c.resolve(spec)
 	if err != nil {
 		return nil, err
 	}
-	sp, ok := p.(ai.SpeechProvider)
+	c.mu.RLock()
+	sp, ok := c.speechProviders[providerID]
+	c.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("catalog: provider %q does not support speech generation", p.ID())
+		return nil, fmt.Errorf("catalog: provider %q does not support speech generation", providerID)
 	}
 	return ai.NewSpeechModel(m, sp), nil
 }

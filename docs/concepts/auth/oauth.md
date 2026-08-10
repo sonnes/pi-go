@@ -1,6 +1,6 @@
 ---
 title: "OAuth"
-summary: "OAuth transport middleware, login flow, token refresh, subscription login by reusing official CLI credentials, and provider integration for Anthropic, OpenAI, and Gemini CLI"
+summary: "OAuth transport middleware, login flow, token refresh, subscription login reuse, and provider integration for Anthropic and OpenAI"
 read_when:
   - Authenticating with OAuth tokens instead of API keys
   - Understanding how token refresh works
@@ -111,18 +111,6 @@ Token endpoint: `https://platform.claude.com/v1/oauth/token`
 
 Token endpoint: `https://auth.openai.com/oauth/token`
 
-### Gemini CLI
-
-`WithOAuth(clientID, clientSecret, creds, ...opts)` configures OAuth on the Gemini CLI provider (`pkg/ai/provider/geminicli`):
-
-- Creates an `oauth.Transport` with the Google refresher
-- Requires `client_secret` in addition to `client_id` (standard for Google's installed-app OAuth flow)
-- Token exchange uses form-encoded
-
-Token endpoint: `https://oauth2.googleapis.com/token`
-
-Note: The `google` provider (`pkg/ai/provider/google`) uses API keys only and does not support OAuth. OAuth for Google services routes through the Gemini CLI provider which uses the Cloud Code Assist API.
-
 ## CLI integration
 
 The `cmd/pi` CLI demonstrates the full OAuth lifecycle:
@@ -144,5 +132,5 @@ The following are intentionally outside the SDK:
 
 ## Related
 
-- [Providers](/concepts/ai/providers) — the provider interface that OAuth layers beneath
+- [Providers](../ai/providers.md) — provider capabilities and registration
 - [Options](/concepts/ai/options) — `WithHeaders` for per-request header injection

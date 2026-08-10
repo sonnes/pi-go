@@ -21,7 +21,6 @@ For provider-hosted tools (web search, code execution, computer use, etc.), see 
 | OpenAI Responses | ✅ `tools` array | ✅ | `FunctionToolParam` ([convert.go:208-231](../../pkg/ai/provider/openairesponses/convert.go#L208)) |
 | Google Gemini | ✅ `tools[].functionDeclarations` | ✅ | |
 | Claude CLI | ❌ (CLI manages its own tools) | ❌ | `Tools` ignored ([claude.go:124](../../pkg/ai/provider/claudecli/claude.go#L124)) |
-| Gemini CLI | ✅ functionDeclarations | ✅ | |
 
 ## Parallel Tool Calls
 
@@ -32,7 +31,6 @@ For provider-hosted tools (web search, code execution, computer use, etc.), see 
 | OpenAI Responses | ✅ multiple output items | ✅ | tracked by index ([openairesponses.go:158](../../pkg/ai/provider/openairesponses/openairesponses.go#L158)) |
 | Google Gemini | ✅ multiple `functionCall` parts | ⚠️ | parts iterated; no flag |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ✅ | ⚠️ | |
 
 ## Tool Choice
 
@@ -44,7 +42,6 @@ For provider-hosted tools (web search, code execution, computer use, etc.), see 
 | OpenAI Chat | ✅ | ✅ | ✅ `required` | ✅ | ✅ all four ([convert.go:222-241](../../pkg/ai/provider/openai/convert.go#L222)) |
 | OpenAI Responses | ✅ | ✅ | ✅ | ✅ | ✅ all four ([convert.go:238-261](../../pkg/ai/provider/openairesponses/convert.go#L238)) |
 | Google Gemini | ✅ AUTO | ✅ NONE | ✅ ANY | ⚠️ via `allowedFunctionNames` | ⚠️ |
-| Gemini CLI | ✅ | ✅ | ✅ | ⚠️ | ⚠️ |
 
 ## Provider Documentation
 

@@ -20,7 +20,6 @@ read_when:
 | OpenAI Responses | input, output, total, input.cached_tokens, output.reasoning_tokens | ✅ input/output/total + cache_read | ([convert.go:285](../../pkg/ai/provider/openairesponses/convert.go#L285)); reasoning tokens not extracted |
 | Google Gemini | promptTokenCount, candidatesTokenCount, totalTokenCount, cachedContentTokenCount, thoughtsTokenCount | ⚠️ partial | `mapUsage` extracts input/output/total only |
 | Claude CLI | available in NDJSON | ❌ | discarded |
-| Gemini CLI | available on response | ❌ | discarded |
 
 ## Pre-Request Token Counting
 
@@ -44,6 +43,6 @@ read_when:
 - **OpenAI Chat** input/output split not surfaced — cost calculation can't run accurately.
 - **Reasoning tokens** (OpenAI Responses, Gemini `thoughtsTokenCount`) not surfaced.
 - **Gemini cache hit count** not extracted.
-- **Claude CLI / Gemini CLI** drop usage entirely.
+- **Claude CLI** drops usage entirely.
 - `Model.Cost` map needs population per model — not all models in the registry have pricing.
 - **No `TokenCounter` interface** — no pre-request token counting helper anywhere; local tokenizer (e.g. `tiktoken-go`) not bundled either.

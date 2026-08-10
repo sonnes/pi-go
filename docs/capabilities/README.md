@@ -11,7 +11,7 @@ read_when:
 
 This folder documents pi-go's coverage of upstream provider features. Each page contains a compatibility matrix, links to official provider documentation, and a list of current gaps in pi-go.
 
-Status as of April 2026. Providers covered:
+Providers covered:
 
 - **Anthropic** — Messages API ([pkg/ai/provider/anthropic](../../pkg/ai/provider/anthropic))
 - **OpenAI Chat** — Chat Completions API ([pkg/ai/provider/openai](../../pkg/ai/provider/openai))
@@ -20,7 +20,7 @@ Status as of April 2026. Providers covered:
 - **Google** — Gemini API ([pkg/ai/provider/google](../../pkg/ai/provider/google))
 - **Claude CLI** — `claude` subprocess ([pkg/ai/provider/claudecli](../../pkg/ai/provider/claudecli))
 - **Codex CLI** — `codex` subprocess ([pkg/ai/provider/codexcli](../../pkg/ai/provider/codexcli))
-- **Gemini CLI** — Cloud Code Assist HTTP ([pkg/ai/provider/geminicli](../../pkg/ai/provider/geminicli))
+- **Cursor CLI** — `cursor` subprocess ([pkg/ai/provider/cursorcli](../../pkg/ai/provider/cursorcli))
 
 ## Pages
 

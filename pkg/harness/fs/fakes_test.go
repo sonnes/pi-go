@@ -23,12 +23,6 @@ import (
 // assembles; none of them run a turn.
 type mockProvider struct{}
 
-func (m *mockProvider) ID() string { return "mock" }
-
-func (m *mockProvider) Models() []ai.Model {
-	return []ai.Model{{ID: "small", ToolCall: true}}
-}
-
 func (m *mockProvider) StreamText(
 	_ context.Context,
 	_ ai.Model,
@@ -43,7 +37,11 @@ func (m *mockProvider) StreamText(
 // testCatalog registers the mock provider so "mock/small" resolves.
 func testCatalog(p *mockProvider) *catalog.Catalog {
 	c := catalog.New()
-	c.RegisterProvider(p)
+	c.RegisterTextProvider(
+		"mock",
+		p,
+		ai.Model{ID: "small", ToolCall: true},
+	)
 	return c
 }
 

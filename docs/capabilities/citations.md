@@ -20,7 +20,6 @@ Citations attach source metadata (document, page, character range, URL) to spans
 | OpenRouter (Responses dialect) | ✅ `response.output_text.annotation.added` events with `url_citation` payloads | ❌ | events are streamed but ignored — citations are not currently attached to `ai.Text` spans or to the preceding server-tool call. See [plans/2026-04-28-openrouter-citations.md](../plans/2026-04-28-openrouter-citations.md) |
 | Google Gemini | ✅ `groundingMetadata` from grounded searches | ⚠️ | parsed into a synthesized `web_search` `ToolCall`; chunks rendered on `Output.Content`, full metadata on `Output.Raw` ([google.go](../../pkg/ai/provider/google/google.go)) |
 | Claude CLI | ⚠️ surfaced in CLI output | ❌ | not parsed |
-| Gemini CLI | ❌ | — | |
 
 ## Provider Documentation
 

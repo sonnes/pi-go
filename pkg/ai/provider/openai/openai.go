@@ -35,19 +35,14 @@ var (
 	_ ai.ImageProvider  = (*Provider)(nil)
 )
 
-// providerID is the OpenAI chat completions provider identity.
-const providerID = "openai-completions"
+// ID is the OpenAI chat completions provider identity.
+const ID = "openai-completions"
 
 // New creates a new OpenAI provider.
 func New(opts ...option.RequestOption) *Provider {
 	opts = append([]option.RequestOption{option.WithMaxRetries(0)}, opts...)
 	client := openai.NewClient(opts...)
 	return &Provider{client: &client}
-}
-
-// ID returns the provider API identifier.
-func (p *Provider) ID() string {
-	return providerID
 }
 
 // Detect builds a provider from OPENAI_API_KEY and reports whether it was set.
@@ -381,8 +376,8 @@ func buildFinalMessage(
 	return &ai.Message{
 		Role:       ai.RoleAssistant,
 		Content:    content,
-		API:        providerID,
-		Provider:   providerID,
+		API:        ID,
+		Provider:   ID,
 		Model:      model.ID,
 		Usage:      usage,
 		StopReason: stopReason,

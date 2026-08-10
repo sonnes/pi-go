@@ -36,22 +36,13 @@ func newTestHarness(t *testing.T, p *mockProvider, opts ...agent.Option) *Harnes
 // mockProvider replays scripted [ai.EventStream] responses in order and
 // records every prompt it is handed.
 type mockProvider struct {
-	id string
-
 	mu        sync.Mutex
 	prompts   []ai.Prompt
 	responses []*ai.EventStream
 	callIdx   int
 }
 
-func (m *mockProvider) ID() string {
-	if m.id == "" {
-		return "mock"
-	}
-	return m.id
-}
-
-func (m *mockProvider) Models() []ai.Model {
+func mockModels() []ai.Model {
 	return []ai.Model{
 		{ID: "small", Name: "Mock Small", ToolCall: true},
 		{ID: "large", Name: "Mock Large", ToolCall: true},
@@ -108,7 +99,7 @@ func textStream(text string) *ai.EventStream {
 // "mock/small" resolve.
 func testCatalog(p *mockProvider) *catalog.Catalog {
 	c := catalog.New()
-	c.RegisterProvider(p)
+	c.RegisterTextProvider("mock", p, mockModels()...)
 	return c
 }
 

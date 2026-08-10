@@ -4,7 +4,7 @@ summary: "Reuses the OpenAI Responses adapter for OpenRouter via a dialect flag,
 read_when:
   - Wiring OpenRouter as a provider in pi-go
   - Debugging why a server tool succeeds on OpenAI but not on OpenRouter
-  - Understanding why two providers can share the same provider ID
+  - Registering two dialects from one provider package
 ---
 
 # OpenRouter Dialect
@@ -63,13 +63,19 @@ raw item payload populate `ToolCall.Arguments` (`query`, `url`,
 (`search: anthropic news`, `fetch: https://...`); the verbatim provider
 JSON always remains on `ServerToolOutput.Raw` for richer extraction.
 
-## Both dialects share `ID() == "openai-responses"`
+## Registration identity is explicit
 
-The dialect is a transport-level detail, not a separate API surface. Two
-`Provider` instances may share the same provider ID; pi-go's global registry is
-keyed by provider ID, so callers must bind a specific provider per agent via
-`agent.WithProvider(p)` rather than relying on `ai.GetProvider(model.Provider)`.
-This matches how downstream projects already wire per-agent providers.
+The dialect is a transport-level detail. Both constructors are in the
+`openairesponses` package, which exports `openairesponses.ID` as its default
+identity. A catalog registration can use a different identity for each
+instance:
+
+```go
+p := openairesponses.NewForOpenRouter(opts...)
+cat.RegisterTextProvider("openrouter", p, openRouterModels...)
+```
+
+The explicit id keeps OpenAI and OpenRouter in separate catalog namespaces.
 
 ## Recording cassettes
 

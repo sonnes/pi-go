@@ -178,7 +178,7 @@ func generate(t target, prov mdProvider) ([]byte, int) {
 	fmt.Fprintf(&b, "}\n\n")
 
 	fmt.Fprintf(&b, "// Models returns the models served by this provider.\n")
-	fmt.Fprintf(&b, "func (p *Provider) Models() []ai.Model {\n")
+	fmt.Fprintf(&b, "func Models() []ai.Model {\n")
 	fmt.Fprintf(&b, "out := make([]ai.Model, len(models))\n")
 	fmt.Fprintf(&b, "copy(out, models)\n")
 	fmt.Fprintf(&b, "return out\n}\n\n")

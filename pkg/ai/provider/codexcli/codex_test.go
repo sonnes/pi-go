@@ -98,9 +98,8 @@ func TestProvider_ImplementsInterfaces(t *testing.T) {
 	)
 }
 
-func TestProvider_API(t *testing.T) {
-	p := New()
-	assert.Equal(t, "codex-cli", p.ID())
+func TestProviderID(t *testing.T) {
+	assert.Equal(t, "codex-cli", ID)
 }
 
 func TestStreamText_SimpleText(t *testing.T) {

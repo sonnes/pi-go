@@ -19,7 +19,6 @@ Async bulk inference. Submit a JSONL of requests, run within a window (typically
 | OpenAI Responses | ✅ | ❌ | not wired |
 | Google Gemini | ✅ via Vertex AI batch predictions | ❌ | not wired |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ❌ | — | |
 
 ## Background Mode
 

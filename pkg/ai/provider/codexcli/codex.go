@@ -23,8 +23,8 @@ var (
 	_ ai.ObjectProvider = (*Provider)(nil)
 )
 
-// providerID is the Codex CLI provider identity.
-const providerID = "codex-cli"
+// ID is the Codex CLI provider identity.
+const ID = "codex-cli"
 
 // Provider implements [ai.TextProvider] and [ai.ObjectProvider] by delegating
 // each call to a fresh `codex exec --json` subprocess.
@@ -140,11 +140,6 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// ID returns the provider identity.
-func (p *Provider) ID() string {
-	return providerID
-}
-
 // StreamText runs a one-shot `codex exec --json --ephemeral` subprocess
 // and streams [ai.Event]s extracted from its JSONL output.
 //
@@ -183,7 +178,7 @@ func (p *Provider) StreamText(
 
 		push(ai.Event{Type: ai.EventStart})
 
-		final, usage, pumpErr := pumpAIEvents(push, stdout, model, p.ID(), cfg.model)
+		final, usage, pumpErr := pumpAIEvents(push, stdout, model, ID, cfg.model)
 
 		cleanupErr := cleanup()
 		if pumpErr == nil {
@@ -201,10 +196,10 @@ func (p *Provider) StreamText(
 			final.Usage = usage
 		}
 		if final.API == "" {
-			final.API = p.ID()
+			final.API = ID
 		}
 		if final.Provider == "" {
-			final.Provider = p.ID()
+			final.Provider = ID
 		}
 		if final.Model == "" {
 			final.Model = cfg.model

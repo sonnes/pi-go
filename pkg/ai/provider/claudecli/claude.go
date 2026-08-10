@@ -32,8 +32,8 @@ var (
 	_ ai.ObjectProvider = (*Provider)(nil)
 )
 
-// providerID is the Claude CLI provider identity.
-const providerID = "claude-cli"
+// ID is the Claude CLI provider identity.
+const ID = "claude-cli"
 
 // Provider implements [ai.TextProvider] and [ai.ObjectProvider] by
 // delegating each call to a fresh `claude --print` subprocess.
@@ -153,11 +153,6 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// ID returns the provider identity.
-func (p *Provider) ID() string {
-	return providerID
-}
-
 // StreamText runs a one-shot `claude --print` subprocess and streams
 // [ai.Event]s extracted from its NDJSON output.
 //
@@ -228,10 +223,10 @@ func (p *Provider) StreamText(
 			final.Usage = usage
 		}
 		if final.API == "" {
-			final.API = p.ID()
+			final.API = ID
 		}
 		if final.Provider == "" {
-			final.Provider = p.ID()
+			final.Provider = ID
 		}
 		if final.Model == "" {
 			final.Model = cfg.model

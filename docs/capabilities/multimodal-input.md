@@ -19,7 +19,6 @@ read_when:
 | OpenAI Responses | ✅ base64 or URL with `detail` | ⚠️ base64 only | `detail: auto` ([convert.go:66-80](../../pkg/ai/provider/openairesponses/convert.go#L66)) |
 | Google Gemini | ✅ InlineData base64; Files URI; `media_resolution` per image | ✅ base64; URL via `File` block | ([convert.go:66-71](../../pkg/ai/provider/google/convert.go#L66)) |
 | Claude CLI | ✅ via `@filepath` | ❌ | image content silently dropped |
-| Gemini CLI | ✅ InlineData | ✅ | ([convert.go:64-69](../../pkg/ai/provider/geminicli/convert.go#L64)) |
 
 **Provider docs**
 
@@ -36,7 +35,6 @@ read_when:
 | OpenAI Responses | ✅ FileID, URL, or base64 | ✅ all three | ([convert.go:102-129](../../pkg/ai/provider/openairesponses/convert.go#L102)) |
 | Google Gemini | ✅ Files URI/FileID, or base64 InlineData | ✅ all three | ([convert.go:86-117](../../pkg/ai/provider/google/convert.go#L86)) |
 | Claude CLI | ⚠️ via filepath arg | ❌ | not forwarded |
-| Gemini CLI | ✅ all three | ✅ | ([convert.go:83-112](../../pkg/ai/provider/geminicli/convert.go#L83)) |
 
 **Provider docs**
 
@@ -54,7 +52,6 @@ read_when:
 | Google Gemini | ✅ WAV, MP3, AIFF, AAC, OGG, FLAC | ❌ | API supports inline + Files API |
 | Gemini Live | ✅ realtime audio | ❌ | see [realtime-api.md](realtime-api.md) |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ⚠️ via Files API ref | ❌ | |
 
 **Provider docs**
 
@@ -70,7 +67,6 @@ read_when:
 | OpenAI Responses | ✅ | ❌ | |
 | Google Gemini | ✅ inline or Files API; up to 1h; `videoMetadata` for offsets/FPS | ❌ | strongest video support |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ⚠️ via Files API ref | ❌ | |
 
 **Provider docs**
 

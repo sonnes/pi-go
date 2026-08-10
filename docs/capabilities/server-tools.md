@@ -83,7 +83,6 @@ Sandboxed bash environment.
 - **OpenAI Responses** — hosted shell preview.
 - **Claude CLI** — local sandboxed bash; pi-go only forwards `--allowedTools Bash` ([Sandboxing docs](https://docs.claude.com/en/docs/claude-code/sandboxing)).
 - **Codex CLI** — local sandboxed command execution; pi-go surfaces `command_execution` JSONL items as `bash` tool events.
-- **Gemini CLI** — `run_shell_command`.
 
 ## Text Editor
 
@@ -113,7 +112,7 @@ Model Context Protocol — clients connect tool/resource/prompt servers and surf
 
 - **Anthropic** — MCP connector blocks. [Docs](https://docs.anthropic.com/en/docs/agents-and-tools/mcp)
 - **OpenAI Responses** — MCP integration. [Docs](https://platform.openai.com/docs/guides/tools-remote-mcp)
-- **Google / Gemini CLI** — via ACP bridging.
+- **Google Gemini** — via ACP bridging.
 - [Model Context Protocol spec](https://modelcontextprotocol.io/specification)
 
 ## pi-go Wiring

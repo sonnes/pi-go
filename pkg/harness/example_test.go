@@ -212,22 +212,20 @@ func exampleReadTool() ai.Tool {
 // then answer.
 func exampleCatalog() *catalog.Catalog {
 	c := catalog.New()
-	c.RegisterProvider(&exampleProvider{responses: []*ai.EventStream{
-		exampleToolCall("c1", "skill", map[string]any{"name": "commit"}),
-		exampleText("Committed with an imperative subject."),
-	}})
+	c.RegisterTextProvider(
+		"mock",
+		&exampleProvider{responses: []*ai.EventStream{
+			exampleToolCall("c1", "skill", map[string]any{"name": "commit"}),
+			exampleText("Committed with an imperative subject."),
+		}},
+		ai.Model{ID: "small", ToolCall: true},
+	)
 	return c
 }
 
 type exampleProvider struct {
 	responses []*ai.EventStream
 	callIdx   int
-}
-
-func (p *exampleProvider) ID() string { return "mock" }
-
-func (p *exampleProvider) Models() []ai.Model {
-	return []ai.Model{{ID: "small", ToolCall: true}}
 }
 
 func (p *exampleProvider) StreamText(

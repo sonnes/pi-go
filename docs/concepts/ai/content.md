@@ -44,7 +44,6 @@ Use `AsContent[T]` for safe type assertion — it handles nil safely.
 | OpenAI Chat Completions | yes | — | yes | `URL` is dropped; use the Files API to obtain a `FileID`. |
 | OpenAI Responses | yes | yes | yes | Maps to `input_file`. |
 | Google Gemini | yes | yes | yes | Inline uses `inlineData`; URL/FileID use `fileData`. |
-| Gemini CLI | yes | yes | yes | Same shape as Google. |
 | Claude CLI | — | — | — | The CLI subprocess only forwards user text; files are skipped. |
 
 Unsupported variants are silently skipped at the provider boundary so messages with mixed-support content can still flow through.

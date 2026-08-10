@@ -22,7 +22,7 @@ var (
 var models = []ai.Model{CursorFast}
 
 // Models returns the models served by the Cursor CLI provider.
-func (p *Provider) Models() []ai.Model {
+func Models() []ai.Model {
 	out := make([]ai.Model, len(models))
 	copy(out, models)
 	return out

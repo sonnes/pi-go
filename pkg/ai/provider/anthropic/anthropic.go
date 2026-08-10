@@ -31,8 +31,8 @@ var (
 	_ ai.TokenCounter   = (*Provider)(nil)
 )
 
-// providerID is the Anthropic Messages provider identity.
-const providerID = "anthropic-messages"
+// ID is the Anthropic Messages provider identity.
+const ID = "anthropic-messages"
 
 // Provider implements [ai.TextProvider] for the Anthropic Messages API.
 type Provider struct {
@@ -80,11 +80,6 @@ func New(opts ...Option) *Provider {
 		client:  anthropic.NewClient(clientOpts...),
 		baseURL: o.baseURL,
 	}
-}
-
-// ID returns the provider API identifier.
-func (p *Provider) ID() string {
-	return providerID
 }
 
 // Detect builds a provider from environment credentials and reports whether
@@ -522,8 +517,8 @@ func buildMessage(model ai.Model, acc *anthropic.Message) *ai.Message {
 	return &ai.Message{
 		Role:       ai.RoleAssistant,
 		Content:    content,
-		API:        providerID,
-		Provider:   providerID,
+		API:        ID,
+		Provider:   ID,
 		Model:      model.ID,
 		Usage:      usage,
 		StopReason: mapStopReason(string(acc.StopReason)),

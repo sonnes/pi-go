@@ -54,10 +54,9 @@ const codexDefaultInstructions = "You are a helpful coding assistant."
 
 // Provider implements [ai.TextProvider] for OpenAI's Responses API.
 //
-// Two providers may share the same [Provider.Provider] identifier
-// ("openai-responses") when one targets OpenAI and another targets
-// OpenRouter via [DialectOpenRouter]. Bind a specific provider per model
-// with [ai.NewLanguageModel] rather than resolving by identity.
+// One instance can target OpenAI while another targets OpenRouter through
+// [DialectOpenRouter]. Applications register those instances under whichever
+// catalog identities they need.
 type Provider struct {
 	client  *openai.Client
 	dialect Dialect
@@ -70,8 +69,8 @@ var (
 	_ ai.TokenCounter   = (*Provider)(nil)
 )
 
-// providerID is the OpenAI Responses provider identity.
-const providerID = "openai-responses"
+// ID is the OpenAI Responses provider identity.
+const ID = "openai-responses"
 
 // New creates a new OpenAI Responses provider targeting OpenAI's native API.
 // For OpenRouter use [NewForOpenRouter].
@@ -106,13 +105,6 @@ func NewForCodex(opts ...option.RequestOption) *Provider {
 	p := New(opts...)
 	p.dialect = DialectCodex
 	return p
-}
-
-// ID returns the provider API identifier. Both dialects share the same ID;
-// callers bind a specific provider per agent rather than via global registry
-// lookup.
-func (p *Provider) ID() string {
-	return providerID
 }
 
 // DetectOpenRouter builds an OpenRouter-dialect provider from
@@ -729,8 +721,8 @@ func buildFinalMessage(
 	return &ai.Message{
 		Role:       ai.RoleAssistant,
 		Content:    content,
-		API:        providerID,
-		Provider:   providerID,
+		API:        ID,
+		Provider:   ID,
 		Model:      model.ID,
 		Usage:      usage,
 		StopReason: stopReason,

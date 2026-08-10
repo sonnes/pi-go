@@ -27,8 +27,8 @@ var (
 	_ ai.TokenCounter   = (*Provider)(nil)
 )
 
-// providerID is the Google generative provider identity.
-const providerID = "google-generative"
+// ID is the Google generative provider identity.
+const ID = "google-generative"
 
 // Provider implements the Google AI (Gemini) provider.
 type Provider struct {
@@ -80,11 +80,6 @@ func New(opts ...Option) (*Provider, error) {
 
 	p.client = client
 	return p, nil
-}
-
-// ID returns the provider identifier.
-func (p *Provider) ID() string {
-	return providerID
 }
 
 // Detect builds a provider from GOOGLE_API_KEY and reports whether it was set.
@@ -437,8 +432,8 @@ func (p *Provider) StreamText(
 		finalMessage := &ai.Message{
 			Role:       ai.RoleAssistant,
 			Content:    finalContent,
-			API:        providerID,
-			Provider:   providerID,
+			API:        ID,
+			Provider:   ID,
 			Model:      model.ID,
 			Usage:      usage,
 			StopReason: stopReason,

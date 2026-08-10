@@ -23,7 +23,7 @@ var (
 var models = []ai.Model{GPT5Codex}
 
 // Models returns the models served by the Codex CLI provider.
-func (p *Provider) Models() []ai.Model {
+func Models() []ai.Model {
 	out := make([]ai.Model, len(models))
 	copy(out, models)
 	return out

@@ -4,8 +4,7 @@ import "context"
 
 // TextProvider is the core capability interface for streaming text
 // generation. It is pure behavior: identity ("who is this provider") is
-// not part of the capability and lives on the registration interface
-// (catalog.Provider) instead.
+// not part of the capability and is supplied when a catalog registers it.
 //
 // Bind a [Model] to a TextProvider with [NewLanguageModel] to get a
 // callable [LanguageModel].

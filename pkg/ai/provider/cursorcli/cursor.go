@@ -12,8 +12,8 @@ import (
 
 var _ ai.TextProvider = (*Provider)(nil)
 
-// providerID is the Cursor CLI provider identity.
-const providerID = "cursor-cli"
+// ID is the Cursor CLI provider identity.
+const ID = "cursor-cli"
 
 // Provider implements [ai.TextProvider] by delegating each call to a fresh
 // `cursor-agent --print` subprocess.
@@ -118,11 +118,6 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// ID returns the provider identity.
-func (p *Provider) ID() string {
-	return providerID
-}
-
 // StreamText runs a one-shot `cursor-agent --print` subprocess and streams
 // [ai.Event]s extracted from its NDJSON output.
 //
@@ -160,7 +155,7 @@ func (p *Provider) StreamText(
 
 		push(ai.Event{Type: ai.EventStart})
 
-		final, pumpErr := pumpAIEvents(push, stdout, model, p.ID(), cfg.model)
+		final, pumpErr := pumpAIEvents(push, stdout, model, ID, cfg.model)
 
 		cleanupErr := cleanup()
 		if pumpErr == nil {
@@ -174,10 +169,10 @@ func (p *Provider) StreamText(
 			return nil, nil
 		}
 		if final.API == "" {
-			final.API = p.ID()
+			final.API = ID
 		}
 		if final.Provider == "" {
-			final.Provider = p.ID()
+			final.Provider = ID
 		}
 		if final.Model == "" {
 			final.Model = cfg.model

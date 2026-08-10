@@ -16,9 +16,6 @@ import (
 
 type fakeImageProvider struct{}
 
-func (fakeImageProvider) ID() string         { return "img" }
-func (fakeImageProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
-
 func (fakeImageProvider) GenerateImage(
 	_ context.Context,
 	_ ai.Model,
@@ -30,7 +27,7 @@ func (fakeImageProvider) GenerateImage(
 
 func TestImageModel_ResolvesAndBinds(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(fakeImageProvider{})
+	c.RegisterImageProvider("img", fakeImageProvider{}, ai.Model{ID: "m1"})
 
 	im, err := c.ImageModel("img/m1")
 	require.NoError(t, err)
@@ -44,7 +41,7 @@ func TestImageModel_ResolvesAndBinds(t *testing.T) {
 
 func TestImageModel_Unsupported(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "fake"}) // text-only
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...) // text-only
 
 	_, err := c.ImageModel("fake/m1")
 	assert.ErrorContains(t, err, "does not support image generation")
@@ -53,9 +50,6 @@ func TestImageModel_Unsupported(t *testing.T) {
 // --- speech ---
 
 type fakeSpeechProvider struct{}
-
-func (fakeSpeechProvider) ID() string         { return "tts" }
-func (fakeSpeechProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeSpeechProvider) GenerateSpeech(
 	_ context.Context,
@@ -68,7 +62,7 @@ func (fakeSpeechProvider) GenerateSpeech(
 
 func TestSpeechModel_ResolvesAndBinds(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(fakeSpeechProvider{})
+	c.RegisterSpeechProvider("tts", fakeSpeechProvider{}, ai.Model{ID: "m1"})
 
 	sm, err := c.SpeechModel("tts/m1")
 	require.NoError(t, err)
@@ -81,7 +75,7 @@ func TestSpeechModel_ResolvesAndBinds(t *testing.T) {
 
 func TestSpeechModel_Unsupported(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "fake"}) // text-only
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...) // text-only
 
 	_, err := c.SpeechModel("fake/m1")
 	assert.ErrorContains(t, err, "does not support speech generation")
@@ -90,9 +84,6 @@ func TestSpeechModel_Unsupported(t *testing.T) {
 // --- object ---
 
 type fakeObjectProvider struct{ raw string }
-
-func (fakeObjectProvider) ID() string         { return "obj" }
-func (fakeObjectProvider) Models() []ai.Model { return []ai.Model{{ID: "m1"}} }
 
 func (fakeObjectProvider) StreamText(
 	_ context.Context,
@@ -122,7 +113,11 @@ type point struct {
 
 func TestGenerateObject_ViaCatalog(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(fakeObjectProvider{raw: `{"x":3,"y":4}`})
+	c.RegisterTextProvider(
+		"obj",
+		fakeObjectProvider{raw: `{"x":3,"y":4}`},
+		ai.Model{ID: "m1"},
+	)
 
 	res, err := catalog.GenerateObject[point](context.Background(), c, "obj/m1", ai.Prompt{})
 	require.NoError(t, err)
@@ -131,8 +126,28 @@ func TestGenerateObject_ViaCatalog(t *testing.T) {
 
 func TestGenerateObject_Unsupported(t *testing.T) {
 	c := catalog.New()
-	c.RegisterProvider(&fakeProvider{id: "fake"}) // text-only, no ObjectProvider
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...) // no ObjectProvider
 
 	_, err := catalog.GenerateObject[point](context.Background(), c, "fake/m1", ai.Prompt{})
 	assert.ErrorContains(t, err, "does not support object generation")
+}
+
+func TestCapabilityProvidersShareModelsButNotProviderLookup(t *testing.T) {
+	c := catalog.New()
+	c.RegisterTextProvider("shared", &fakeProvider{})
+	c.RegisterImageProvider(
+		"shared",
+		fakeImageProvider{},
+		ai.Model{ID: "m1"},
+	)
+
+	_, err := c.LanguageModel("shared/m1")
+	require.NoError(t, err, "image registration adds to the shared model index")
+
+	_, err = c.ImageModel("shared/m1")
+	require.NoError(t, err)
+
+	c.RegisterSpeechProvider("shared", fakeSpeechProvider{})
+	_, err = c.SpeechModel("shared/m1")
+	require.NoError(t, err)
 }

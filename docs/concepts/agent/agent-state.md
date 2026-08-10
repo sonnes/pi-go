@@ -8,21 +8,21 @@ read_when:
 
 # Agent State
 
-Configuration is frozen at construction; the only runtime state the interface exposes is the conversation history, via `Messages()`. Everything that used to be a getter is now a property of the run: whether a run is active, how it ended, and what it produced all live on the `Stream` returned by `Run`.
+Configuration is frozen at construction. The agent exposes conversation history through `Messages()`. A run's progress, result, and error live on the `Stream` returned by `Run`.
 
 ## Design: state lives on the run, not the agent
 
-An earlier design exposed `IsRunning()` and `Err()` getters plus a `Wait()` method. All three existed only because runs were asynchronous — and `Wait`/`Err` had a footgun: called between runs, they reported the *previous* run's result. With `Run` returning a per-run stream, each run's outcome is unambiguous: `Stream.Wait()` returns that run's messages and error, and "is it running" is simply "has my stream ended". One error channel replaces four.
+Each call to `Run` returns its own stream. `Stream.Wait()` returns that run's messages and error, while `Stream.Events()` exposes its progress. State from one run cannot be mistaken for another run's result.
 
 ## Messages
 
-`Messages()` returns a defensive copy of the full conversation history — callers cannot corrupt internal state. `WithHistory(msgs...)` copies messages in at construction; the caller's slice is not aliased.
+`Messages()` returns a defensive copy of the full conversation history. Callers cannot corrupt internal state. `WithHistory(msgs...)` also copies its input slice.
 
 ## Concurrency
 
 - **Reads** — `Messages()` acquires a mutex, copies, returns. Safe from any goroutine, including mid-run.
 - **Writes** — only the run's producer goroutine appends to history, also under the mutex.
-- **Guard** — `Run` checks a `running` flag under the lock; a concurrent `Run` fails its stream with an "already running" error.
+- **Guard** — `Run` checks a `running` flag under the lock. A concurrent `Run` fails with an "already running" stream error.
 
 ## Mid-run observability
 
@@ -30,9 +30,9 @@ For real-time updates during a run, consume the run's stream:
 
 - **Streaming content** — `message_update` events carry partial assistant messages as they stream.
 - **Tool progress** — `tool_execution_start`/`update`/`end` events track tool calls.
-- **Completion** — `agent_end` carries all new messages and accumulated usage; failures end the stream with an error.
+- **Completion** — `agent_end` carries all new messages and accumulated usage. An error ends the stream without this event.
 
 ## Related
 
-- [Agent](/concepts/agent/agent) — construction, options, entry points
-- [Streaming](/concepts/agent/streaming) — event stream and consumption patterns
+- [Agent](./agent.md) — construction, options, entry points
+- [Streaming](./streaming.md) — event stream and consumption patterns

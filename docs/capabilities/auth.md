@@ -20,7 +20,6 @@ See also [docs/concepts/auth/oauth.md](../concepts/auth/oauth.md) for the design
 | Google Gemini | ✅ | ✅ | `WithAPIKey` ([google.go:39-41](../../pkg/ai/provider/google/google.go#L39)) |
 | Claude CLI | ✅ via `ANTHROPIC_API_KEY` env | ✅ | inherits process env |
 | Codex CLI | ✅ via Codex CLI auth | ✅ | delegated to the `codex` subprocess |
-| Gemini CLI | ❌ (OAuth only) | ❌ | |
 
 ## OAuth
 
@@ -32,7 +31,6 @@ See also [docs/concepts/auth/oauth.md](../concepts/auth/oauth.md) for the design
 | Google Gemini | ✅ Vertex OAuth (gcloud) | ❌ | `pkg/ai/provider/google` is API-key only |
 | Claude CLI | ✅ delegated to CLI's own login | ✅ | |
 | Codex CLI | ✅ delegated to CLI's own login | ✅ | |
-| Gemini CLI | ✅ Bearer token from Cloud Code Assist OAuth | ✅ | `Credentials{Token, ProjectID}` ([geminicli.go:29-32](../../pkg/ai/provider/geminicli/geminicli.go#L29)) |
 
 ## Service Account / Cloud Endpoints
 
@@ -42,7 +40,6 @@ See also [docs/concepts/auth/oauth.md](../concepts/auth/oauth.md) for the design
 | Anthropic on Vertex | ✅ | ❌ | not implemented |
 | OpenAI on Azure | ✅ Azure OpenAI | ❌ | not implemented |
 | Google on Vertex AI | ✅ ADC / service account | ❌ | `pkg/ai/provider/google` uses `generativelanguage.googleapis.com` only |
-| Gemini CLI | ✅ pre-issued bearer | ✅ | ([geminicli.go:179](../../pkg/ai/provider/geminicli/geminicli.go#L179)) |
 
 ## Provider Documentation
 
@@ -59,7 +56,7 @@ See also [docs/concepts/auth/oauth.md](../concepts/auth/oauth.md) for the design
 ## pi-go Gaps
 
 - **OpenAI Responses provider** has no `NewWithOAuth` helper; would need to mirror the wiring from `openai`.
-- **Google HTTP provider** has no OAuth or service-account helper; only `geminicli` does.
+- **Google HTTP provider** has no OAuth or service-account helper.
 - **No Bedrock / Vertex routing** for Anthropic models.
 - **No Azure OpenAI** variant.
 - **Login UX** (browser redirect, code capture) lives in `cmd/pi`; not exposed as a reusable library entry point.

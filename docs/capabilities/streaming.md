@@ -8,7 +8,7 @@ read_when:
 
 # Streaming
 
-All major providers expose Server-Sent Events for incremental output. pi-go's [`Provider.StreamText`](../../pkg/ai/provider.go) returns an [`EventStream`](../../pkg/ai/event.go) that yields typed deltas (`text_delta`, `thinking_delta`, `tool_delta`).
+All major providers expose Server-Sent Events for incremental output. pi-go's [`TextProvider.StreamText`](../../pkg/ai/text.go) returns an [`EventStream`](../../pkg/ai/stream.go) that yields typed deltas (`text_delta`, `thinking_delta`, `tool_delta`).
 
 ## Compatibility
 
@@ -20,7 +20,6 @@ All major providers expose Server-Sent Events for incremental output. pi-go's [`
 | Google Gemini | ✅ SSE | ✅ | `chat.SendMessageStream` ([google.go:157](../../pkg/ai/provider/google/google.go#L157)) |
 | Claude CLI | ✅ NDJSON via `--output-format stream-json` | ⚠️ | pi-go consumes the NDJSON but emits a single completed message rather than incremental events ([claudecli/claude.go](../../pkg/ai/provider/claudecli/claude.go)) |
 | Codex CLI | ✅ JSONL via `codex exec --json` | ⚠️ | pi-go consumes JSONL item events and emits completed text/tool blocks rather than token deltas ([codexcli/codex.go](../../pkg/ai/provider/codexcli/codex.go)) |
-| Gemini CLI | ✅ SSE at `/v1internal:streamGenerateContent?alt=sse` | ✅ | direct HTTP+SSE ([geminicli.go:24](../../pkg/ai/provider/geminicli/geminicli.go#L24)) |
 
 ## Provider Documentation
 

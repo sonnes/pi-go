@@ -48,7 +48,7 @@ func ensureProviders() {
 	once.Do(func() {
 		for _, d := range detectors {
 			if p, ok := d.Detect(); ok {
-				Default.RegisterProvider(p)
+				registerDetected(Default, d, p)
 			}
 		}
 	})

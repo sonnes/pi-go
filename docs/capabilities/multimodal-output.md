@@ -19,7 +19,6 @@ pi-go exposes image generation through the optional [`ImageProvider`](../../pkg/
 | OpenAI Responses | ✅ inline `image_generation` server tool | ❌ | not exposed as in-stream tool |
 | Google Gemini | ✅ separate Imagen API (`imagen-3.0-generate-002`, Imagen 4 series) | ⚠️ | Imagen 3.0 only |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ❌ | — | |
 
 **Provider docs**
 
@@ -37,7 +36,6 @@ pi-go exposes image generation through the optional [`ImageProvider`](../../pkg/
 | Google Gemini | ✅ Gemini 3.1 Flash TTS, multi-speaker | ❌ | |
 | Gemini Live | ✅ realtime audio out | ❌ | see [realtime-api.md](realtime-api.md) |
 | Claude CLI | ❌ | — | |
-| Gemini CLI | ❌ | — | |
 
 **Provider docs**
 
