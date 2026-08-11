@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/openai/openai-go/v3/option"
 
+	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 )
@@ -24,7 +26,14 @@ import (
 // openAICodexBaseURL is the ChatGPT/Codex Responses API mount. ChatGPT OAuth
 // access tokens are honored only on this backend, not on the standard
 // api.openai.com Chat Completions endpoint.
-const openAICodexBaseURL = "https://chatgpt.com/backend-api/codex"
+const (
+	openAICodexBaseURL = "https://chatgpt.com/backend-api/codex"
+	// codexModelsClientVersion is the compatibility version Codex source
+	// builds use. The models endpoint requires a semantic client version;
+	// 0.0.0 selects the current development catalog whose stable fields this
+	// package consumes.
+	codexModelsClientVersion = "0.0.0"
+)
 
 // chatgptAccountIDExtra is the [oauth.Credentials.Extras] key under which the
 // Codex reuse tier stashes the ChatGPT account ID, so it survives token
@@ -54,6 +63,97 @@ func NewForCodexOAuth(
 		opts = append(opts, option.WithHeader("chatgpt-account-id", accountID))
 	}
 	return NewForCodex(opts...)
+}
+
+// ListCodexModels returns the models the authenticated ChatGPT account can
+// use through the Codex backend. Models hidden from the picker or unsupported
+// by the API are omitted. Optional transport settings can persist refreshed
+// credentials or replace the HTTP transport in tests.
+func ListCodexModels(
+	ctx context.Context,
+	clientID, accountID string,
+	creds oauth.Credentials,
+	refresh ...oauth.TransportOption,
+) ([]ai.Model, error) {
+	transport := openai.NewOAuthTransport(clientID, creds, refresh...)
+	client := &http.Client{Transport: transport}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		openAICodexBaseURL+"/models",
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("openairesponses: build Codex models request: %w", err)
+	}
+	query := req.URL.Query()
+	query.Set("client_version", codexModelsClientVersion)
+	req.URL.RawQuery = query.Encode()
+	if accountID == "" {
+		accountID = chatgptAccountID(creds.AccessToken)
+	}
+	if accountID != "" {
+		req.Header.Set("chatgpt-account-id", accountID)
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("openairesponses: list Codex models: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("openairesponses: read Codex models: %w", err)
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf(
+			"openairesponses: list Codex models: %s: %s",
+			res.Status,
+			string(body),
+		)
+	}
+
+	var wire codexModelsResponse
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return nil, fmt.Errorf("openairesponses: decode Codex models: %w", err)
+	}
+
+	models := make([]ai.Model, 0, len(wire.Models))
+	for _, model := range wire.Models {
+		if model.Visibility != "list" || !model.SupportedInAPI {
+			continue
+		}
+
+		levels := make([]ai.ThinkingLevel, 0, len(model.SupportedReasoningLevels))
+		for _, level := range model.SupportedReasoningLevels {
+			levels = append(levels, ai.ThinkingLevel(level.Effort))
+		}
+
+		models = append(models, ai.Model{
+			ID:             model.Slug,
+			Name:           model.DisplayName,
+			Reasoning:      len(levels) > 0,
+			ThinkingLevels: levels,
+			ContextWindow:  model.ContextWindow,
+		})
+	}
+
+	return models, nil
+}
+
+type codexModelsResponse struct {
+	Models []struct {
+		Slug                     string `json:"slug"`
+		DisplayName              string `json:"display_name"`
+		Visibility               string `json:"visibility"`
+		SupportedInAPI           bool   `json:"supported_in_api"`
+		ContextWindow            int    `json:"context_window"`
+		SupportedReasoningLevels []struct {
+			Effort string `json:"effort"`
+		} `json:"supported_reasoning_levels"`
+	} `json:"models"`
 }
 
 // DetectOAuthEnv builds a Codex OAuth provider from OPENAI_OAUTH_TOKEN (with

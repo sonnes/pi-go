@@ -4,14 +4,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/sonnes/pi-go/pkg/ai"
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 )
 
@@ -118,6 +122,55 @@ func TestNewForCodexOAuth_UsesResponsesAPI(t *testing.T) {
 	p := NewForCodexOAuth("app_test", "", oauth.Credentials{AccessToken: "test-token"})
 	require.NotNil(t, p)
 	assert.Equal(t, "openai-responses", ID)
+}
+
+func TestListCodexModels(t *testing.T) {
+	var gotURL, gotAuth, gotAccount string
+	base := codexRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		gotURL = req.URL.String()
+		gotAuth = req.Header.Get("Authorization")
+		gotAccount = req.Header.Get("chatgpt-account-id")
+
+		body := `{"models":[
+			{"slug":"gpt-visible","display_name":"GPT Visible","visibility":"list","supported_in_api":true,"context_window":272000,"supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}]},
+			{"slug":"gpt-hidden","display_name":"GPT Hidden","visibility":"hide","supported_in_api":true,"supported_reasoning_levels":[]},
+			{"slug":"gpt-ui-only","display_name":"GPT UI Only","visibility":"list","supported_in_api":false,"supported_reasoning_levels":[]}
+		]}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+
+	models, err := ListCodexModels(
+		t.Context(),
+		"client-id",
+		"account-id",
+		oauth.Credentials{
+			AccessToken: "access-token",
+			ExpiresAt:   time.Now().Add(time.Hour),
+		},
+		oauth.WithBase(base),
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, openAICodexBaseURL+"/models?client_version=0.0.0", gotURL)
+	assert.Equal(t, "Bearer access-token", gotAuth)
+	assert.Equal(t, "account-id", gotAccount)
+	require.Len(t, models, 1)
+	assert.Equal(t, "gpt-visible", models[0].ID)
+	assert.Equal(t, "GPT Visible", models[0].Name)
+	assert.Equal(t, 272000, models[0].ContextWindow)
+	assert.True(t, models[0].Reasoning)
+	assert.Equal(t, []ai.ThinkingLevel{ai.ThinkingLow, ai.ThinkingHigh}, models[0].ThinkingLevels)
+}
+
+type codexRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f codexRoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 // TestCodexReReadRefresher_ReReads verifies the refresher returns the freshest

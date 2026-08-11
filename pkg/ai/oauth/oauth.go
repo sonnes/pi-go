@@ -47,7 +47,8 @@ func (f TokenRefresherFunc) RefreshToken(ctx context.Context, creds Credentials)
 	return f(ctx, creds)
 }
 
-// OnRefresh is called after a successful token refresh, allowing the
-// caller to persist updated credentials. Storage concerns stay outside
-// the SDK.
+// OnRefresh is called after a successful token refresh, allowing the caller to
+// persist updated credentials. Returning an error prevents the request from
+// using credentials whose rotation was not persisted. Storage concerns stay
+// outside the SDK.
 type OnRefresh func(creds Credentials) error

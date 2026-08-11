@@ -12,11 +12,12 @@ type Transport struct {
 	// Base is the underlying RoundTripper. If nil, [http.DefaultTransport] is used.
 	Base http.RoundTripper
 
-	mu        sync.Mutex
-	creds     Credentials
-	refresher TokenRefresher
-	onRefresh OnRefresh
-	headers   map[string]string
+	mu             sync.Mutex
+	creds          Credentials
+	refresher      TokenRefresher
+	onRefresh      OnRefresh
+	pendingPersist bool
+	headers        map[string]string
 }
 
 // TransportOption configures a [Transport].
@@ -32,7 +33,8 @@ func WithRefresher(r TokenRefresher) TransportOption {
 	return func(t *Transport) { t.refresher = r }
 }
 
-// WithOnRefresh sets a callback invoked after a successful token refresh.
+// WithOnRefresh sets a callback invoked after a successful token refresh. A
+// callback error fails the request and is retried before the next request.
 func WithOnRefresh(fn OnRefresh) TransportOption {
 	return func(t *Transport) { t.onRefresh = fn }
 }
@@ -56,6 +58,13 @@ func NewTransport(creds Credentials, opts ...TransportOption) *Transport {
 // headers into the request.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	t.mu.Lock()
+	if t.pendingPersist && t.onRefresh != nil {
+		if err := t.onRefresh(t.creds); err != nil {
+			t.mu.Unlock()
+			return nil, fmt.Errorf("oauth: persist refreshed credentials: %w", err)
+		}
+		t.pendingPersist = false
+	}
 	if t.creds.IsExpired() && t.refresher != nil {
 		newCreds, err := t.refresher.RefreshToken(req.Context(), t.creds)
 		if err != nil {
@@ -64,7 +73,11 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		t.creds = newCreds
 		if t.onRefresh != nil {
-			_ = t.onRefresh(newCreds)
+			if err := t.onRefresh(newCreds); err != nil {
+				t.pendingPersist = true
+				t.mu.Unlock()
+				return nil, fmt.Errorf("oauth: persist refreshed credentials: %w", err)
+			}
 		}
 	}
 	token := t.creds.AccessToken

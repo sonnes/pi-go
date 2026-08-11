@@ -59,7 +59,7 @@ Design: the callback server and `ReadCode` run **concurrently**, and whichever d
 
 ## Token refresh and persistence
 
-The `OnRefresh` callback is called after every successful token refresh, allowing the application to persist updated credentials. The SDK deliberately does not define _where_ credentials are stored — that's an application concern.
+The `OnRefresh` callback is called after every successful token refresh, allowing the application to persist updated credentials. If persistence fails, the request fails rather than silently losing a rotated refresh token. The transport keeps the refreshed credentials in memory and retries persistence on the next request without refreshing again. The SDK deliberately does not define _where_ credentials are stored — that's an application concern.
 
 The `TokenRefresher` interface has a single method: exchange a set of credentials for a new set. Each provider implements its own refresher in its own package, with the correct token endpoint and request format. All refreshers preserve the original refresh token if the server response omits a new one.
 
@@ -110,6 +110,8 @@ Token endpoint: `https://platform.claude.com/v1/oauth/token`
 - Token exchange uses form-encoded, no state parameter
 
 Token endpoint: `https://auth.openai.com/oauth/token`
+
+`ListCodexModels(ctx, clientID, accountID, creds, ...opts)` asks the authenticated Codex backend for the ChatGPT account's available models. It supplies the required Codex client compatibility version, applies the same OAuth refresh transport and account header as `NewForCodexOAuth`, and omits models that are hidden from the picker or unsupported by the API.
 
 ## CLI integration
 

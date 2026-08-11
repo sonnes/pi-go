@@ -133,6 +133,98 @@ func TestTransport_CallsOnRefresh(t *testing.T) {
 	assert.Equal(t, "new", persisted.AccessToken)
 }
 
+func TestTransport_SurfacesOnRefreshFailure(t *testing.T) {
+	persistErr := assert.AnError
+	tr := NewTransport(
+		Credentials{
+			AccessToken: "old",
+			ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		},
+		WithRefresher(TokenRefresherFunc(
+			func(context.Context, Credentials) (Credentials, error) {
+				return Credentials{
+					AccessToken: "new",
+					ExpiresAt:   time.Now().Add(1 * time.Hour),
+				}, nil
+			},
+		)),
+		WithOnRefresh(func(Credentials) error {
+			return persistErr
+		}),
+	)
+
+	req, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"https://example.com",
+		nil,
+	)
+	require.NoError(t, err)
+
+	_, err = tr.RoundTrip(req)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, persistErr)
+	assert.Contains(t, err.Error(), "persist refreshed credentials")
+}
+
+func TestTransport_RetriesPersistenceWithoutRefreshingAgain(t *testing.T) {
+	var refreshCount, persistCount int
+	var gotAuth string
+	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		gotAuth = req.Header.Get("Authorization")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       http.NoBody,
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+
+	tr := NewTransport(
+		Credentials{
+			AccessToken: "old",
+			ExpiresAt:   time.Now().Add(-1 * time.Hour),
+		},
+		WithBase(base),
+		WithRefresher(TokenRefresherFunc(
+			func(context.Context, Credentials) (Credentials, error) {
+				refreshCount++
+				return Credentials{
+					AccessToken: "new",
+					ExpiresAt:   time.Now().Add(1 * time.Hour),
+				}, nil
+			},
+		)),
+		WithOnRefresh(func(Credentials) error {
+			persistCount++
+			if persistCount == 1 {
+				return assert.AnError
+			}
+			return nil
+		}),
+	)
+
+	req, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"https://example.com",
+		nil,
+	)
+	require.NoError(t, err)
+
+	_, err = tr.RoundTrip(req)
+	require.Error(t, err)
+
+	res, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	require.NoError(t, res.Body.Close())
+
+	assert.Equal(t, 1, refreshCount)
+	assert.Equal(t, 2, persistCount)
+	assert.Equal(t, "Bearer new", gotAuth)
+}
+
 func TestTransport_NoRefreshWhenValid(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -204,4 +296,10 @@ func TestTransport_ConcurrentAccess(t *testing.T) {
 	assert.Equal(t, int64(n), reqCount.Load())
 	// Refresh should only happen once due to mutex
 	assert.Equal(t, int64(1), refreshCount.Load())
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
