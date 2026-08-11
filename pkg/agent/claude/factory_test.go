@@ -17,7 +17,8 @@ func TestFactory_ParsesSpec(t *testing.T) {
 }
 
 func TestFactory_MergesBaseAndCallOptions(t *testing.T) {
-	// Base options apply first; per-call options override them.
+	// The base options apply first. The per-call options then override
+	// them.
 	f := Factory(agent.WithMaxTurns(3), WithCLIPath("/base/claude"))
 
 	a, err := f("claude/opus", agent.WithMaxTurns(7))

@@ -10,20 +10,22 @@ import (
 	"github.com/sonnes/pi-go/pkg/pi"
 )
 
-// loginDetectors returns the pi-CLI credential detectors: stored `pi login`
-// credentials (~/.pigo/auth.json) first, then logins reused from the official
-// provider CLIs. They register ahead of pkg/pi's environment detectors, so a
-// deliberate `pi login` wins over ambient environment variables.
+// loginDetectors returns the pi-CLI credential detectors in order. The
+// credentials that `pi login` stored (~/.pigo/auth.json) come first. The
+// logins reused from the official provider CLIs come second. These detectors
+// register ahead of the environment detectors of pkg/pi. A deliberate
+// `pi login` therefore wins over ambient environment variables.
 //
-// The reuse-tier detection itself lives in the provider packages
-// ([anthropic.DetectClaudeCLI], [openairesponses.DetectCodexCLI]); this only
-// orders them. The auth.json store is pi-CLI-specific and stays here.
+// The reuse-tier detection lives in the provider packages
+// ([anthropic.DetectClaudeCLI], [openairesponses.DetectCodexCLI]). This
+// function only orders them. The auth.json store belongs to the pi CLI
+// alone, so it stays here.
 func loginDetectors() []pi.Detector {
 	return append(authFileDetectors(), cliLoginDetectors()...)
 }
 
-// authFileDetectors builds detectors for the OAuth credentials stored by
-// `pi login`, one per supported provider.
+// authFileDetectors builds one detector for each supported provider. Each
+// detector reads the OAuth credentials that `pi login` stored.
 func authFileDetectors() []pi.Detector {
 	fromFile := func(
 		providerID string,
@@ -65,9 +67,9 @@ func authFileDetectors() []pi.Detector {
 	}
 }
 
-// cliLoginDetectors reuses a login already performed by an official provider
-// CLI (Claude Code, Codex). The detection lives in the provider packages; here
-// it is just wired into the chain with a source label.
+// cliLoginDetectors reuses a login from an official provider CLI, such as
+// Claude Code or Codex. The detection lives in the provider packages. This
+// function only adds it to the chain with a source label.
 func cliLoginDetectors() []pi.Detector {
 	return []pi.Detector{
 		{
@@ -87,8 +89,8 @@ func cliLoginDetectors() []pi.Detector {
 	}
 }
 
-// debugBase wraps the default transport with the optional verbose HTTP debug
-// logger, as an [oauth.TransportOption] for the OAuth detectors.
+// debugBase returns an [oauth.TransportOption] for the OAuth detectors. It
+// wraps the default transport with the optional verbose HTTP debug logger.
 func debugBase() oauth.TransportOption {
 	return oauth.WithBase(maybeDebugTransport(http.DefaultTransport))
 }

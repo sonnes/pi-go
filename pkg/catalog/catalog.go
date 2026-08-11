@@ -1,11 +1,13 @@
 // Package catalog is the public registry for the pi SDK. It holds typed
-// provider capabilities, their models, and custom agent factories, and resolves
-// "<provider>/<model>" specs — or bare model IDs when unambiguous — to
-// callable [ai.LanguageModel]s and [agent.Agent]s.
+// provider capabilities, their models, and custom agent factories. It resolves
+// a "<provider>/<model>" spec to a callable [ai.LanguageModel] or
+// [agent.Agent]. It also resolves a bare model ID when only one provider
+// serves that model.
 //
-// A [Catalog] keeps an independent provider lookup for each [ai] capability
-// while sharing one model index across them. Registration supplies identity
-// and model metadata explicitly; provider implementations carry only behavior.
+// A [Catalog] keeps an independent provider lookup for each [ai] capability,
+// and all the lookups share one model index. Registration supplies the identity
+// and the model metadata explicitly. A provider implementation carries only
+// behavior.
 package catalog
 
 import (
@@ -20,7 +22,8 @@ import (
 )
 
 // Catalog is a registry of providers, models, and agent factories. The
-// zero value is unusable; create one with [New]. Safe for concurrent use.
+// zero value does not work. [New] creates a usable catalog. A Catalog is
+// safe for concurrent use.
 type Catalog struct {
 	mu              sync.RWMutex
 	textProviders   map[string]ai.TextProvider
@@ -41,8 +44,8 @@ func New() *Catalog {
 	}
 }
 
-// RegisterTextProvider registers p for text generation under id and adds
-// models to the shared model index. Last write wins.
+// RegisterTextProvider registers p for text generation under id. It also adds
+// the models to the shared model index. The last write wins.
 func (c *Catalog) RegisterTextProvider(
 	id string,
 	p ai.TextProvider,
@@ -54,8 +57,8 @@ func (c *Catalog) RegisterTextProvider(
 	c.registerModelsLocked(id, models)
 }
 
-// RegisterImageProvider registers p for image generation under id and adds
-// models to the shared model index. Last write wins.
+// RegisterImageProvider registers p for image generation under id. It also
+// adds the models to the shared model index. The last write wins.
 func (c *Catalog) RegisterImageProvider(
 	id string,
 	p ai.ImageProvider,
@@ -67,8 +70,8 @@ func (c *Catalog) RegisterImageProvider(
 	c.registerModelsLocked(id, models)
 }
 
-// RegisterSpeechProvider registers p for speech generation under id and adds
-// models to the shared model index. Last write wins.
+// RegisterSpeechProvider registers p for speech generation under id. It also
+// adds the models to the shared model index. The last write wins.
 func (c *Catalog) RegisterSpeechProvider(
 	id string,
 	p ai.SpeechProvider,
@@ -100,19 +103,21 @@ func (c *Catalog) registerModelLocked(providerID string, m ai.Model) {
 	}
 }
 
-// RegisterAgent registers a custom agent factory under an agent kind (the
-// spec's prefix, e.g. "claude-cli"). Last write wins.
+// RegisterAgent registers a custom agent factory under an agent kind. The
+// kind is the prefix of the spec, for example "claude-cli". The last write
+// wins.
 func (c *Catalog) RegisterAgent(kind string, f agent.Factory) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.agents[kind] = f
 }
 
-// resolve looks up model metadata and its provider id for a
-// spec. A full "<provider>/<model>" spec is looked up directly; a bare
-// model ID (or alias) resolves when exactly one registered provider
-// serves it, and errors listing the full specs when several do. The caller
-// uses the id to select its capability-specific provider map.
+// resolve looks up the model metadata and the provider id for a spec.
+// It looks up a full "<provider>/<model>" spec directly. A bare model ID
+// or alias resolves when exactly one registered provider serves it. If
+// several providers serve it, resolve returns an error that lists the full
+// specs. The caller uses the id to select its capability-specific provider
+// map.
 func (c *Catalog) resolve(spec string) (ai.Model, string, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -124,7 +129,7 @@ func (c *Catalog) resolve(spec string) (ai.Model, string, error) {
 	return c.resolveBareLocked(spec)
 }
 
-// resolveBareLocked resolves a spec with no provider prefix by scanning
+// resolveBareLocked resolves a spec that has no provider prefix. It scans
 // every registered key for a matching model ID or alias.
 func (c *Catalog) resolveBareLocked(id string) (ai.Model, string, error) {
 	var (
@@ -157,8 +162,9 @@ func (c *Catalog) resolveBareLocked(id string) (ai.Model, string, error) {
 	}
 }
 
-// LanguageModel resolves a spec to a bound [ai.LanguageModel]. It errors if
-// the spec is unknown or the provider does not support text generation.
+// LanguageModel resolves a spec to a bound [ai.LanguageModel]. If the spec
+// is unknown, or the provider does not support text generation, it returns
+// an error.
 func (c *Catalog) LanguageModel(spec string) (ai.LanguageModel, error) {
 	m, providerID, err := c.resolve(spec)
 	if err != nil {
@@ -173,9 +179,9 @@ func (c *Catalog) LanguageModel(spec string) (ai.LanguageModel, error) {
 	return ai.NewLanguageModel(m, tp), nil
 }
 
-// StreamText resolves spec and streams a text response. A resolution
-// error surfaces on the returned stream (via [ai.ErrStream]) rather than a
-// separate error return; block for the final message with Wait().
+// StreamText resolves spec and streams a text response. There is no separate
+// error return. A resolution error reaches the caller on the returned stream,
+// through [ai.ErrStream]. Wait() blocks for the final message.
 func (c *Catalog) StreamText(
 	ctx context.Context,
 	spec string,
@@ -189,8 +195,8 @@ func (c *Catalog) StreamText(
 	return lm.StreamText(ctx, p, opts...)
 }
 
-// GenerateText resolves spec and blocks for a text response. Convenience
-// wrapper around StreamText(...).Wait().
+// GenerateText resolves spec and blocks for a text response. It is a
+// convenience wrapper around StreamText(...).Wait().
 func (c *Catalog) GenerateText(
 	ctx context.Context,
 	spec string,
@@ -200,8 +206,9 @@ func (c *Catalog) GenerateText(
 	return c.StreamText(ctx, spec, p, opts...).Wait()
 }
 
-// ImageModel resolves a spec to a bound [ai.ImageModel]. It errors if the
-// spec is unknown or the provider does not support image generation.
+// ImageModel resolves a spec to a bound [ai.ImageModel]. If the spec is
+// unknown, or the provider does not support image generation, it returns
+// an error.
 func (c *Catalog) ImageModel(spec string) (ai.ImageModel, error) {
 	m, providerID, err := c.resolve(spec)
 	if err != nil {
@@ -230,8 +237,9 @@ func (c *Catalog) GenerateImage(
 	return im.GenerateImage(ctx, p, opts...)
 }
 
-// SpeechModel resolves a spec to a bound [ai.SpeechModel]. It errors if the
-// spec is unknown or the provider does not support speech generation.
+// SpeechModel resolves a spec to a bound [ai.SpeechModel]. If the spec is
+// unknown, or the provider does not support speech generation, it returns
+// an error.
 func (c *Catalog) SpeechModel(spec string) (ai.SpeechModel, error) {
 	m, providerID, err := c.resolve(spec)
 	if err != nil {
@@ -277,9 +285,9 @@ func GenerateObject[T any](
 	return ai.GenerateObject[T](ctx, lm, p, opts...)
 }
 
-// Agent builds an agent for a "<kind>/<model>" spec. A registered custom
-// factory for the kind wins; otherwise the spec resolves to a language
-// model wrapped in the default [agent.New] loop.
+// Agent builds an agent for a "<kind>/<model>" spec. If a custom factory is
+// registered for the kind, Agent uses it. If not, the spec resolves to a
+// language model, and Agent wraps it in the default [agent.New] loop.
 func (c *Catalog) Agent(spec string, opts ...agent.Option) (agent.Agent, error) {
 	kind, _, _ := strings.Cut(spec, "/")
 

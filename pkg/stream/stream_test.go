@@ -73,12 +73,12 @@ func TestStream_WaitReturnsErrorAndPartialResult(t *testing.T) {
 	assert.Equal(t, 3, result)
 }
 
-// Breaking out of Events must not deadlock the producer; a later Wait
-// still returns the final result.
+// An early break out of Events must not deadlock the producer. A later
+// Wait still returns the final result.
 func TestStream_BreakEarlyThenWait(t *testing.T) {
 	s := stream.New(func(push func(int)) (string, error) {
-		// Push more events than the channel buffers to prove pushes
-		// after the consumer breaks do not block forever.
+		// Push more events than the channel buffers. This proves that
+		// pushes after the consumer breaks do not block forever.
 		for i := range 64 {
 			push(i)
 		}

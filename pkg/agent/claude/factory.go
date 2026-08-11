@@ -9,9 +9,9 @@ import (
 )
 
 // Factory returns an [agent.Factory] that builds a Claude CLI agent from
-// a "<kind>/<model>" spec, e.g. "claude/sonnet". Register it with a
-// catalog under the kind prefix. base options apply to every built
-// agent, before any per-call options.
+// a "<kind>/<model>" spec, for example "claude/sonnet". Register it with
+// a catalog under the kind prefix. The base options apply to every agent
+// that the factory builds, before any per-call options.
 func Factory(base ...agent.Option) agent.Factory {
 	return func(spec string, opts ...agent.Option) (agent.Agent, error) {
 		_, model, ok := strings.Cut(spec, "/")

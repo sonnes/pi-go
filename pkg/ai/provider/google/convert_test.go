@@ -92,8 +92,9 @@ func TestConvertTools_ServerCodeExecution(t *testing.T) {
 }
 
 func TestConvertTools_FunctionAndServerInSeparateToolEntries(t *testing.T) {
-	// Gemini disallows mixing FunctionDeclarations with google_search/code_execution
-	// in the same Tool entry. They must live in separate entries.
+	// Gemini does not accept FunctionDeclarations together with google_search
+	// or code_execution in the same Tool entry. They must be in separate
+	// entries.
 	tools := []ai.ToolInfo{
 		{Name: "get_weather", Description: "Get weather"},
 		{

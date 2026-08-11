@@ -9,9 +9,9 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// sdkUserMessage is the stdin wire format consumed by `claude --print
-// --input-format stream-json`. It matches the SDKUserMessage type in the
-// Claude CLI (see cc/server/directConnectManager.ts).
+// sdkUserMessage is the stdin wire format that `claude --print
+// --input-format stream-json` reads. It matches the SDKUserMessage type
+// in the Claude CLI (see cc/server/directConnectManager.ts).
 type sdkUserMessage struct {
 	Type            string              `json:"type"`
 	Message         sdkUserMessageInner `json:"message"`
@@ -24,14 +24,15 @@ type sdkUserMessageInner struct {
 	Content json.RawMessage `json:"content"`
 }
 
-// encodeUserContent serializes the content blocks of a user message into the
-// `content` field of an SDKUserMessage.
+// encodeUserContent serializes the content blocks of a user message into
+// the `content` field of an SDKUserMessage.
 //
-// A single [ai.Text] block is emitted as a bare JSON string; anything richer
-// (multiple text blocks, images, or mixed) is emitted as an array of
-// Anthropic content blocks built from [anthropic.ContentBlockParamUnion].
-// Non-user block types ([ai.Thinking], [ai.ToolCall]) are invalid on a user
-// turn and are dropped.
+// One [ai.Text] block becomes a bare JSON string. Richer content becomes
+// an array of Anthropic content blocks built from
+// [anthropic.ContentBlockParamUnion]. Richer content is multiple text
+// blocks, images, or a mix of both. Non-user block types, such as
+// [ai.Thinking] and [ai.ToolCall], are not valid on a user turn. The
+// function removes them.
 func encodeUserContent(msg ai.Message) (json.RawMessage, error) {
 	if len(msg.Content) == 0 {
 		return nil, errors.New("claude: user message has no content")
@@ -68,8 +69,8 @@ func encodeUserContent(msg ai.Message) (json.RawMessage, error) {
 	return json.Marshal(blocks)
 }
 
-// buildUserLine returns a single NDJSON-ready byte slice (with trailing
-// newline) representing an SDKUserMessage for the given user message.
+// buildUserLine returns one NDJSON byte slice with a trailing newline.
+// The slice is the SDKUserMessage for the given user message.
 func buildUserLine(msg ai.Message) ([]byte, error) {
 	content, err := encodeUserContent(msg)
 	if err != nil {

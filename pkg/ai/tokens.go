@@ -5,8 +5,8 @@ import (
 	"errors"
 )
 
-// TokenCounter is an optional capability interface for providers that can
-// count a prompt's input tokens before generating a response.
+// TokenCounter is an optional capability interface. A provider implements it
+// to count the input tokens of a prompt before it generates a response.
 type TokenCounter interface {
 	CountTokens(
 		ctx context.Context,
@@ -16,14 +16,15 @@ type TokenCounter interface {
 	) (*TokenCount, error)
 }
 
-// TokenCount is the provider's count of tokens in a request.
+// TokenCount is the number of tokens in a request, as counted by the
+// provider.
 type TokenCount struct {
 	Total int
 }
 
 // TokenCountModel is the token-counting upgrade of a [LanguageModel].
-// [CountTokens] upgrades to it at runtime. Wrappers around a LanguageModel
-// should implement and forward it to keep token counting available.
+// [CountTokens] upgrades to it at runtime. A wrapper around a LanguageModel
+// must implement and forward it to keep token counting available.
 type TokenCountModel interface {
 	CountTokens(
 		ctx context.Context,
@@ -32,8 +33,8 @@ type TokenCountModel interface {
 	) (*TokenCount, error)
 }
 
-// CountTokens implements [TokenCountModel] by delegating to the bound
-// provider. It errors when the provider is not a [TokenCounter].
+// CountTokens implements [TokenCountModel]. It delegates to the bound
+// provider. If the provider is not a [TokenCounter], it returns an error.
 func (m languageModel) CountTokens(
 	ctx context.Context,
 	p Prompt,
@@ -47,8 +48,9 @@ func (m languageModel) CountTokens(
 	return counter.CountTokens(ctx, m.info, p, opts)
 }
 
-// CountTokens counts the input tokens in p using lm. It requires lm's bound
-// provider to implement [TokenCounter]; otherwise it returns an error.
+// CountTokens counts the input tokens in p with lm. The provider bound to lm
+// must implement [TokenCounter]. If it does not, CountTokens returns an
+// error.
 func CountTokens(
 	ctx context.Context,
 	lm LanguageModel,

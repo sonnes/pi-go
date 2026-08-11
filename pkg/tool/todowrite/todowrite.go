@@ -1,8 +1,8 @@
-// Package todowrite provides the TodoWrite tool: the agent emits the
-// full updated checklist for the current session, and the tool
-// validates it and acks. This is server-side validation and contract
-// documentation only — there is no server-side store; a caller renders
-// the checklist from the streamed tool_call arguments.
+// Package todowrite provides the TodoWrite tool. The agent emits the full
+// updated checklist for the current session. The tool validates the
+// checklist and returns an acknowledgement. The package gives server-side
+// validation and contract documentation only. It has no server-side store.
+// A caller shows the checklist from the streamed tool_call arguments.
 package todowrite
 
 import (
@@ -13,13 +13,13 @@ import (
 )
 
 // Description is the default tool documentation, embedded from
-// description.md. Clients register the tool under any name and may pass
-// this (or their own text) as the description.
+// description.md. A client registers the tool under any name. The client
+// can pass this text, or its own text, as the description.
 //
 //go:embed description.md
 var Description string
 
-// ToolName is the suggested default registry name for this tool.
+// ToolName is the default name for this tool in the registry.
 const ToolName = "TodoWrite"
 
 // Status is the lifecycle state of a single todo item.
@@ -28,8 +28,8 @@ type Status string
 const (
 	// StatusPending is a task not yet started.
 	StatusPending Status = "pending"
-	// StatusInProgress is the task currently being worked on. At most
-	// one item may hold this status at a time.
+	// StatusInProgress is the task in work now. Only one item can hold
+	// this status at a time.
 	StatusInProgress Status = "in_progress"
 	// StatusCompleted is a task finished successfully.
 	StatusCompleted Status = "completed"
@@ -42,29 +42,29 @@ type Item struct {
 	Status     Status `json:"status"      jsonschema:"One of: pending, in_progress, completed."`
 }
 
-// Input is the tool's argument shape — the full updated list, which
-// replaces the previous one entirely.
+// Input is the tool's argument shape. It holds the full updated list. The
+// new list replaces the previous list completely.
 type Input struct {
 	Todos []Item `json:"todos" jsonschema:"The full updated todo list. Replaces the previous list entirely. Keep exactly one item in_progress while work is ongoing."`
 }
 
-// todo validates checklist updates. It carries no dependencies — the
-// tool is pure server-side validation, and identity (name, description)
-// belongs to the client that registers it.
+// todo validates checklist updates. It holds no dependencies, because the
+// tool does server-side validation only. Identity (name, description)
+// belongs to the client that registers the tool.
 type todo struct{}
 
 // Option configures a TodoWrite tool.
 type Option interface{ apply(*todo) }
 
-// ackMessage is returned on every successful update.
+// ackMessage is the result of every successful update.
 const ackMessage = "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress. Please proceed with the current tasks if applicable."
 
 // shapeExample helps the model self-correct after a validation error.
 const shapeExample = `Expected shape: {"todos":[{"content":"Run tests","active_form":"Running tests","status":"in_progress"},{"content":"Ship it","active_form":"Shipping it","status":"pending"}]}. Each item needs a non-empty content (imperative) and active_form (present continuous); status is one of pending, in_progress, completed; at most one item may be in_progress.`
 
-// New returns the TodoWrite tool's runner: it validates the updated
-// checklist and returns an acknowledgement. The tool is pure
-// server-side validation; a caller renders the checklist from the
+// New returns the TodoWrite tool's runner. The runner validates the
+// updated checklist and returns an acknowledgement. The tool does
+// server-side validation only. A caller shows the checklist from the
 // streamed tool_call arguments. Pass the runner to ai.DefineTool with a
 // name and description.
 func New(opts ...Option) func(context.Context, Input) (string, error) {

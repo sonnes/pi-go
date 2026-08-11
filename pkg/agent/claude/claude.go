@@ -12,42 +12,44 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Agent implements [agent.Agent] by delegating the entire agent loop
-// to a long-lived Claude Code CLI subprocess. The subprocess is started
-// lazily on the first [Agent.Run] with `--input-format stream-json` and
-// serves many turns: each Run writes one SDKUserMessage to stdin and
-// completes when the CLI emits the corresponding result line.
+// Agent implements [agent.Agent] with a long-lived Claude Code CLI
+// subprocess. The subprocess runs the full agent loop. The package
+// starts the subprocess on the first [Agent.Run] with
+// `--input-format stream-json`. One subprocess serves many turns. Each
+// Run writes one SDKUserMessage to stdin. The Run completes when the CLI
+// emits the matching result line.
 type Agent struct {
 	cfg config
 
-	// model is the caller's [ai.Model], retained for its Cost rates: the
-	// CLI reports token counts but no per-category cost.
+	// model is the caller's [ai.Model]. The package keeps it for the Cost
+	// rates. The CLI reports token counts but no cost per category.
 	model ai.Model
 
-	// newTransport is the factory for the CLI subprocess. Overridden in tests.
+	// newTransport is the factory for the CLI subprocess. Tests replace it.
 	newTransport func(ctx context.Context, cfg config) (transportIface, error)
 
 	mu        sync.Mutex
 	running   bool
 	sessionID string
 	messages  []ai.Message
-	// push is the active run's event sink; nil when idle. Events
-	// arriving between runs are dropped.
+	// push is the event sink of the active run. It is nil when the agent
+	// is idle. The agent ignores events that arrive between runs.
 	push func(agent.Event)
 	// turnDone receives the end-of-turn signal from the reader for the
 	// active run.
 	turnDone chan turnResult
-	// runCtx is the active run's context, passed to before_tool hooks
-	// answering can_use_tool control requests; nil when idle.
+	// runCtx is the context of the active run. The agent gives it to the
+	// before_tool hooks that answer can_use_tool control requests. It is
+	// nil when the agent is idle.
 	runCtx context.Context
 
-	// expectAgentStart signals the readLoop to publish [agent.EventAgentStart]
-	// just before its next batch of parser events. runTurn sets this true
-	// before writing the user line; readLoop atomically clears it when it
-	// publishes the bracket. Routing the publish through readLoop keeps
-	// agent_start carrying the session ID captured from the subprocess
-	// `system/init` line, which on a fresh subprocess arrives after the
-	// user line is written.
+	// expectAgentStart tells readLoop to publish [agent.EventAgentStart]
+	// immediately before its next batch of parser events. runTurn sets
+	// this field true before it writes the user line. readLoop clears the
+	// field atomically when it publishes the bracket. readLoop does the
+	// publish so that agent_start carries the session ID from the
+	// subprocess `system/init` line. On a new subprocess, that line
+	// arrives after the user line is written.
 	expectAgentStart atomic.Bool
 
 	// transport is the active subprocess, created on first Run.
@@ -56,8 +58,8 @@ type Agent struct {
 	readerDone chan struct{}
 }
 
-// turnResult carries per-turn accumulated state from the reader to the
-// Run producer goroutine.
+// turnResult carries the accumulated state of one turn from the reader
+// to the Run producer goroutine.
 type turnResult struct {
 	messages  []ai.Message
 	usage     ai.Usage
@@ -67,19 +69,20 @@ type turnResult struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// New creates a new Claude CLI subprocess [Agent] for model. For spec-based
-// creation, register [Factory] with the catalog under the "claude" kind.
-// The CLI owns its model catalog, so it uses the model's name/ID plus any
-// claude-specific options such as [WithCLIPath], [WithAllowedTools], or
-// [WithSessionID].
+// New creates a Claude CLI subprocess [Agent] for model. To create an
+// agent from a spec, register [Factory] with the catalog under the
+// "claude" kind. The CLI owns its model catalog. The agent therefore
+// uses the name or the ID of the model, plus any claude-specific options
+// such as [WithCLIPath], [WithAllowedTools], or [WithSessionID].
 func New(model ai.Model, opts ...agent.Option) *Agent {
 	return newFromConfig(model, agent.ApplyOptions(opts...))
 }
 
-// newFromConfig builds an *Agent from a resolved [agent.Config]. Agent-level
-// fields ([agent.Config.Model.Name], [agent.Config.MaxTurns],
-// [agent.Config.History]) are mapped onto the claude-local [config], which
-// is otherwise populated from [agent.Config.Extensions] under [extensionKey].
+// newFromConfig builds an *Agent from a resolved [agent.Config]. It maps
+// the agent-level fields onto the claude-local [config]. These fields
+// are [agent.Config.Model.Name], [agent.Config.MaxTurns], and
+// [agent.Config.History]. The rest of [config] comes from
+// [agent.Config.Extensions] under [extensionKey].
 func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	cfg := config{cliPath: "claude"}
 	if ext, ok := ac.Extensions[extensionKey].(*config); ok && ext != nil {
@@ -121,16 +124,16 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	}
 }
 
-// Run implements [agent.Agent]. It appends msgs to history, sends the
-// most recent user message (with its full content blocks) through the
-// subprocess, and runs one turn. Non-user messages are retained in
-// history but not forwarded — the CLI owns its own context via
-// --resume.
+// Run implements [agent.Agent]. It appends msgs to the history. It then
+// sends the most recent user message, with all its content blocks,
+// through the subprocess and runs one turn. The history keeps the
+// non-user messages, but Run does not forward them. The CLI owns its own
+// context through --resume.
 //
-// Zero messages is an error: the CLI cannot continue without input.
-// Use [WithSessionID] + Run to resume a prior conversation. Canceling
-// ctx interrupts the turn while leaving the subprocess running, so the
-// next Run continues the same session.
+// Zero messages is an error, because the CLI cannot continue without
+// input. To resume an earlier conversation, use [WithSessionID] with
+// Run. If the caller cancels ctx, Run interrupts the turn and leaves the
+// subprocess running. The next Run continues the same session.
 func (a *Agent) Run(ctx context.Context, msgs ...ai.Message) *agent.Stream {
 	return agent.NewStream(func(push func(agent.Event)) ([]ai.Message, error) {
 		return a.runTurn(ctx, msgs, push)
@@ -156,9 +159,9 @@ func (a *Agent) SessionID() string {
 	return a.sessionID
 }
 
-// Close shuts down the subprocess and returns its exit error, if any.
-// It waits for the stdout reader goroutine to finish so no events are
-// delivered after Close returns.
+// Close stops the subprocess and returns its exit error, if there is
+// one. It waits for the stdout reader goroutine to finish. As a result,
+// no events arrive after Close returns.
 func (a *Agent) Close() error {
 	a.mu.Lock()
 	t := a.transport
@@ -177,9 +180,10 @@ func (a *Agent) Close() error {
 	return err
 }
 
-// runTurn validates the input, starts the subprocess if needed, writes
-// one user line, and blocks until the turn completes. It is the
-// producer behind [Agent.Run]'s stream.
+// runTurn makes sure that the input is valid. It then starts the
+// subprocess if necessary, writes one user line, and blocks until the
+// turn completes. runTurn is the producer behind the stream of
+// [Agent.Run].
 func (a *Agent) runTurn(
 	ctx context.Context,
 	msgs []ai.Message,
@@ -245,10 +249,10 @@ func (a *Agent) runTurn(
 	}
 
 	// Mark that readLoop owes an agent_start for this turn. readLoop
-	// publishes it inline with the next batch of parser events so
-	// agent_start carries the session ID from the subprocess init line.
-	// Caller-supplied user messages are not echoed back — the caller
-	// already has them.
+	// publishes it with the next batch of parser events, so agent_start
+	// carries the session ID from the subprocess init line. The agent
+	// does not echo back the user messages from the caller, because the
+	// caller already has them.
 	a.expectAgentStart.Store(true)
 
 	if err := t.writeUserMessage(line); err != nil {
@@ -259,10 +263,11 @@ func (a *Agent) runTurn(
 	return a.awaitTurn(ctx, t, push, turnCh)
 }
 
-// awaitTurn blocks until the reader signals turn-end (or the subprocess
-// dies or ctx is cancelled), then finalizes the turn. On ctx
-// cancellation it asks the CLI to abort the in-flight turn while
-// leaving the persistent subprocess running for the next Run.
+// awaitTurn blocks until the reader signals the end of the turn. It also
+// returns if the subprocess exits or the caller cancels ctx. It then
+// completes the turn. If the caller cancels ctx, awaitTurn asks the CLI
+// to abort the turn in progress. The persistent subprocess keeps running
+// for the next Run.
 func (a *Agent) awaitTurn(
 	ctx context.Context,
 	t transportIface,
@@ -304,8 +309,9 @@ func (a *Agent) awaitTurn(
 	return result.messages, nil
 }
 
-// publish forwards an event to the active run's stream, dropping it
-// when no run is in flight (e.g. late lines from an aborted turn).
+// publish forwards an event to the stream of the active run. If no run
+// is in progress, publish ignores the event. Late lines from an aborted
+// turn are one example.
 func (a *Agent) publish(evt agent.Event) {
 	a.mu.Lock()
 	push := a.push
@@ -316,10 +322,10 @@ func (a *Agent) publish(evt agent.Event) {
 }
 
 // maybePublishAgentStart publishes [agent.EventAgentStart] if runTurn
-// flagged that the bracket is owed for the current turn. It is called
-// from readLoop just before publishing each parser event so that
-// agent_start is always serialized ahead of the turn's parser output
-// — the sole publishing goroutine for a turn is readLoop.
+// marked the bracket as owed for the current turn. readLoop calls it
+// immediately before it publishes each parser event. As a result,
+// agent_start always comes before the parser output of the turn.
+// readLoop is the only goroutine that publishes for a turn.
 func (a *Agent) maybePublishAgentStart() {
 	if !a.expectAgentStart.CompareAndSwap(true, false) {
 		return
@@ -333,7 +339,8 @@ func (a *Agent) maybePublishAgentStart() {
 	})
 }
 
-// ensureTransport lazily starts the subprocess and reader goroutine.
+// ensureTransport starts the subprocess and the reader goroutine on
+// first use.
 func (a *Agent) ensureTransport(ctx context.Context) error {
 	a.mu.Lock()
 	if a.transport != nil {
@@ -359,10 +366,10 @@ func (a *Agent) ensureTransport(ctx context.Context) error {
 
 const maxLineSize = 10 * 1024 * 1024 // 10 MB
 
-// readLoop scans NDJSON lines from the subprocess, feeds them through a
-// per-turn [parser], and publishes events to the active run. On each
-// `result` line, the accumulated per-turn state is sent to the current
-// turnDone channel.
+// readLoop scans the NDJSON lines from the subprocess. It gives each
+// line to a per-turn [parser] and publishes the events to the active
+// run. On each `result` line, readLoop sends the accumulated state of
+// the turn to the current turnDone channel.
 func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 	defer close(done)
 
@@ -379,18 +386,20 @@ func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 		}
 
 		if line.Type == "control_request" {
-			// CLI-initiated request (can_use_tool when launched with
-			// --permission-prompt-tool stdio). The CLI blocks the tool
-			// call until the response is written, so answering inline
-			// here cannot deadlock the turn.
+			// The CLI starts this request. It is can_use_tool when the
+			// package starts the CLI with --permission-prompt-tool stdio.
+			// The CLI blocks the tool call until this process writes the
+			// response. An inline answer here therefore cannot deadlock
+			// the turn.
 			a.handleControlRequest(t, line)
 			continue
 		}
 
 		if line.Type == "system" && line.Subtype == "init" {
-			// Subprocess startup — capture the session ID so the turn's
-			// agent_start (and SessionID()) can carry it. Session
-			// lifecycle is the caller's concern, not an event here.
+			// The subprocess starts. Capture the session ID so that the
+			// agent_start of the turn and SessionID() can carry it. The
+			// session lifecycle belongs to the caller. It is not an event
+			// here.
 			if line.SessionID != "" {
 				turnSessionID = line.SessionID
 				a.mu.Lock()
@@ -422,15 +431,15 @@ func (a *Agent) readLoop(t transportIface, done chan struct{}) {
 		}
 	}
 
-	// Scanner exited — subprocess closed stdout.
+	// The scanner stopped, because the subprocess closed stdout.
 	if err := scanner.Err(); err != nil {
 		a.deliverTurn(turnResult{err: err})
 	}
 }
 
-// canUseToolRequest is the payload of a CLI-initiated can_use_tool
-// control_request, emitted before each tool call the CLI's own
-// permission policy would ask about.
+// canUseToolRequest is the payload of a can_use_tool control_request
+// from the CLI. The CLI emits one before each tool call that its own
+// permission policy asks about.
 type canUseToolRequest struct {
 	Subtype   string         `json:"subtype"`
 	ToolName  string         `json:"tool_name"`
@@ -438,12 +447,11 @@ type canUseToolRequest struct {
 	ToolUseID string         `json:"tool_use_id"`
 }
 
-// handleControlRequest answers a CLI-initiated control_request line.
-// Only can_use_tool is handled: the call runs through the registered
-// [agent.HookBeforeTool] hooks — the same semantics as the Default
-// agent, where a hook error or Deny blocks execution — and the
-// decision is written back as a control_response. Unknown subtypes
-// are ignored.
+// handleControlRequest answers a control_request line from the CLI. It
+// handles only can_use_tool. The call runs through the registered
+// [agent.HookBeforeTool] hooks. The rules match the Default agent: a
+// hook error or a Deny blocks the call. handleControlRequest then writes
+// the decision back as a control_response. It ignores unknown subtypes.
 func (a *Agent) handleControlRequest(t transportIface, line rawLine) {
 	var req canUseToolRequest
 	if err := json.Unmarshal(line.Request, &req); err != nil {
@@ -492,10 +500,11 @@ func (a *Agent) handleControlRequest(t transportIface, line rawLine) {
 	_ = t.writeControlResponse(resp)
 }
 
-// deliverTurn forwards a turn result to the currently-waiting Run, if any.
-// The turnDone channel is buffered size 1 so the send never blocks; if no
-// Run is waiting the result is simply dropped (e.g. a spurious result line
-// outside of a turn, or a result arriving after ctx cancellation).
+// deliverTurn forwards a turn result to the Run that waits for it, if
+// there is one. The turnDone channel has a buffer of one, so the send
+// never blocks. If no Run waits, deliverTurn ignores the result. This
+// happens for an unexpected result line outside a turn, or for a result
+// that arrives after the caller cancels ctx.
 func (a *Agent) deliverTurn(result turnResult) {
 	a.mu.Lock()
 	ch := a.turnDone

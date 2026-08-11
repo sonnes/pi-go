@@ -10,8 +10,8 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 )
 
-// convertMessages converts messages to Anthropic MessageParam format.
-// Consecutive tool result messages are grouped into a single user message.
+// convertMessages converts messages to the Anthropic MessageParam format. It
+// groups consecutive tool result messages into one user message.
 func convertMessages(messages []ai.Message) []anthropic.MessageParam {
 	var result []anthropic.MessageParam
 
@@ -81,8 +81,9 @@ func convertUserContent(content []ai.Content) []anthropic.ContentBlockParamUnion
 }
 
 // convertFile converts an ai.File into an Anthropic document block. Anthropic
-// supports PDF (base64 or URL) and plain-text documents. Unsupported MIME
-// types or files referencing a provider FileID are skipped.
+// supports PDF documents (base64 or URL) and plain-text documents. The function
+// skips a file with an unsupported MIME type. It also skips a file that refers
+// to a provider FileID.
 func convertFile(f ai.File) (anthropic.ContentBlockParamUnion, bool) {
 	switch {
 	case f.URL != "":
@@ -90,8 +91,9 @@ func convertFile(f ai.File) (anthropic.ContentBlockParamUnion, bool) {
 			URL: f.URL,
 		}), true
 	case f.Data != "" && f.MimeType == "text/plain":
-		// Per ai.File contract, Data is base64-encoded. Anthropic's
-		// plain-text document source expects raw text, so decode here.
+		// The ai.File contract states that Data is base64-encoded. The
+		// Anthropic plain-text document source needs raw text, so decode
+		// the data here.
 		raw, err := base64.StdEncoding.DecodeString(f.Data)
 		if err != nil {
 			return anthropic.ContentBlockParamUnion{}, false
@@ -108,7 +110,8 @@ func convertFile(f ai.File) (anthropic.ContentBlockParamUnion, bool) {
 	}
 }
 
-// convertAssistantContent converts assistant message content to Anthropic blocks.
+// convertAssistantContent converts assistant message content to Anthropic
+// blocks.
 func convertAssistantContent(content []ai.Content) []anthropic.ContentBlockParamUnion {
 	var blocks []anthropic.ContentBlockParamUnion
 
@@ -138,7 +141,8 @@ func convertAssistantContent(content []ai.Content) []anthropic.ContentBlockParam
 	return blocks
 }
 
-// convertToolResult converts a tool result message to an Anthropic tool result block.
+// convertToolResult converts a tool result message to an Anthropic tool result
+// block.
 func convertToolResult(msg ai.Message) anthropic.ContentBlockParamUnion {
 	toolResultBlock := anthropic.ToolResultBlockParam{
 		ToolUseID: msg.ToolCallID,
@@ -165,9 +169,10 @@ func convertToolResult(msg ai.Message) anthropic.ContentBlockParamUnion {
 	}
 }
 
-// convertTools converts ai.ToolInfo definitions to Anthropic ToolUnionParam format.
-// Function tools become OfTool entries; server tools route through convertServerTool
-// and may be silently skipped if the tool type is unsupported on the non-beta API.
+// convertTools converts ai.ToolInfo definitions to the Anthropic
+// ToolUnionParam format. A function tool becomes an OfTool entry. A server tool
+// goes through convertServerTool. If the non-beta API does not support the tool
+// type, convertTools skips the tool without an error.
 func convertTools(tools []ai.ToolInfo) []anthropic.ToolUnionParam {
 	result := make([]anthropic.ToolUnionParam, 0, len(tools))
 
@@ -217,9 +222,9 @@ func convertTools(tools []ai.ToolInfo) []anthropic.ToolUnionParam {
 	return result
 }
 
-// convertCountTokenTools converts tool definitions for Anthropic's
-// count-tokens endpoint. Its union type mirrors MessageNewParams but is a
-// distinct SDK type.
+// convertCountTokenTools converts tool definitions for the Anthropic
+// count-tokens endpoint. The union type of that endpoint matches
+// MessageNewParams, but it is a separate SDK type.
 func convertCountTokenTools(
 	tools []ai.ToolInfo,
 ) []anthropic.MessageCountTokensToolUnionParam {
@@ -242,9 +247,9 @@ func convertCountTokenTools(
 }
 
 // convertServerTool maps a pi-go server-tool ToolInfo to an Anthropic typed
-// tool param. Returns false if the type is not supported by the Messages API.
+// tool param. It returns false when the Messages API does not support the type.
 //
-// Supported config keys (per [ai.ServerToolType]):
+// Supported configuration keys (per [ai.ServerToolType]):
 //   - web_search: max_uses (int), strict (bool), allowed_domains ([]string),
 //     blocked_domains ([]string)
 //   - web_fetch: max_uses (int), max_content_tokens (int), strict (bool),
@@ -359,12 +364,12 @@ func convertToolChoice(tc ai.ToolChoice) anthropic.ToolChoiceUnionParam {
 	}
 }
 
-// mapUsage converts Anthropic usage to [ai.Usage], priced with model's rates.
+// mapUsage converts Anthropic usage to [ai.Usage] and prices it with the rates
+// of the model.
 //
-// The API reports input_tokens exclusive of the cached prefix, so Input,
-// CacheRead and CacheWrite are already disjoint and each bills exactly once at
-// its own rate — cache writes at a premium over fresh input, cache reads at a
-// discount.
+// The API reports input_tokens without the cached prefix. Input, CacheRead, and
+// CacheWrite therefore do not overlap. Each one bills once at its own rate. A
+// cache write costs more than fresh input. A cache read costs less.
 func mapUsage(model ai.Model, u anthropic.Usage) ai.Usage {
 	usage := ai.Usage{
 		Input:      int(u.InputTokens),

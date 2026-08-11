@@ -101,8 +101,8 @@ body
 }
 
 func TestAgentFileCarriesNoScope(t *testing.T) {
-	// Scope is where a file sits relative to a resolver's root, which one
-	// file read on its own has no way to know. The resolver sets it.
+	// Scope is where a file sits relative to the root of a resolver. One
+	// file read on its own has no way to know that. The resolver sets it.
 	fsys := fstest.MapFS{"agents/apps/web/api.md": &fstest.MapFile{Data: []byte(`---
 name: api
 ---
@@ -164,8 +164,8 @@ func TestSkillDirReportsMalformedContent(t *testing.T) {
 				"skills/commit/SKILL.md": &fstest.MapFile{Data: []byte(tt.content)},
 			}
 
-			// The tree resolvers skip a malformed file, but a caller
-			// naming one specific skill asked about that skill.
+			// The tree resolvers skip a malformed file. A caller that
+			// names one specific skill asked about that skill.
 			_, err := fs.SkillDir(fsys, "skills/commit")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "skills/commit/SKILL.md", "the error names the file")
@@ -174,7 +174,7 @@ func TestSkillDirReportsMalformedContent(t *testing.T) {
 }
 
 func TestSkillDirUnreadableFileIsAnError(t *testing.T) {
-	// No file at all is not a broken skill — it is a resolver pointed at
+	// No file at all is not a broken skill. It is a resolver pointed at
 	// the wrong place, and that stays loud.
 	_, err := fs.SkillDir(fstest.MapFS{}, "skills/commit")
 	require.Error(t, err)

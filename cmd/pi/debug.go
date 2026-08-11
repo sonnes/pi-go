@@ -9,16 +9,16 @@ import (
 	"strings"
 )
 
-// PI_DEBUG_HTTP enables verbose HTTP logging when set to a non-empty value.
-// It dumps the response status and body of any non-2xx response to stderr,
-// preserving the body for downstream parsers. Useful for diagnosing opaque
-// errors like the Codex backend's `400 Bad Request` whose body the upstream
-// SDK truncates.
+// PI_DEBUG_HTTP enables verbose HTTP logging when it holds a non-empty
+// value. The logger writes the status and the body of every non-2xx response
+// to stderr. It keeps the body available to downstream parsers. The log helps
+// with opaque errors, such as the `400 Bad Request` of the Codex backend. The
+// upstream SDK truncates the body of that error.
 const debugHTTPEnvVar = "PI_DEBUG_HTTP"
 
-// maybeDebugTransport wraps base in a verbose logger when PI_DEBUG_HTTP is
-// set, and returns base unchanged otherwise. It is safe to call with a nil
-// base — [http.DefaultTransport] is used in that case.
+// maybeDebugTransport wraps base in a verbose logger when PI_DEBUG_HTTP holds
+// a value. If the variable is empty, it returns base unchanged. A nil base is
+// safe. In that case the function uses [http.DefaultTransport].
 func maybeDebugTransport(base http.RoundTripper) http.RoundTripper {
 	if os.Getenv(debugHTTPEnvVar) == "" {
 		return base
@@ -60,8 +60,8 @@ func (d *debugRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 	return resp, nil
 }
 
-// summarizeHeaders renders a compact one-line header summary, skipping noisy
-// or sensitive headers, for the debug log.
+// summarizeHeaders returns a compact one-line header summary for the debug
+// log. It skips the noisy headers and the sensitive headers.
 func summarizeHeaders(h http.Header) string {
 	skip := map[string]bool{
 		"Set-Cookie":                true,

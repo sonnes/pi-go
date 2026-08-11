@@ -75,7 +75,7 @@ func TestSkillsAtSetsAbsoluteDir(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
-	// Dir is a path the agent can actually reach — absolute, on disk.
+	// Dir is a path the agent can reach — absolute, on disk.
 	byName := map[string]def.Skill{}
 	for _, s := range got {
 		byName[s.Name] = s
@@ -96,7 +96,8 @@ func TestSkillsTreeSkipsBrokenSkills(t *testing.T) {
 	got, err := fs.Skills(fsys, "lib").Skills(context.Background())
 	require.NoError(t, err, "a malformed file never fails the resolution")
 
-	// A malformed file is skipped outright — not degraded, not listed.
+	// The walk skips a malformed file outright. It does not degrade the
+	// skill and does not list it.
 	require.Len(t, got, 1)
 	assert.Equal(t, "commit", got[0].Name)
 	for _, s := range got {
@@ -126,8 +127,8 @@ func TestBrokenSkillStillOwnsItsSubtree(t *testing.T) {
 	got, err := fs.Skills(fsys, "lib").Skills(context.Background())
 	require.NoError(t, err)
 
-	// Skipping the broken skill must not turn its support files into
-	// skills of their own — a skill owns its directory either way.
+	// A skip of the broken skill must not turn its support files into
+	// skills of their own. A skill owns its directory either way.
 	assert.Empty(t, got)
 }
 
@@ -139,8 +140,8 @@ func TestAgentsTreeSkipsBrokenDefinitions(t *testing.T) {
 		"defs/unterminated.md": &fstest.MapFile{Data: []byte("---\nname: writer\n")},
 	}
 
-	// This used to fail the whole resolution, so every session that
-	// shared the directory died on one bad file.
+	// In an earlier version this failed the whole resolution, so every
+	// session that shared the directory died on one bad file.
 	got, err := fs.Agents(fsys, "defs").Agents(context.Background())
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -150,8 +151,8 @@ func TestAgentsTreeSkipsBrokenDefinitions(t *testing.T) {
 func TestMalformedFileDoesNotStopLaterSiblings(t *testing.T) {
 	ctx := context.Background()
 
-	// "a-broken" sorts before "b-good": the walk continues past the
-	// skip rather than stopping at it.
+	// "a-broken" sorts before "b-good". The walk continues past the skip
+	// and does not stop there.
 	agents := fstest.MapFS{
 		"defs/a-broken.md": &fstest.MapFile{Data: []byte("---\nname: [unterminated\n---\nbody\n")},
 		"defs/b-good.md":   &fstest.MapFile{Data: []byte("---\nname: writer\n---\nbody\n")},
@@ -175,8 +176,9 @@ func TestUnreadableFilesStillFailTheWalk(t *testing.T) {
 	ctx := context.Background()
 	boom := errors.New("permission denied")
 
-	// Malformed content is a user authoring mistake and is skipped; an
-	// I/O failure is not, and must never be swallowed.
+	// Malformed content is an authoring mistake, and the walk skips it.
+	// An I/O error is not an authoring mistake, and the walk must never
+	// swallow it.
 	agents := unreadable{
 		FS:   fstest.MapFS{"defs/reviewer.md": &fstest.MapFile{Data: []byte("---\nname: reviewer\n---\nb\n")}},
 		path: "defs/reviewer.md",
@@ -209,7 +211,7 @@ func TestSkillsInSubdirectoriesAreScoped(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 3)
 
-	// The name stays as authored; the subdirectory it sits in becomes the
+	// The name stays as authored. The subdirectory it sits in becomes the
 	// scope, which is what the harness qualifies the name with.
 	bySource := map[string]def.Skill{}
 	for _, s := range got {
@@ -237,7 +239,7 @@ func TestSkillSupportDirectoriesAreNotSkills(t *testing.T) {
 	require.NoError(t, err)
 
 	// A skill owns everything below it, so its own files never become
-	// skills. A dot-directory is skipped outright.
+	// skills. The walk skips a dot-directory outright.
 	require.Len(t, got, 2)
 	assert.Equal(t, "lib/deploy/SKILL.md", got[0].Source)
 	assert.Equal(t, "lib/notes/nested/deploy/SKILL.md", got[1].Source)
@@ -312,8 +314,9 @@ func TestOnlyUnboundInstructionsReachThePrompt(t *testing.T) {
 
 	env := envFor(t, harness.WithInstructions(fs.Instructions(fsys, "AGENTS.md")))
 
-	// Both are resolved and handed to the builder. What prompt.Default
-	// does with a bound one is its business, not the resolver's.
+	// The harness resolves both and hands them to the builder. What
+	// prompt.Default does with a bound one is its business, not the
+	// business of the resolver.
 	require.Len(t, env.Instructions, 2)
 	assert.Equal(t, "", env.Instructions[0].Dir)
 	assert.Equal(t, "web", env.Instructions[1].Dir)
@@ -434,8 +437,9 @@ func TestHierarchyOfRoots(t *testing.T) {
 }
 
 func TestPerBuildRootAppendsToTheBaseline(t *testing.T) {
-	// The baseline carries a name the project does not, so appending and
-	// replacing are distinguishable: replacement would drop "release".
+	// The baseline carries a name the project does not. An append and a
+	// replacement are therefore distinguishable, because a replacement
+	// removes "release".
 	baseline := os.DirFS(writeTree(t, map[string]string{
 		".agents/skills/commit/SKILL.md":  "---\nname: commit\ndescription: baseline\n---\nbody\n",
 		".agents/skills/release/SKILL.md": "---\nname: release\ndescription: baseline\n---\nbody\n",
@@ -454,8 +458,9 @@ func TestPerBuildRootAppendsToTheBaseline(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 
-	// One harness, many repositories: the project's root arrives when the
-	// session is minted, as resources on top of what the process knows.
+	// One harness, many repositories. The root of the project arrives
+	// when the session is minted, as resources on top of what the process
+	// knows.
 	_, err = h.Agent(ctx, harness.WithSkills(fs.Skills(perBuild, ".agents/skills")))
 	require.NoError(t, err)
 

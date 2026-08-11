@@ -22,7 +22,7 @@ func TestLiteralAgents(t *testing.T) {
 	assert.Equal(t, "reviewer", got[0].Name)
 	assert.Equal(t, "writer", got[1].Name)
 
-	// The returned slice is a copy: mutating it cannot corrupt the resolver.
+	// The returned slice is a copy. A change cannot corrupt the resolver.
 	got[0].Name = "mutated"
 	again, err := r.Agents(context.Background())
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestLiteralSkills(t *testing.T) {
 	assert.Equal(t, "review", got[0].Name)
 	assert.Equal(t, "commit", got[1].Name)
 
-	// The returned slice is a copy: mutating it cannot corrupt the resolver.
+	// The returned slice is a copy. A change cannot corrupt the resolver.
 	got[0].Name = "mutated"
 	again, err := r.Skills(context.Background())
 	require.NoError(t, err)

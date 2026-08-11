@@ -6,10 +6,11 @@ import (
 	"sync"
 )
 
-// Transport is an [http.RoundTripper] that injects OAuth Bearer tokens
-// and transparently refreshes expired credentials before each request.
+// Transport is an [http.RoundTripper] that adds an OAuth Bearer token to each
+// request. It also refreshes expired credentials before the request runs.
 type Transport struct {
-	// Base is the underlying RoundTripper. If nil, [http.DefaultTransport] is used.
+	// Base is the underlying RoundTripper. If Base is nil, the Transport uses
+	// [http.DefaultTransport].
 	Base http.RoundTripper
 
 	mu             sync.Mutex
@@ -28,18 +29,19 @@ func WithBase(rt http.RoundTripper) TransportOption {
 	return func(t *Transport) { t.Base = rt }
 }
 
-// WithRefresher sets the [TokenRefresher] used to refresh expired credentials.
+// WithRefresher sets the [TokenRefresher] that refreshes expired credentials.
 func WithRefresher(r TokenRefresher) TransportOption {
 	return func(t *Transport) { t.refresher = r }
 }
 
-// WithOnRefresh sets a callback invoked after a successful token refresh. A
-// callback error fails the request and is retried before the next request.
+// WithOnRefresh sets a callback that runs after a successful token refresh.
+// If the callback returns an error, the request fails. The Transport runs the
+// callback again before the next request.
 func WithOnRefresh(fn OnRefresh) TransportOption {
 	return func(t *Transport) { t.onRefresh = fn }
 }
 
-// WithExtraHeaders sets additional headers injected into every request.
+// WithExtraHeaders sets more headers that the Transport adds to every request.
 func WithExtraHeaders(h map[string]string) TransportOption {
 	return func(t *Transport) { t.headers = h }
 }
@@ -53,9 +55,9 @@ func NewTransport(creds Credentials, opts ...TransportOption) *Transport {
 	return t
 }
 
-// RoundTrip implements [http.RoundTripper]. It refreshes expired credentials
-// (if a refresher is configured), then injects the Bearer token and extra
-// headers into the request.
+// RoundTrip implements [http.RoundTripper]. If the credentials are expired and
+// a refresher is set, RoundTrip refreshes them first. It then adds the Bearer
+// token and the extra headers to the request.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	t.mu.Lock()
 	if t.pendingPersist && t.onRefresh != nil {

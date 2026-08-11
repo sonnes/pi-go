@@ -18,9 +18,10 @@ import (
 	aior "github.com/sonnes/pi-go/pkg/ai/provider/openairesponses"
 )
 
-// Recording: run with `go test -httprecord=TestOpenRouter ./pkg/ai/provider/openairesponses/`
-// after exporting OPENROUTER_API_KEY. Each test below produces a cassette in
-// testdata/ that subsequent runs replay deterministically.
+// To record, export OPENROUTER_API_KEY. Then run
+// `go test -httprecord=TestOpenRouter ./pkg/ai/provider/openairesponses/`.
+// Each test below writes a cassette in testdata/. A later run replays that
+// cassette deterministically.
 
 const (
 	openRouterBaseURL    = "https://openrouter.ai/api/v1"
@@ -28,8 +29,9 @@ const (
 	openRouterModelClaud = "anthropic/claude-haiku-4-5"
 )
 
-// scrubOpenRouterRequest normalizes OpenRouter-specific headers so cassettes
-// don't leak credentials and stay deterministic across machines.
+// scrubOpenRouterRequest normalizes the OpenRouter-specific headers. The
+// cassettes then leak no credentials. They also stay deterministic across
+// machines.
 func scrubOpenRouterRequest(req *http.Request) error {
 	req.Header.Del("Authorization")
 	req.Header.Del("HTTP-Referer")
@@ -43,8 +45,8 @@ func scrubOpenRouterRequest(req *http.Request) error {
 	return canonicalizeOpenRouterBody(req)
 }
 
-// canonicalizeOpenRouterBody preserves the field order used by the recorded
-// cassettes while the v3 SDK emits the equivalent tools field before stream.
+// canonicalizeOpenRouterBody keeps the field order of the recorded
+// cassettes. The v3 SDK writes the equivalent tools field before stream.
 func canonicalizeOpenRouterBody(req *http.Request) error {
 	body, ok := req.Body.(*httprr.Body)
 	if !ok || len(body.Data) == 0 {
@@ -128,8 +130,8 @@ func openRouterModel(id string) ai.Model {
 	}
 }
 
-// TestOpenRouter_GenerateText confirms a basic text turn streams cleanly
-// through the dialect's content_part.delta handlers.
+// TestOpenRouter_GenerateText makes sure that a basic text turn streams
+// through the content_part.delta handlers of the dialect.
 func TestOpenRouter_GenerateText(t *testing.T) {
 	p, cleanup := newOpenRouterTestProvider(t)
 	defer cleanup()
@@ -156,8 +158,8 @@ func TestOpenRouter_GenerateText(t *testing.T) {
 	assert.Equal(t, ai.StopReasonStop, msg.StopReason)
 }
 
-// TestOpenRouter_StreamEventOrdering confirms TextStart/TextDelta/TextEnd
-// fire in the right order under the OpenRouter SSE taxonomy.
+// TestOpenRouter_StreamEventOrdering makes sure that TextStart, TextDelta,
+// and TextEnd come in the correct order under the OpenRouter SSE events.
 func TestOpenRouter_StreamEventOrdering(t *testing.T) {
 	p, cleanup := newOpenRouterTestProvider(t)
 	defer cleanup()
@@ -201,9 +203,9 @@ func TestOpenRouter_StreamEventOrdering(t *testing.T) {
 	require.NotNil(t, msg, "expected final message")
 }
 
-// TestOpenRouter_FunctionTool confirms function-tool calls are issued and
-// streamed through unchanged — function-tool wire shape is identical
-// across dialects.
+// TestOpenRouter_FunctionTool makes sure that the dialect sends and streams
+// function-tool calls without change. Every dialect uses the same wire shape
+// for a function tool.
 func TestOpenRouter_FunctionTool(t *testing.T) {
 	p, cleanup := newOpenRouterTestProvider(t)
 	defer cleanup()
@@ -243,10 +245,12 @@ func TestOpenRouter_FunctionTool(t *testing.T) {
 }
 
 // TestOpenRouter_ServerWebSearch records and replays a turn that uses
-// openrouter:web_search. The cassette exercises:
-//   - WithJSONSet injection of the openrouter:* tool into the request body
-//   - response.output_item.added/.done with type starting "openrouter:"
-//   - serverToolCalls accumulation and emission in the final ai.Message
+// openrouter:web_search. The cassette covers these paths:
+//   - WithJSONSet adds the openrouter:* tool to the request body
+//   - response.output_item.added and .done with a type that starts with
+//     "openrouter:"
+//   - serverToolCalls collects the calls and sends them in the final
+//     ai.Message
 func TestOpenRouter_ServerWebSearch(t *testing.T) {
 	p, cleanup := newOpenRouterTestProvider(t)
 	defer cleanup()
@@ -289,9 +293,9 @@ func TestOpenRouter_ServerWebSearch(t *testing.T) {
 	assert.True(t, sawServerCall, "expected a web_search server-tool call")
 }
 
-// TestOpenRouter_ServerDateTime exercises the simplest server tool —
-// useful as a smoke test for dialect plumbing without depending on
-// nondeterministic web search.
+// TestOpenRouter_ServerDateTime covers the simplest server tool. It is a
+// smoke test for the dialect. It does not depend on a nondeterministic web
+// search.
 func TestOpenRouter_ServerDateTime(t *testing.T) {
 	p, cleanup := newOpenRouterTestProvider(t)
 	defer cleanup()
@@ -331,9 +335,10 @@ func TestOpenRouter_ServerDateTime(t *testing.T) {
 	assert.True(t, sawDateTime, "expected an openrouter:datetime server-tool call")
 }
 
-// TestOpenRouter_ClaudeUnderlying confirms the dialect works when the
-// underlying model routed by OpenRouter is non-OpenAI. This is the whole
-// point of routing through OpenRouter: same wire shape, different model.
+// TestOpenRouter_ClaudeUnderlying makes sure that the dialect works when
+// OpenRouter routes to a model that is not from OpenAI. This is the purpose
+// of a route through OpenRouter. The wire shape stays the same. Only the
+// model changes.
 func TestOpenRouter_ClaudeUnderlying(t *testing.T) {
 	p, cleanup := newOpenRouterTestProvider(t)
 	defer cleanup()

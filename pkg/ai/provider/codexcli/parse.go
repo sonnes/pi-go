@@ -51,14 +51,15 @@ func parseLine(data []byte) (rawLine, error) {
 	return line, err
 }
 
-// usageFromCodex converts a Codex CLI usage block to [ai.Usage], priced
-// against model's rates.
+// usageFromCodex converts a Codex CLI usage block to [ai.Usage]. It
+// prices the usage with the rates of model.
 //
-// Codex relays OpenAI's counts, where input_tokens includes the cached prefix
-// and output_tokens includes reasoning tokens. Both are split out here so the
-// categories are disjoint and a sum double-counts nothing. Reasoning bills at
-// the output rate — OpenAI charges it as output, and prices no separate
-// reasoning rate.
+// Codex relays the counts of OpenAI. In those counts, input_tokens
+// includes the cached prefix, and output_tokens includes the reasoning
+// tokens. This function separates both, so the categories are disjoint
+// and a sum counts nothing twice. Reasoning bills at the output rate,
+// because OpenAI charges it as output and prices no separate reasoning
+// rate.
 func usageFromCodex(model ai.Model, u rawUsage) ai.Usage {
 	usage := ai.Usage{
 		Input:     u.InputTokens - u.CachedInputTokens,

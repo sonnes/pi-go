@@ -16,14 +16,14 @@ import (
 	"github.com/sonnes/pi-go/pkg/stream"
 )
 
-// slot is the [agent.Config] extension slot durability reads its
-// options from. Durable's With* options are [agent.Option]s that layer
-// onto a single ext value, so a durable agent is configured with the
-// same option currency as [agent.New].
+// slot is the [agent.Config] extension slot that durability reads its
+// options from. The With* options of this package are [agent.Option]
+// values that layer onto a single ext value. A durable agent therefore
+// uses the same option currency as [agent.New].
 //
-// The slot holds an ext by value, so an option list that never
-// mentioned durability reads back as the zero ext rather than as
-// nothing at all.
+// The slot holds an ext by value. An option list that never mentioned
+// durability therefore reads back as the zero ext, not as nothing at
+// all.
 var slot = agent.Slot[ext]{Key: "durable"}
 
 // ext accumulates durability configuration from the durable options.
@@ -34,7 +34,7 @@ type ext struct {
 	middleware []Middleware
 }
 
-// mutate returns an option that layers f onto the slot's ext.
+// mutate returns an option that layers f onto the ext of the slot.
 func mutate(f func(*ext)) agent.Option {
 	return slot.Mutate(func(e ext) ext {
 		f(&e)
@@ -42,26 +42,28 @@ func mutate(f func(*ext)) agent.Option {
 	})
 }
 
-// Agent is a persistent agent instance: an inner [agent.Agent] loop
-// bound to a durable session ID. Created by [New], never directly.
-// The agent owns transcript state only; application metadata lives in
-// the application's own storage, keyed by the session ID.
+// Agent is a persistent agent instance. It is an inner [agent.Agent]
+// loop bound to a durable session ID. [New] creates every Agent, and
+// direct construction is not supported. The agent owns transcript
+// state only. Application metadata lives in the storage of the
+// application, keyed by the session ID.
 //
-// Persistence is per message: run input is persisted before the run
-// starts, and every message the loop produces is persisted when its
-// message_end arrives — the lifted event is forwarded only after the
-// append succeeds, carrying the entries as its receipt. A crash leaves
-// the store consistent at the last completed message; a dangling tool
-// call is repaired on resume (see [Agent.Messages]).
+// Persistence is per message. The package persists run input before the
+// run starts. It persists every message the loop produces when the
+// message_end of that message arrives. The package forwards the lifted
+// event only after the append succeeds, and the event carries the
+// entries as its receipt. A crash leaves the store consistent at the
+// last completed message. Resume repairs a dangling tool call (see
+// [Agent.Messages]).
 type Agent struct {
 	store     session.Store
 	lm        ai.LanguageModel
 	baseOpts  []agent.Option
 	publisher Publisher
 
-	// run is this instance's middleware chain around runBase, built
-	// once at construction. Never nil: an agent with no middleware
-	// registered gets runBase itself.
+	// run is the middleware chain of this instance around runBase. The
+	// package builds it once at construction. It is never nil: an agent
+	// with no registered middleware gets runBase itself.
 	run Runner
 
 	mu        sync.Mutex
@@ -73,8 +75,9 @@ type Agent struct {
 	closed    bool
 }
 
-// newInner builds a fresh inner agent loop over the bound model with the
-// base options plus any extra (e.g. hydrated history).
+// newInner builds a fresh inner agent loop over the bound model. It
+// uses the base options plus any extra options (for example, loaded
+// history).
 func (a *Agent) newInner(extra ...agent.Option) agent.Agent {
 	opts := make([]agent.Option, 0, len(a.baseOpts)+len(extra))
 	opts = append(opts, a.baseOpts...)
@@ -82,15 +85,15 @@ func (a *Agent) newInner(extra ...agent.Option) agent.Agent {
 	return agent.New(a.lm, opts...)
 }
 
-// WithStore sets the backing store. Without it, [New] uses a fresh
-// in-memory store — fine for tests and ephemeral agents; pass a
-// persistent store to survive restarts.
+// WithStore sets the backing store. Without this option, [New] uses a
+// fresh in-memory store, which is enough for tests and ephemeral
+// agents. A persistent store is necessary to survive restarts.
 func WithStore(s session.Store) agent.Option {
 	return mutate(func(e *ext) { e.store = s })
 }
 
-// WithSessionID sets the session ID to create or resume. Without it,
-// [New] generates one, readable via [Agent.SessionID].
+// WithSessionID sets the session ID to create or resume. Without this
+// option, [New] generates one. [Agent.SessionID] returns it.
 func WithSessionID(id string) agent.Option {
 	return mutate(func(e *ext) { e.sessionID = id })
 }
@@ -102,7 +105,7 @@ func WithPublisher(p Publisher) agent.Option {
 }
 
 // publish delivers a lifecycle event when a publisher is configured.
-// Callers must not hold a.mu because Publish may call back into the
+// Callers must not hold a.mu, because Publish can call back into the
 // agent.
 func (a *Agent) publish(evt Event) {
 	if a.publisher != nil {
@@ -110,19 +113,19 @@ func (a *Agent) publish(evt Event) {
 	}
 }
 
-// New returns a durable [Agent], creating its session if it does not
-// exist and hydrating history from the store otherwise. The resume
-// point is the last appended entry. It publishes [EventSessionInit]
-// after the session is ready.
+// New returns a durable [Agent]. If the session does not exist, New
+// creates it. If the session exists, New loads its history from the
+// store. The resume point is the last appended entry. New publishes
+// [EventSessionInit] after the session is ready.
 //
-// Everything but the factory is optional: without [WithStore] the
-// session lives in a fresh in-memory store, and without
-// [WithSessionID] a session ID is generated.
+// Everything except the factory is optional. Without [WithStore], the
+// session lives in a fresh in-memory store. Without [WithSessionID],
+// New generates a session ID.
 //
-// New does not track instances — each call returns a fresh one, and
+// New does not track instances. Each call returns a fresh instance, and
 // the caller owns instance discipline. Two live instances of the same
-// session cannot corrupt it: each appends from its own leaf, so
-// concurrent instances grow sibling branches in the tree.
+// session cannot corrupt it. Each instance appends from its own leaf,
+// so concurrent instances grow sibling branches in the tree.
 func New(
 	ctx context.Context,
 	lm ai.LanguageModel,
@@ -181,40 +184,41 @@ func New(
 	return a, nil
 }
 
-// Run persists entries at the leaf, then executes the inner loop,
-// persisting each message it produces before forwarding its
-// message_end. Zero entries continues from the current leaf.
+// Run persists entries at the leaf, then starts the inner loop. Run
+// persists each message the loop produces before it forwards the
+// message_end of that message. With zero entries, Run continues from
+// the current leaf.
 //
 // Input is entries, not messages, so the caller controls what the model
 // and the transcript each see. [Text], [Image], and [File] build the
-// ordinary user entry. Injected context — the model reads it, the
-// transcript hides it — comes in two flavors that differ only in
-// durability: Meta persists, and [Ephemeral] never leaves memory. A
-// custom entry is the opposite of both, persisted but never sent to the
-// model. Tree fields are assigned on append.
+// ordinary user entry. The model reads injected context, and the
+// transcript hides it. Injected context comes in two forms that differ
+// only in durability: Meta persists, and [Ephemeral] never leaves
+// memory. A custom entry is the opposite of both. It persists, but Run
+// never sends it to the model. Run assigns the tree fields on append.
 //
-// Entries reach the model in the order given, and every kind but
-// ephemeral is written as given. Compaction belongs in [Agent.Compact].
+// Entries reach the model in the order given. Run writes every kind
+// except ephemeral as given. Compaction belongs in [Agent.Compact].
 //
 // The persistence receipts on the boundary events carry only durable
-// entries, so an ephemeral one is absent from them; read it back from
-// [Agent.Entries] instead.
+// entries. An ephemeral entry is therefore absent from them.
+// [Agent.Entries] returns it instead.
 //
-// The stream is turn-scoped: inner agent events lifted under
-// [EventAgent], with persistence receipts on the boundary events. A
-// persist failure fails the run loudly.
+// The stream is turn-scoped. It carries inner agent events lifted under
+// [EventAgent], with persistence receipts on the boundary events. If a
+// persist operation returns an error, the run fails loudly.
 //
 // Any [Middleware] registered with [WithMiddleware] wraps this call.
-// The chain runs synchronously, on the caller's goroutine, before the
-// producer starts — so a middleware that adds entries has done so by
-// the time the stream exists, and one that refuses the run returns
-// [Fail] without a producer ever starting.
+// The chain runs synchronously, on the goroutine of the caller, before
+// the producer starts. A middleware that adds entries therefore adds
+// them before the stream exists. A middleware that refuses the run
+// returns [Fail], and no producer starts.
 func (a *Agent) Run(ctx context.Context, entries ...session.Entry) *Stream {
 	return a.run(ctx, entries...)
 }
 
-// runBase is the durable run itself — the innermost [Runner], with the
-// middleware chain wrapped around it by [New] and [Agent.Fork].
+// runBase is the durable run itself. It is the innermost [Runner].
+// [New] and [Agent.Fork] wrap the middleware chain around it.
 func (a *Agent) runBase(ctx context.Context, entries ...session.Entry) *Stream {
 	return stream.New(func(push func(Event)) ([]ai.Message, error) {
 		ctx, cancel := context.WithCancel(ctx)
@@ -237,15 +241,15 @@ func (a *Agent) runBase(ctx context.Context, entries ...session.Entry) *Stream {
 			a.mu.Unlock()
 		}()
 
-		// The history before this turn's input; the input messages are
-		// appended below in the order the caller wrote them, which is
-		// what keeps an ephemeral entry in position.
+		// The history before the input of this turn. The code below
+		// appends the input messages in the order the caller wrote them,
+		// which keeps an ephemeral entry in position.
 		a.mu.Lock()
 		history := session.ModelView(session.PathFrom(a.index, a.leafID))
 		a.mu.Unlock()
 
-		// Persist input before the run starts. Ephemeral entries drop
-		// out here; they reach the model through history only.
+		// Persist input before the run starts. Ephemeral entries do not
+		// go to the store. They reach the model through history only.
 		var inputEntries []session.Entry
 		if len(entries) > 0 {
 			var err error
@@ -289,18 +293,19 @@ func (a *Agent) runBase(ctx context.Context, entries ...session.Entry) *Stream {
 	})
 }
 
-// Messages returns the model view of the active path — root to leaf,
-// compaction-aware, meta entries included, custom entries excluded.
-// Dangling tool calls (a crash between an assistant message and its
-// tool results) are repaired with synthesized interrupted results.
+// Messages returns the model view of the active path: root to leaf,
+// compaction-aware, meta entries included, custom entries excluded. A
+// dangling tool call comes from a crash between an assistant message
+// and its tool results. Messages repairs each one with a synthesized
+// interrupted result.
 func (a *Agent) Messages() []ai.Message {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.modelViewLocked()
 }
 
-// Close marks the instance closed. A closed agent rejects further
-// runs; call [New] with the same session ID to resume.
+// Close marks the instance closed. A closed agent rejects further runs.
+// A call to [New] with the same session ID resumes the session.
 func (a *Agent) Close() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -313,21 +318,21 @@ func (a *Agent) Close() error {
 // SessionID returns the durable session ID this agent is bound to.
 func (a *Agent) SessionID() string { return a.sessionID }
 
-// LeafID returns the ID of the entry the leaf pointer is on, or
-// empty for a fresh session. Capture it before a risky turn and pass
-// it to [Agent.Branch] to rewind — a checkpoint is just a remembered
-// leaf.
+// LeafID returns the ID of the entry that the leaf pointer is on. For a
+// fresh session, LeafID returns an empty string. To rewind, capture the
+// ID before a risky turn and pass it to [Agent.Branch]. A checkpoint is
+// a remembered leaf.
 func (a *Agent) LeafID() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.leafID
 }
 
-// Entries returns this instance's full log in append order, including
-// meta and custom entries, and the [Ephemeral] ones that were never
-// written to the store — so it can be wider than what a resume would
-// load. Use [session.Tree] to derive the tree, or [Agent.Transcript]
-// for the display view of the active path.
+// Entries returns the full log of this instance in append order. The
+// log holds meta entries, custom entries, and the [Ephemeral] entries
+// that never reached the store. The log can therefore be wider than
+// what a resume loads. [session.Tree] derives the tree, and
+// [Agent.Transcript] returns the display view of the active path.
 func (a *Agent) Entries(ctx context.Context) ([]session.Entry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -345,22 +350,24 @@ func (a *Agent) Transcript(ctx context.Context) ([]session.Entry, error) {
 	return session.TranscriptView(path), nil
 }
 
-// Append persists custom entries at the leaf without running the
-// loop. Custom entries are not sent to the model. Entries marked
-// [Ephemeral] are recorded in memory but not written to the store.
+// Append persists custom entries at the leaf without a run of the loop.
+// Append never sends custom entries to the model. It records entries
+// marked [Ephemeral] in memory, but it does not write them to the
+// store.
 func (a *Agent) Append(ctx context.Context, entries ...session.Entry) error {
 	_, err := a.persist(ctx, entries...)
 	return err
 }
 
-// Branch moves the leaf pointer to an earlier entry. Zero-copy and
-// in-session: the next turn grows a sibling branch, and the abandoned
-// branch stays in the tree. Edit, retry, and rewind are all this.
+// Branch moves the leaf pointer to an earlier entry. The move is
+// zero-copy and stays in the session. The next turn grows a sibling
+// branch, and the abandoned branch stays in the tree. Edit, retry, and
+// rewind are all this one operation.
 //
-// The leaf position is in-memory; reopening a session resumes at the
+// The leaf position lives in memory. A reopened session resumes at the
 // last appended entry.
 //
-// Branch publishes [EventSessionBranched] after moving the leaf.
+// Branch publishes [EventSessionBranched] after it moves the leaf.
 func (a *Agent) Branch(ctx context.Context, entryID string) error {
 	a.mu.Lock()
 
@@ -381,14 +388,14 @@ func (a *Agent) Branch(ctx context.Context, entryID string) error {
 	return nil
 }
 
-// Fork copies the active path into a new session with the given ID
-// and returns a fresh [Agent] bound to it. The new session records
-// this one as [session.Session.ParentID]. Returns
-// [session.ErrSessionExists] if the ID is taken.
+// Fork copies the active path into a new session with the given ID. It
+// returns a fresh [Agent] bound to that session. The new session
+// records this one as [session.Session.ParentID]. If the ID is taken,
+// Fork returns [session.ErrSessionExists].
 //
 // The child inherits the publisher. A successful fork publishes
-// [EventSessionForked] for the source followed by [EventSessionInit]
-// for the child.
+// [EventSessionForked] for the source, then [EventSessionInit] for the
+// child.
 func (a *Agent) Fork(ctx context.Context, newID string) (*Agent, error) {
 	a.mu.Lock()
 	path := session.PathFrom(a.index, a.leafID)
@@ -398,7 +405,7 @@ func (a *Agent) Fork(ctx context.Context, newID string) (*Agent, error) {
 		return nil, err
 	}
 
-	// Re-chain the path with fresh IDs; timestamps carry over.
+	// Chain the path again with fresh IDs. Timestamps carry over.
 	copied := make([]session.Entry, len(path))
 	parent := ""
 	for i, e := range path {
@@ -431,10 +438,10 @@ func (a *Agent) Fork(ctx context.Context, newID string) (*Agent, error) {
 		index:     index,
 		leafID:    parent,
 	}
-	// The child re-instantiates the chain rather than sharing this
-	// agent's: each Middleware func is invoked again, so the closures
-	// holding per-run state are the child's own. Sharing them would let
-	// one session's state decide another session's runs.
+	// The child builds its own chain and does not share the chain of
+	// this agent. Each Middleware func runs again, so the closures that
+	// hold per-run state belong to the child. A shared closure would let
+	// the state of one session decide the runs of another session.
 	child.run = chain(middlewareFrom(a.baseOpts), child.runBase)
 
 	a.publish(Event{
@@ -450,11 +457,11 @@ func (a *Agent) Fork(ctx context.Context, newID string) (*Agent, error) {
 	return child, nil
 }
 
-// defaultCompactPrompt instructs the summarizer when no [CompactPrompt]
-// override is supplied.
+// defaultCompactPrompt instructs the summarizer when the caller
+// supplies no [CompactPrompt] override.
 const defaultCompactPrompt = "Summarize the conversation so far. Preserve every fact, decision, and open question in a compact form."
 
-// CompactOption configures a [Agent.Compact] call.
+// CompactOption configures one [Agent.Compact] call.
 type CompactOption func(*compactConfig)
 
 type compactConfig struct {
@@ -468,17 +475,17 @@ func KeepTurns(n int) CompactOption {
 	return func(c *compactConfig) { c.keepTurns = n }
 }
 
-// CompactPrompt overrides the instruction given to the summarizer agent.
-// Defaults to [defaultCompactPrompt].
+// CompactPrompt overrides the instruction that the summarizer agent
+// receives. The default is [defaultCompactPrompt].
 func CompactPrompt(s string) CompactOption {
 	return func(c *compactConfig) { c.prompt = s }
 }
 
-// Compact appends a [session.CompactionEntry] summarizing older turns
-// on the active path. Nothing is deleted — the full tree stays
-// rewindable. The summary is written by an ephemeral agent from the
-// session's own factory; custom entries pass through untouched.
-// Compact publishes [EventSessionCompacted] after appending the summary.
+// Compact appends a [session.CompactionEntry] that summarizes older
+// turns on the active path. Compact removes nothing, so the full tree
+// stays rewindable. An ephemeral agent from the factory of the session
+// writes the summary. Custom entries pass through untouched. Compact
+// publishes [EventSessionCompacted] after it appends the summary.
 func (a *Agent) Compact(ctx context.Context, opts ...CompactOption) error {
 	cfg := compactConfig{
 		prompt: defaultCompactPrompt,
@@ -545,9 +552,10 @@ func (a *Agent) Compact(ctx context.Context, opts ...CompactOption) error {
 
 // --- internals ---
 
-// inputMessages projects run input for the model: the message entries
-// in the order given, ephemeral ones included. Custom entries carry no
-// message and are skipped, matching [session.ModelView].
+// inputMessages projects run input for the model. It returns the
+// message entries in the order given, ephemeral entries included.
+// Custom entries carry no message, so inputMessages skips them. This
+// matches [session.ModelView].
 func inputMessages(entries []session.Entry) []ai.Message {
 	var msgs []ai.Message
 	for _, e := range entries {
@@ -560,18 +568,20 @@ func inputMessages(entries []session.Entry) []ai.Message {
 
 // persist assigns tree headers to entries, chains them at the leaf,
 // appends them to the store, and advances the leaf. It returns the
-// entries that reached the store, which is what makes the returned
-// slice a durability receipt.
+// entries that reached the store. The returned slice is therefore a
+// durability receipt.
 //
-// Entries marked [session.MessageEntry.Ephemeral] are recorded in the
-// in-memory log but never handed to the store, and this is the one
-// place that decides it — whichever verb they arrived through. They
-// hang off the current leaf without advancing it, which keeps them off
-// the durable chain: a stored entry must never name a parent the store
-// does not have, or the walk in [session.PathFrom] would stop there on
-// resume and drop everything above it. Being off the chain also keeps
-// them out of the active path, so the transcript, the model view, and
-// [Agent.Fork] skip them for free.
+// persist records entries marked [session.MessageEntry.Ephemeral] in
+// the in-memory log, but it never hands them to the store. This is the
+// one place that decides it, whichever verb the entries arrived
+// through. An ephemeral entry hangs off the current leaf without an
+// advance of the leaf, which keeps the entry off the durable chain.
+//
+// A stored entry must never name a parent that the store does not have.
+// On resume, the walk in [session.PathFrom] would stop at such an entry
+// and lose everything above it. An entry off the chain is also off the
+// active path, so the transcript, the model view, and [Agent.Fork] skip
+// it for free.
 func (a *Agent) persist(ctx context.Context, entries ...session.Entry) ([]session.Entry, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -618,7 +628,7 @@ func (a *Agent) persistLocked(ctx context.Context, entries ...session.Entry) ([]
 	return durables, nil
 }
 
-// modelViewLocked projects the active path for the model, repairing
+// modelViewLocked projects the active path for the model and repairs
 // dangling tool calls. Callers must hold a.mu.
 func (a *Agent) modelViewLocked() []ai.Message {
 	path := session.PathFrom(a.index, a.leafID)
@@ -626,9 +636,10 @@ func (a *Agent) modelViewLocked() []ai.Message {
 }
 
 // repairToolCalls synthesizes interrupted tool results for assistant
-// tool calls that have none — the footprint of a crash between an
-// assistant message persisting and its tool results persisting.
-// Providers reject a tool call with no result, so resume repairs it.
+// tool calls that have none. Such a call is the footprint of a crash
+// between the persistence of an assistant message and the persistence
+// of its tool results. Providers reject a tool call with no result, so
+// resume repairs it.
 func repairToolCalls(msgs []ai.Message) []ai.Message {
 	var out []ai.Message
 	for i := 0; i < len(msgs); i++ {
@@ -665,9 +676,9 @@ func repairToolCalls(msgs []ai.Message) []ai.Message {
 	return out
 }
 
-// withHeader returns a copy of e with its embedded
-// [session.EntryHeader] replaced. Custom entries reach the header
-// through their embedded [session.CustomEntry].
+// withHeader returns a copy of e with a new embedded
+// [session.EntryHeader]. A custom entry reaches the header through its
+// embedded [session.CustomEntry].
 func withHeader(e session.Entry, h session.EntryHeader) session.Entry {
 	v := reflect.New(reflect.TypeOf(e)).Elem()
 	v.Set(reflect.ValueOf(e))

@@ -1,12 +1,13 @@
 // Package fs is a filesystem-backed [session.Store] implementation.
 //
 // Each session is a single JSONL file, <id>.jsonl. The first line is a
-// session_init event carrying the [session.Session] record, written
-// once by CreateSession; every following line is one log entry,
-// append-only. Nothing is ever rewritten — the file only grows.
+// session_init event that carries the [session.Session] record.
+// CreateSession writes this line once. Every following line is one log
+// entry, and the log is append-only. The store never rewrites a line.
+// The file only grows.
 //
 // Custom entry types must be registered with [session.RegisterCustom]
-// before they can be read back.
+// before the store can read them back.
 package fs
 
 import (
@@ -37,7 +38,7 @@ type header struct {
 }
 
 // FileStore persists each session as one append-only JSONL file under
-// a root directory. Safe for concurrent use.
+// a root directory. It is safe for concurrent use.
 type FileStore struct {
 	mu   sync.Mutex
 	root string
@@ -45,8 +46,8 @@ type FileStore struct {
 
 var _ session.Store = (*FileStore)(nil)
 
-// New creates a [FileStore] rooted at dir, creating the directory if it
-// does not exist.
+// New creates a [FileStore] rooted at dir. If the directory does not
+// exist, New creates it.
 func New(dir string) (*FileStore, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
@@ -55,7 +56,7 @@ func New(dir string) (*FileStore, error) {
 }
 
 // CreateSession implements [session.Store]. It writes the session
-// record as the session_init line of a new log file; O_EXCL makes the
+// record as the session_init line of a new log file. O_EXCL makes the
 // existence check atomic.
 func (s *FileStore) CreateSession(ctx context.Context, id, parentID string) error {
 	s.mu.Lock()
@@ -92,8 +93,9 @@ func (s *FileStore) CreateSession(ctx context.Context, id, parentID string) erro
 	return f.Close()
 }
 
-// LoadSession returns the session record from a log file's first line,
-// or [session.ErrSessionNotFound] if the session does not exist.
+// LoadSession returns the session record from a log file's first line.
+// If the session does not exist, it returns
+// [session.ErrSessionNotFound].
 func (s *FileStore) LoadSession(ctx context.Context, id string) (*session.Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -147,8 +149,8 @@ func (s *FileStore) LoadEntries(ctx context.Context, sessionID string) ([]sessio
 	return entries, nil
 }
 
-// AppendEntries implements [session.Store]. Entries are marshaled one
-// per line and appended; the session_init line is never touched.
+// AppendEntries implements [session.Store]. It marshals one entry per
+// line and appends the lines. It never touches the session_init line.
 func (s *FileStore) AppendEntries(ctx context.Context, sessionID string, entries ...session.Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -182,7 +184,7 @@ func (s *FileStore) AppendEntries(ctx context.Context, sessionID string, entries
 	return f.Close()
 }
 
-// open opens a session's log file, mapping a missing file to
+// open opens a session's log file. For a missing file, it returns
 // [session.ErrSessionNotFound].
 func (s *FileStore) open(id string) (*os.File, error) {
 	path, err := s.path(id)
@@ -199,8 +201,8 @@ func (s *FileStore) open(id string) (*os.File, error) {
 	return f, nil
 }
 
-// decodeHeader reads the session_init line off the front of a log file
-// and returns the decoder positioned at the first entry.
+// decodeHeader reads the session_init line from the front of a log file.
+// It returns a decoder positioned at the first entry.
 func decodeHeader(f *os.File, id string) (*session.Session, *json.Decoder, error) {
 	dec := json.NewDecoder(f)
 	var h header

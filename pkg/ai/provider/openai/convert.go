@@ -12,7 +12,7 @@ import (
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
 
-// convertMessages converts types to OpenAI message params.
+// convertMessages converts ai types to OpenAI message params.
 func convertMessages(
 	system string,
 	messages []ai.Message,
@@ -103,8 +103,9 @@ func convertUserMessage(msg ai.Message) []openai.ChatCompletionMessageParamUnion
 }
 
 // convertFile converts an ai.File to an OpenAI Chat Completions file part.
-// OpenAI supports inline base64 (FileData), uploaded file IDs (FileID), but
-// not arbitrary URLs. Files referenced only by URL are skipped.
+// OpenAI accepts inline base64 data (FileData) and uploaded file IDs
+// (FileID). It does not accept a general URL. This function skips a file
+// that has only a URL.
 func convertFile(f ai.File) (openai.ChatCompletionContentPartUnionParam, bool) {
 	if f.FileID == "" && f.Data == "" {
 		return openai.ChatCompletionContentPartUnionParam{}, false
@@ -143,7 +144,7 @@ func convertAssistantMessage(msg ai.Message) openai.ChatCompletionMessageParamUn
 		case ai.Text:
 			text.WriteString(v.Text)
 		case ai.Thinking:
-			// OpenAI doesn't support a separate thinking field in input messages
+			// OpenAI has no separate thinking field in an input message.
 			text.WriteString(v.Thinking)
 		case ai.ToolCall:
 			args, _ := json.Marshal(v.Arguments)
@@ -261,13 +262,14 @@ func mapStopReason(reason string) ai.StopReason {
 	}
 }
 
-// mapUsage converts OpenAI usage to [ai.Usage], priced with model's rates.
+// mapUsage converts OpenAI usage to [ai.Usage]. It prices the tokens with
+// the rates of the model.
 //
-// The API reports prompt_tokens inclusive of the cached prefix, so the prefix
-// is subtracted out and billed once at the cache-read rate rather than twice.
-// Cache writes are implicit — the API reports no token count for them, so
-// there is nothing to bill. Reasoning tokens are already counted in
-// completion_tokens and bill at the output rate.
+// The prompt_tokens field includes the cached prefix. This function subtracts
+// the prefix and bills it once at the cache-read rate, not twice. Cache
+// writes are implicit. The API reports no token count for them, so there is
+// nothing to bill. The completion_tokens field already includes the reasoning
+// tokens. They bill at the output rate.
 func mapUsage(model ai.Model, u openai.CompletionUsage) ai.Usage {
 	usage := ai.Usage{
 		Input:  int(u.PromptTokens),

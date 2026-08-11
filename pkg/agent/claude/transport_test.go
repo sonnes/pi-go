@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Pin the exact stream-json interrupt control_request wire format the Claude
-// CLI accepts on stdin (mirrors the Agent SDK). A drift here breaks Abort.
+// Pin the exact wire format of the stream-json interrupt
+// control_request that the Claude CLI accepts on stdin. The format
+// matches the Agent SDK. A change here breaks Abort.
 func TestBuildInterruptControl(t *testing.T) {
 	line, err := buildInterruptControl("req_1")
 	require.NoError(t, err)
@@ -21,9 +22,9 @@ func TestBuildInterruptControl(t *testing.T) {
 	)
 }
 
-// Pin the control_response wire format for can_use_tool permission
-// replies. The CLI blocks tool execution until this line arrives on
-// stdin; a drift here deadlocks the subprocess.
+// Pin the wire format of the control_response for a can_use_tool
+// permission reply. The CLI blocks the tool call until this line arrives
+// on stdin. A change here deadlocks the subprocess.
 func TestBuildPermissionResponse(t *testing.T) {
 	t.Run("allow echoes input", func(t *testing.T) {
 		line, err := buildPermissionResponse(

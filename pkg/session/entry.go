@@ -6,17 +6,18 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// EntryHeader carries the tree fields shared by every [Entry]. The
-// ParentID pointer is the entire tree structure — the store stays a
-// flat append-only log and the tree is derived from it.
+// EntryHeader carries the tree fields that every [Entry] shares. The
+// ParentID pointer is the entire tree structure. The store stays a flat
+// append-only log, and the tree is derived from it.
 type EntryHeader struct {
-	// ID identifies the entry within its session. Assigned on append.
+	// ID identifies the entry in its session. It is assigned on append.
 	ID string `json:"id"`
 
-	// ParentID is the ID of the parent entry. Empty means root.
+	// ParentID is the ID of the parent entry. An empty value means the
+	// root entry.
 	ParentID string `json:"parent_id,omitempty"`
 
-	// CreatedAt is when the entry was appended.
+	// CreatedAt is the time when the entry was appended.
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -25,11 +26,11 @@ func (EntryHeader) entry() {}
 // Header returns the tree fields.
 func (h EntryHeader) Header() EntryHeader { return h }
 
-// Entry is one node in a session's transcript tree. It is either a
+// Entry is one node in a session's transcript tree. It is a
 // [MessageEntry], a [CompactionEntry], or an application-defined entry
-// embedding [CustomEntry].
+// that embeds [CustomEntry].
 //
-// The interface is sealed — external packages extend it by embedding
+// The interface is sealed. External packages extend it by embedding
 // [CustomEntry], not by implementing the markers directly.
 type Entry interface {
 	entry() // sealed marker
@@ -38,38 +39,39 @@ type Entry interface {
 
 // MessageEntry wraps an [ai.Message] as a tree node.
 //
-// Meta and Ephemeral both mark injected context — attachments,
-// reminders, skill bodies: sent to the model, hidden from transcript
-// views. They are the mirror image of [CustomEntry], which is visible
-// to the application but never sent to the model. The two differ in one
-// thing, durability: a meta entry is written to the [Store] and comes
-// back on resume, an ephemeral one never leaves memory.
+// Meta and Ephemeral both mark injected context, such as attachments,
+// reminders, and skill bodies. The model reads this context, and
+// transcript views hide it. Injected context is the mirror image of
+// [CustomEntry], which the application sees but the model never reads.
+// Meta and Ephemeral differ in one thing only: durability. A meta entry
+// goes to the [Store] and comes back on resume. An ephemeral entry never
+// leaves memory.
 type MessageEntry struct {
 	EntryHeader
 	ai.Message
 
-	// Meta marks persisted injected context: model-visible,
-	// transcript-hidden, and durable.
+	// Meta marks injected context that persists. The model reads it, and
+	// transcript views hide it.
 	Meta bool
 
 	// Ephemeral marks injected context that must not reach a [Store].
-	// A durable agent keeps it in its in-memory log and shows it to the
-	// model for one run, but never writes it, so it is gone on resume —
-	// context that is only true right now, like a reminder computed
-	// from live state. It is never serialized, so an entry read back
-	// from a [Store] is by definition not ephemeral.
+	// A durable agent keeps this context in its in-memory log and shows
+	// it to the model for one run. The agent never writes it, so it is
+	// gone on resume. Such context is true only at this moment, like a
+	// reminder computed from live state. The codec never serializes this
+	// field, so an entry read back from a [Store] is never ephemeral.
 	Ephemeral bool
 }
 
 // NewMessageEntry wraps an [ai.Message] into a [MessageEntry].
-// Tree fields are assigned when the entry is appended.
+// The append operation assigns the tree fields.
 func NewMessageEntry(m ai.Message) MessageEntry {
 	return MessageEntry{Message: m}
 }
 
 // CustomEntry is a base type that application-defined entries embed
 // to satisfy the [Entry] interface. Custom entries persist in the
-// transcript tree but are never sent to the model.
+// transcript tree, but the model never reads them.
 //
 //	type ArtifactEntry struct {
 //	    session.CustomEntry
@@ -78,7 +80,7 @@ func NewMessageEntry(m ai.Message) MessageEntry {
 //	}
 //
 // To persist custom entries through a [Store], register the concrete
-// type once with [RegisterCustom] so it can be decoded.
+// type once with [RegisterCustom]. The decoder then rebuilds it.
 type CustomEntry struct {
 	EntryHeader
 
@@ -86,25 +88,26 @@ type CustomEntry struct {
 	Kind string `json:"kind"`
 }
 
-// CompactionEntry summarizes the path before it. Appended when the
-// durable agent compacts; nothing is deleted. When building the model
-// context, the latest compaction entry on the active path is emitted
-// as a summary followed only by entries from FirstKeptID forward.
+// CompactionEntry summarizes the path before it. The durable agent
+// appends one when it compacts, and the agent removes nothing. When it
+// builds the model context, it uses the latest compaction entry on the
+// active path. That entry becomes a summary, followed only by the
+// entries from FirstKeptID forward.
 type CompactionEntry struct {
 	EntryHeader
 
 	// Summary is the model-written digest of the compacted turns.
 	Summary string
 
-	// FirstKeptID is the earliest path entry kept verbatim.
+	// FirstKeptID is the ID of the earliest path entry kept verbatim.
 	FirstKeptID string
 
 	// TokensBefore is the approximate context size before compaction.
 	TokensBefore int
 }
 
-// AsMessageEntry extracts the [MessageEntry] from an [Entry], if it
-// is one.
+// AsMessageEntry returns the [MessageEntry] in an [Entry]. The second
+// result reports whether the entry is a [MessageEntry].
 func AsMessageEntry(e Entry) (MessageEntry, bool) {
 	m, ok := e.(MessageEntry)
 	return m, ok

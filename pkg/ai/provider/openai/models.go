@@ -4,8 +4,9 @@ package openai
 
 import ai "github.com/sonnes/pi-go/pkg/ai"
 
-// Model-info vars generated from the models.dev catalog. Each is pure
-// metadata; bind one with [Provider.LanguageModel] or [ai.NewLanguageModel].
+// Model-info vars generated from the models.dev catalog. Each var holds
+// pure metadata. Bind one with [Provider.LanguageModel] or
+// [ai.NewLanguageModel].
 var (
 	ChatgptImageLatest = ai.Model{
 		ID:          "chatgpt-image-latest",
@@ -495,7 +496,7 @@ var (
 	}
 )
 
-// models is the catalog this provider serves.
+// models is the catalog that this provider serves.
 var models = []ai.Model{
 	ChatgptImageLatest,
 	GPT41,
@@ -534,15 +535,15 @@ var models = []ai.Model{
 	TextEmbeddingAda002,
 }
 
-// Models returns the models served by this provider.
+// Models returns a copy of the models that this provider serves.
 func Models() []ai.Model {
 	out := make([]ai.Model, len(models))
 	copy(out, models)
 	return out
 }
 
-// LanguageModel binds a model-info value to this provider. Sugar for
-// [ai.NewLanguageModel].
+// LanguageModel binds a model-info value to this provider. It is a
+// shortcut for [ai.NewLanguageModel].
 func (p *Provider) LanguageModel(info ai.Model) ai.LanguageModel {
 	return ai.NewLanguageModel(info, p)
 }

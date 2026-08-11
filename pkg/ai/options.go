@@ -1,6 +1,7 @@
 package ai
 
-// ThinkingLevel controls reasoning depth, mapped to provider-specific params.
+// ThinkingLevel controls reasoning depth. Each provider maps it to its own
+// parameters.
 type ThinkingLevel string
 
 const (
@@ -29,11 +30,12 @@ func NormalizeThinkingLevel(level ThinkingLevel) ThinkingLevel {
 	return level
 }
 
-// ResolveThinkingLevel returns the closest thinking level supported by model.
+// ResolveThinkingLevel returns the closest thinking level that model supports.
 //
-// Unsupported positive levels degrade to the highest supported level below the
-// requested one. Unknown levels and models without thinking support resolve to
-// [ThinkingOff].
+// If the model does not support a positive level, the result is the highest
+// supported level that is less than the requested one. An unknown level
+// resolves to [ThinkingOff]. A model without thinking support also resolves
+// to [ThinkingOff].
 func ResolveThinkingLevel(model Model, requested ThinkingLevel) (ThinkingLevel, bool) {
 	normalized := NormalizeThinkingLevel(requested)
 	requestedRank, ok := thinkingRanks[normalized]
@@ -66,27 +68,27 @@ func ResolveThinkingLevel(model Model, requested ThinkingLevel) (ThinkingLevel, 
 }
 
 // CacheRetention controls prompt-cache breakpoint placement and TTL across
-// providers. [CacheRetentionDefault] is equivalent to [CacheRetentionShort]:
-// providers emit cache markers automatically so callers get cache hits
-// without opting in.
+// providers. [CacheRetentionDefault] is equal to [CacheRetentionShort].
+// Providers emit cache markers automatically, so a caller gets cache hits
+// without extra configuration.
 type CacheRetention string
 
 const (
 	// CacheRetentionDefault is the zero value and resolves to Short.
 	CacheRetentionDefault CacheRetention = ""
-	// CacheRetentionNone disables cache markers entirely.
+	// CacheRetentionNone turns off all cache markers.
 	CacheRetentionNone CacheRetention = "none"
-	// CacheRetentionShort requests the provider's default ephemeral TTL
-	// (Anthropic: 5 minutes).
+	// CacheRetentionShort requests the default ephemeral TTL of the
+	// provider (Anthropic: 5 minutes).
 	CacheRetentionShort CacheRetention = "short"
-	// CacheRetentionLong requests the longer ephemeral TTL where supported
-	// (Anthropic: 1 hour on api.anthropic.com).
+	// CacheRetentionLong requests the longer ephemeral TTL, where the
+	// provider supports it (Anthropic: 1 hour on api.anthropic.com).
 	CacheRetentionLong CacheRetention = "long"
 )
 
-// ResolveCacheRetention returns the effective retention, substituting
-// [CacheRetentionShort] for the zero value. Provider adapters call this so
-// the default-on behavior lives in exactly one place.
+// ResolveCacheRetention returns the effective retention. It substitutes
+// [CacheRetentionShort] for the zero value. Provider adapters call it, so the
+// default-on behavior lives in exactly one place.
 func ResolveCacheRetention(r CacheRetention) CacheRetention {
 	if r == CacheRetentionDefault {
 		return CacheRetentionShort
@@ -94,8 +96,8 @@ func ResolveCacheRetention(r CacheRetention) CacheRetention {
 	return r
 }
 
-// StreamOptions holds configuration for stream and complete calls.
-// Providers receive this directly; callers use Option functions.
+// StreamOptions holds the configuration for stream and complete calls.
+// Providers receive this value directly. Callers use Option functions.
 type StreamOptions struct {
 	Temperature    *float64
 	MaxTokens      *int
@@ -147,15 +149,15 @@ func WithToolChoice(choice ToolChoice) Option {
 }
 
 // WithCacheRetention sets the prompt-cache retention level. See
-// [CacheRetention] for the available values. The default (unset) behaves
-// like [CacheRetentionShort].
+// [CacheRetention] for the available values. If the value is unset, the
+// behavior is the same as [CacheRetentionShort].
 func WithCacheRetention(r CacheRetention) Option {
 	return func(o *StreamOptions) { o.CacheRetention = r }
 }
 
-// WithSessionID sets a stable session identifier used for cache affinity
-// on providers that support it (currently OpenAI Chat Completions and
-// Responses, forwarded as prompt_cache_key). Other providers ignore it.
+// WithSessionID sets a stable session identifier for cache affinity. OpenAI
+// Chat Completions and Responses support it and forward it as
+// prompt_cache_key. Other providers ignore it.
 func WithSessionID(id string) Option {
 	return func(o *StreamOptions) { o.SessionID = id }
 }
@@ -170,14 +172,14 @@ func WithMetadata(m map[string]any) Option {
 	return func(o *StreamOptions) { o.Metadata = m }
 }
 
-// WithImageSize sets the desired image dimensions (e.g. "1024x1024") for image
-// generation. Providers that don't support the value ignore it.
+// WithImageSize sets the image dimensions for image generation, for example
+// "1024x1024". A provider that does not support the value ignores it.
 func WithImageSize(size string) Option {
 	return func(o *StreamOptions) { o.ImageSize = size }
 }
 
-// WithImageCount sets the number of images to generate. A value <= 0 means the
-// provider default (one image).
+// WithImageCount sets the number of images to generate. If the value is 0 or
+// less, the provider default applies (one image).
 func WithImageCount(n int) Option {
 	return func(o *StreamOptions) { o.ImageCount = n }
 }

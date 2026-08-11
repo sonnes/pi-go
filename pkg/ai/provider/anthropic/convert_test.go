@@ -17,7 +17,7 @@ func TestConvertUserContent_File(t *testing.T) {
 		file        ai.File
 		wantBlock   bool
 		wantSrcType string
-		wantData    string // expected source.data after marshal; "" to skip
+		wantData    string // the source.data after marshal. "" skips the check
 	}{
 		{
 			name: "base64 PDF",

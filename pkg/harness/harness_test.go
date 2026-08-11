@@ -18,7 +18,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/session"
 )
 
-// --- static validation at New ---
+// --- static checks at New ---
 
 func TestNewValidation(t *testing.T) {
 	p := &mockProvider{}
@@ -70,8 +70,8 @@ func TestCallerSystemPromptIsRejected(t *testing.T) {
 	p := &mockProvider{}
 	ctx := context.Background()
 
-	// The harness owns the system prompt: a caller's WithSystemPrompt
-	// would be silently clobbered by the compiled one, so it is an
+	// The harness owns the system prompt. The compiled prompt
+	// overwrites a caller WithSystemPrompt without warning, so it is an
 	// error at both option sites.
 	_, err := New(
 		WithCatalog(testCatalog(p)),
@@ -125,7 +125,7 @@ func TestOverlayScalarsOverride(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/per-build", env.WorkDir)
 
-	// The baseline is not mutated by a build that overrode it.
+	// A build that overrode the baseline does not mutate it.
 	_, err = h.Agent(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "/baseline", env.WorkDir)
@@ -182,14 +182,15 @@ func TestOverlayResolverAppendsToBaseline(t *testing.T) {
 	_, err := h.Agent(ctx, WithAgents(perBuild))
 	require.NoError(t, err)
 
-	// The build's resolver is an additional source, not a replacement: it
-	// wins the name it claims and leaves the rest of the baseline standing.
+	// The resolver of the build is an additional source, not a
+	// replacement. It wins the name it claims and leaves the rest of the
+	// baseline standing.
 	require.Len(t, env.Agents, 2)
 	assert.Equal(t, "per-build", env.Agents[0].Source)
 	assert.Equal(t, "writer", env.Agents[1].Name)
 	assert.Equal(t, "baseline", env.Agents[1].Source)
 
-	// Baseline-only builds are unaffected.
+	// A baseline-only build stays the same.
 	_, err = h.Agent(ctx)
 	require.NoError(t, err)
 	require.Len(t, env.Agents, 2)
@@ -236,8 +237,8 @@ func TestOverlayInstructionsConcatenateBaselineFirst(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Documents have no name to collide on, so both apply, the baseline's
-	// first.
+	// Documents have no name to collide on, so both apply. The baseline
+	// document comes first.
 	require.Len(t, env.Instructions, 2)
 	assert.Equal(t, "baseline", env.Instructions[0].Source)
 	assert.Equal(t, "per-build", env.Instructions[1].Source)
@@ -288,9 +289,10 @@ func TestOverlayToolWithBaselineNameOverridesInPlace(t *testing.T) {
 	)
 	ctx := context.Background()
 
-	// A per-build tool with a baseline name replaces it where it stood —
-	// a session's sandboxed "read" over the process's — mirroring how a
-	// per-build artifact overrides a baseline one.
+	// A per-build tool with a baseline name replaces that tool where it
+	// stood: the sandboxed "read" of a session over the one from the
+	// process. A per-build artifact overrides a baseline artifact in the
+	// same way.
 	_, err := h.Agent(ctx, WithTools(descTool("read", "sandboxed")))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"read", "write"}, toolNames(env.Tools), "the name keeps its position")
@@ -348,7 +350,7 @@ func TestEnvExposesABuildWithoutASession(t *testing.T) {
 	assert.Equal(t, []string{"read", "skill"}, toolNames(env.Tools), "synthesized tools included")
 	assert.Zero(t, seeded, "Env neither seeds nor touches a session")
 
-	// Overlays apply exactly as they would to an agent build.
+	// An overlay applies exactly as it does to an agent build.
 	over, err := h.Env(ctx, WithWorkDir("/per-build"))
 	require.NoError(t, err)
 	assert.Equal(t, "/per-build", over.WorkDir)
@@ -376,8 +378,8 @@ func TestBuildSurvivesMalformedArtifactFiles(t *testing.T) {
 		WithSkills(fs.Skills(proj, ".agents/skills")),
 	)
 
-	// One malformed file must never take a session down with it: the
-	// build succeeds and exposes the artifacts that parsed.
+	// One malformed file must never stop a session. The build succeeds
+	// and exposes the artifacts that parsed.
 	env, err := h.Env(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"reviewer"}, agentNames(env.Agents))

@@ -16,7 +16,7 @@ type Text struct {
 
 func (Text) content() {}
 
-// Thinking represents reasoning/chain-of-thought content.
+// Thinking represents chain-of-thought reasoning content.
 type Thinking struct {
 	Thinking  string
 	Signature string // provider-specific thought signature
@@ -32,14 +32,16 @@ type Image struct {
 
 func (Image) content() {}
 
-// File represents a document or file attachment provided by the user.
-// Exactly one of Data, URL, or FileID should be set:
+// File represents a document or file attachment from the user.
+// Set exactly one of Data, URL, or FileID:
 //   - Data is base64-encoded file content (inline upload).
-//   - URL is a publicly accessible URL the provider can fetch.
-//   - FileID is a provider-specific identifier for a previously uploaded file.
+//   - URL is a public URL that the provider can fetch.
+//   - FileID is a provider-specific identifier for a file you uploaded
+//     earlier.
 //
-// MimeType is the IANA media type (e.g. "application/pdf", "text/plain").
-// Filename is an optional human-readable name surfaced by some providers.
+// MimeType is the IANA media type, for example "application/pdf" or
+// "text/plain". Filename is an optional human-readable name. Some providers
+// show it.
 type File struct {
 	Data     string // base64 encoded
 	URL      string
@@ -53,30 +55,32 @@ func (File) content() {}
 // ToolCall represents a tool invocation by the model.
 //
 // For client-side function tools, the model emits a ToolCall and the client
-// executes it; the result is sent back as a separate tool-result message.
+// runs it. The client then sends the result back in a separate tool-result
+// message.
 //
-// For provider-hosted server tools, the provider executes the call inline.
-// Server is true, ServerType identifies the canonical tool, and Output (when
-// populated) carries the provider-emitted result alongside the invocation.
+// For provider-hosted server tools, the provider runs the call inline. Server
+// is true, and ServerType identifies the canonical tool. If Output is
+// populated, it carries the provider result next to the invocation.
 type ToolCall struct {
 	ID        string
 	Name      string
 	Arguments map[string]any
-	Signature string // provider-specific signature (e.g. Google thought_signature)
+	Signature string // provider-specific signature (Google thought_signature)
 
-	Server     bool              // true if this call was executed by the provider
+	Server     bool              // true when the provider ran this call
 	ServerType ServerToolType    // canonical type when Server is true
-	Output     *ServerToolOutput // result of provider-side execution, when available
+	Output     *ServerToolOutput // result from the provider, when available
 }
 
 func (ToolCall) content() {}
 
-// ServerToolOutput carries the result of a provider-executed server tool.
+// ServerToolOutput carries the result of a server tool that the provider runs.
 //
-// Content is a normalized text rendering (e.g. concatenated search-result
-// snippets, code stdout/stderr, fetched body) suitable for display or for
-// feeding back into the model. Raw retains the provider's original JSON for
-// callers that need structured fields (citations, encrypted indices, etc.).
+// Content is normalized text. It can be concatenated search-result snippets,
+// the stdout and stderr of code, or a fetched body. You can show this text or
+// send it back to the model. Raw keeps the original JSON from the provider,
+// for callers that need structured fields such as citations and encrypted
+// indices.
 type ServerToolOutput struct {
 	Content string
 	Raw     json.RawMessage

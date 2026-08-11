@@ -115,8 +115,9 @@ func TestAgent_Run_SimpleText(t *testing.T) {
 	last := events[len(events)-1]
 	require.Len(t, last.Messages, 1)
 	assert.Equal(t, "Hello!", last.Messages[0].Text())
-	// input_tokens includes cached, output_tokens includes reasoning; the
-	// categories are reported disjoint so a sum double-counts nothing.
+	// input_tokens includes the cached tokens, and output_tokens includes
+	// the reasoning tokens. The reported categories are disjoint, so a sum
+	// counts nothing twice.
 	assert.Equal(t, 7, last.Usage.Input)
 	assert.Equal(t, 3, last.Usage.Output)
 	assert.Equal(t, 3, last.Usage.CacheRead)
@@ -325,16 +326,16 @@ func TestAgent_Run_ConcurrentRejected(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Canceling the Run context terminates the Codex child; the run ends
-// with context.Canceled and the agent returns to idle.
+// A cancel of the Run context stops the Codex child. The run ends with
+// context.Canceled, and the agent returns to idle.
 func TestAgent_Run_CancelKillsTurn(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5.4", Name: "gpt-5.4"})
 	reader, writer := io.Pipe()
 	started := make(chan struct{})
 	a.runFn = func(ctx context.Context, _ config, _ runArgs) (io.ReadCloser, func() error, error) {
 		close(started)
-		// Mirror the real transport: when the turn ctx is cancelled, the child
-		// dies and stdout closes.
+		// Mirror the real transport. When the turn ctx is canceled, the
+		// child stops and stdout closes.
 		go func() {
 			<-ctx.Done()
 			_ = writer.CloseWithError(ctx.Err())
@@ -479,8 +480,8 @@ func eventTypes(events []agent.Event) []agent.EventType {
 	return types
 }
 
-// collectRun drains a run's stream with a watchdog timeout, returning
-// its events and terminal error.
+// collectRun drains the stream of a run with a watchdog timeout. It
+// returns the events and the terminal error.
 func collectRun(t *testing.T, s *agent.Stream) ([]agent.Event, error) {
 	t.Helper()
 
@@ -525,7 +526,8 @@ func TestAgent_Run_UsageCost(t *testing.T) {
 	require.NoError(t, err)
 
 	// 7 uncached input, 3 non-reasoning output, 3 cache read, 2 reasoning.
-	// Reasoning bills at the output rate: OpenAI counts it as output.
+	// Reasoning bills at the output rate, because OpenAI counts it as
+	// output.
 	cost := events[len(events)-1].Usage.Cost
 	assert.InDelta(t, 0.000014, cost.Input, 1e-12)
 	assert.InDelta(t, 0.000024, cost.Output, 1e-12)

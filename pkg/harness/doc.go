@@ -1,8 +1,8 @@
 // Package harness is the composition layer above [durable]. It takes
-// the declarative artifacts an agent product is configured with —
-// agent definitions, skills, instruction documents — and compiles them
-// into loop mechanics: a system prompt, first-run entries, a
-// synthesized skill tool, and per-run middleware.
+// the declarative artifacts of an agent product — agent definitions,
+// skills, and instruction documents. It compiles them into loop
+// mechanics: a system prompt, first-run entries, a synthesized skill
+// tool, and per-run middleware.
 //
 // [New] returns a factory, not an agent:
 //
@@ -18,23 +18,24 @@
 //
 //	a, err := h.Agent(ctx, durable.WithSessionID("s1")) // create or resume
 //
-// A factory rather than an agent because two things need one: one
-// configuration serves many sessions, and seeding a fresh session means
-// knowing at creation time whether it is fresh.
+// The harness is a factory and not an agent, because two things need a
+// factory. One configuration serves many sessions. To seed a fresh
+// session, the harness must know at creation time that the session is
+// fresh.
 //
 // # Resolvers
 //
-// Artifacts are discovered by resolvers — anything implementing
-// [def.AgentResolver], [def.SkillResolver], or
+// Resolvers discover the artifacts. A resolver is any type that
+// implements [def.AgentResolver], [def.SkillResolver], or
 // [def.InstructionResolver]. A resolver can be a filesystem convention,
-// an embedded FS, a database query, or a literal list; [def.Agents],
+// an embedded FS, a database query, or a literal list. [def.Agents],
 // [def.Skills], and [def.Docs] cover definitions written in code.
 //
 // The interfaces live in [def], beside the types they return, so a
 // resolver never imports the harness that consumes it.
 //
 // One resolver is one source. [WithAgents], [WithSkills], and
-// [WithInstructions] take a list of them, lowest first, and repeated
+// [WithInstructions] take a list of resolvers, lowest first. Repeated
 // calls append:
 //
 //	harness.WithSkills(
@@ -43,76 +44,81 @@
 //	    fs.Skills(project, ".agents/skills"), // highest
 //	)
 //
-// A source — project, user, global — is not a concept the harness has:
-// it is a convention paired with a root, so a hierarchy is just the
-// order of this list.
+// A source — project, user, global — is not a concept in the harness. A
+// source is a convention paired with a root. A hierarchy is therefore
+// the order of this list.
 //
 // # Names decide what survives
 //
-// Sources union, and the union is settled by name at build time.
+// Sources combine, and the name settles the result at build time.
 //
-// A skill with a [def.Skill.Scope] is qualified with the directory it
-// governs — "apps/web" and "deploy" become "apps/web:deploy" — so
-// same-named artifacts from different directories coexist rather than
-// displacing one another. Qualification is structural: it follows from
-// where the artifact lives, never from what else is registered, so
-// adding a "deploy" at the root does not rename "apps/web:deploy".
+// The harness qualifies the name of a skill that has a
+// [def.Skill.Scope]. The qualified name carries the directory the skill
+// governs: "apps/web" and "deploy" become "apps/web:deploy". Artifacts
+// with the same name in different directories therefore coexist, and
+// neither one displaces the other. Qualification is structural. It
+// follows from where the artifact lives, never from what else is
+// registered. A new "deploy" at the root does not rename
+// "apps/web:deploy".
 //
 // Two artifacts that still land on the same name are the same artifact
-// declared twice, and the highest source wins — replacing the whole
-// definition rather than merging it field by field. That is what lets a
-// project replace a built-in skill by naming it. A name keeps the
-// position it first appeared at, so an override never reshuffles the
-// list the model is shown.
+// declared twice. The highest source wins. It replaces the whole
+// definition and does not merge it field by field. A project can
+// therefore replace a built-in skill when it declares the same name. A
+// name keeps the position where it first appeared, so an override never
+// reshuffles the list the model sees.
 //
-// Handing over one name twice within a single source is an error, not an
-// override: overriding is between sources.
+// One source that hands over the same name twice is an error, not an
+// override. An override is always between two sources.
 //
-// Instructions have no name, so every document resolved applies, in
-// order.
+// Instructions have no name. Every document a resolver returns applies,
+// in order.
 //
-// Resolvers run on every build — each [Harness.Agent] and [Harness.Env]
-// call — and the harness never caches across builds. A built agent keeps its
-// snapshot for its whole lifetime, so its prompt is stable; the next
-// build sees the current state of the disk. A resolver that wants
-// caching implements it internally, where it knows what invalidates.
+// Resolvers run on every build — on each [Harness.Agent] and
+// [Harness.Env] call — and the harness caches nothing across builds. A
+// built agent keeps its snapshot for its whole lifetime, so its prompt
+// is stable. The next build sees the current state of the disk. A
+// resolver that wants caching implements caching internally, where it
+// knows what invalidates the cache.
 //
 // # How artifacts become behavior
 //
-//   - Instruction documents are rendered into the system prompt in
-//     resolver order — the ones with no [def.Instructions.Dir]. A
-//     directory-bound document is resolved and handed to the builder,
-//     which decides what it is worth.
-//   - Skills appear in the prompt as names and descriptions; the
-//     synthesized "skill" tool hands the model a body when it asks.
-//   - Agent definitions resolve like skills and are handed over as
-//     data — [prompt.Env.Agents] for builders, [Harness.Env] for
-//     callers. No tool is synthesized from them, and their Model and
-//     Tools fields are advisory: the harness neither resolves nor
-//     validates them.
+//   - The prompt builder puts instruction documents into the system
+//     prompt in resolver order — the documents with no
+//     [def.Instructions.Dir]. The harness resolves a directory-bound
+//     document and hands it to the builder, which decides what the
+//     document is worth.
+//   - Skills appear in the prompt as names and descriptions. When the
+//     model asks for a body, the synthesized "skill" tool hands one
+//     over.
+//   - Agent definitions resolve like skills, and the harness hands them
+//     over as data — [prompt.Env.Agents] for builders, [Harness.Env]
+//     for callers. The harness synthesizes no tool from them. Their
+//     Model and Tools fields are advisory: the harness does not resolve
+//     them and does not make sure that they are correct.
 //   - Tools pass through to the loop untouched.
 //
-// "skill" and "agent" are reserved names, checked against the
-// registered tools at [New]. ("agent" is reserved so the subagent tool
-// can return without breaking anyone.)
+// "skill" and "agent" are reserved names. [New] makes sure that no
+// registered tool claims either one. ("agent" stays reserved so the
+// subagent tool can return without breaking anyone.)
 //
 // # Option currency
 //
-// Every harness option is an [agent.Option] writing an extension slot,
-// the same currency [durable] uses. One flat list configures all three
-// layers: the harness reads its slot and forwards the rest down through
-// [durable.New] to [agent.New].
+// Every harness option is an [agent.Option] that writes an extension
+// slot. [durable] uses the same currency. One flat list configures all
+// three layers: the harness reads its own slot and forwards the rest
+// down through [durable.New] to [agent.New].
 //
-// The same options are accepted at two sites. [New] sets a baseline, and
-// [Harness.Agent] overlays it for one build — because a working
-// directory, a project's resolvers, and a session's extra tools are
-// properties of the session, not of the process. That overlay is what
-// lets a single harness serve many repositories instead of one harness
-// per repository.
+// Two sites accept the same options. [New] sets a baseline, and
+// [Harness.Agent] overlays that baseline for one build. A working
+// directory, the resolvers of a project, and the extra tools of a
+// session are properties of the session, not of the process. This
+// overlay lets one harness serve many repositories, instead of one
+// harness for each repository.
 //
-// Scalars override; everything else appends, baseline first. A resolver
-// passed to [Harness.Agent] is an additional source on top of the
-// baseline's, and being last it is the one that wins a name collision:
+// Scalars override. Everything else appends, baseline first. A resolver
+// passed to [Harness.Agent] is an additional source above the baseline
+// sources. It comes last, so it wins a name collision:
 //
 //	a, err := h.Agent(ctx,
 //	    durable.WithSessionID(id),
@@ -123,17 +129,17 @@
 //
 // # What comes back
 //
-// [Harness.Agent] returns a [durable.Agent] — the harness compiles the
-// configuration and gets out of the way. There is no harness agent type
-// wrapping it: seeding rides down as [durable.WithMiddleware], so every
-// durable verb, [durable.Agent.Fork] included, behaves exactly as it
-// does for an agent built by [durable.New].
+// [Harness.Agent] returns a [durable.Agent]. The harness compiles the
+// configuration and then gets out of the way. No harness agent type
+// wraps the result. Seeding rides down as [durable.WithMiddleware], so
+// every durable verb behaves exactly as it does for an agent from
+// [durable.New]. This includes [durable.Agent.Fork].
 //
-// Per-run middleware belongs to [durable] for the same reason.
-// [durable.WithMiddleware] travels down the flat option list without
-// the harness touching it, and [durable.Fail] is how one refuses a run.
-// Interception inside a run belongs to [agent.Hook], also forwarded
-// untouched.
+// Per-run middleware belongs to [durable] for the same reason. The
+// option [durable.WithMiddleware] travels down the flat option list,
+// and the harness does not touch it. [durable.Fail] refuses a run.
+// Interception inside a run belongs to [agent.Hook], which the harness
+// also forwards untouched.
 //
 // See docs/concepts/harness.mdx for the design rationale.
 package harness

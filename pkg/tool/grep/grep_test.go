@@ -13,7 +13,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/sandbox"
 )
 
-// noRootFS wraps a sandbox.FS but hides Root(), forcing grep onto its
+// noRootFS wraps a sandbox.FS but hides Root(). As a result, grep uses its
 // pure-Go search path instead of ripgrep.
 type noRootFS struct{ fsys *sandbox.FS }
 
@@ -75,7 +75,8 @@ func TestGrep_NoMatch(t *testing.T) {
 
 func TestGrep_InvalidRegex(t *testing.T) {
 	dir := setupTestFiles(t)
-	// noRootFS has no Root(), forcing the pure-Go path which compiles the regex.
+	// noRootFS has no Root(), so the tool uses the pure-Go path. That path
+	// compiles the regex.
 	run := New(FS{noRootFS{sandbox.New(dir, sandbox.Strict())}})
 
 	_, err := run(context.Background(), Input{Pattern: "[invalid"})
@@ -88,12 +89,12 @@ func TestGrep_CaseInsensitive(t *testing.T) {
 	dir := setupTestFiles(t)
 	run := New(FS{sandbox.New(dir, sandbox.Strict())})
 
-	// Without case insensitive: lowercase "hello" does not match "Hello".
+	// Without the case-insensitive option, "hello" does not match "Hello".
 	result1, err := run(context.Background(), Input{Pattern: "hello"})
 	require.NoError(t, err)
 	assert.Equal(t, "No matches found", result1)
 
-	// With case insensitive.
+	// With the case-insensitive option.
 	result2, err := run(context.Background(), Input{Pattern: "hello", IgnoreCase: true})
 	require.NoError(t, err)
 	assert.Contains(t, result2, "file3.txt")
@@ -139,7 +140,7 @@ func TestGrep_Context(t *testing.T) {
 		[]byte("before\nMATCH\nafter\n"),
 		0644,
 	))
-	// Pure-Go path exercises the tool's own context handling.
+	// The pure-Go path uses the tool's own context handling.
 	run := New(FS{noRootFS{sandbox.New(dir, sandbox.Strict())}})
 
 	ctxLines := 1
@@ -190,7 +191,7 @@ func TestGrep_HiddenFilesSkipped(t *testing.T) {
 	err = os.WriteFile(filepath.Join(dir, "visible.txt"), []byte("visible"), 0644)
 	require.NoError(t, err)
 
-	// Pure-Go path: skips hidden files.
+	// The pure-Go path skips hidden files.
 	run := New(FS{noRootFS{sandbox.New(dir, sandbox.Strict())}})
 
 	result, err := run(context.Background(), Input{Pattern: ".*"})

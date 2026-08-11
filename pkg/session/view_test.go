@@ -12,7 +12,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/session"
 )
 
-// viewEntry is a test custom entry for projection tests.
+// viewEntry is a custom entry for the projection tests.
 type viewEntry struct {
 	session.CustomEntry
 	Note string
@@ -147,11 +147,12 @@ func benchEntries(n int) ([]session.Entry, map[string]session.Entry, string) {
 	return entries, byID, parent
 }
 
-// Path rebuilds the index every call (O(n)); PathFrom reuses a live one
-// (O(depth)). This gap is what makes a long durable session — one Path per
-// turn over an ever-growing log — quadratic. The leaf is a shallow entry:
-// the rewind case, where the active path is short but the log is huge
-// because abandoned branches are never pruned.
+// Path rebuilds the index on every call (O(n)). PathFrom reuses a live
+// index (O(depth)). This gap makes a long durable session quadratic,
+// because the session does one Path call per turn over a log that always
+// grows. The leaf is a shallow entry. This is the rewind case: the active
+// path is short, but the log is huge because abandoned branches are never
+// pruned.
 func BenchmarkPath(b *testing.B) {
 	entries, _, _ := benchEntries(5000)
 	leaf := entries[10].Header().ID
@@ -288,8 +289,9 @@ func TestTranscriptView(t *testing.T) {
 
 	got := session.TranscriptView(path)
 
-	// Meta and ephemeral entries are both injected context: model-visible,
-	// transcript-hidden. They differ only in whether they persist.
+	// Meta and ephemeral entries are both injected context. The model
+	// reads them, and the transcript hides them. They differ only in
+	// whether they persist.
 	require.Len(t, got, 3)
 	assert.Equal(t, "e1", got[0].Header().ID)
 	assert.Equal(t, "e3", got[1].Header().ID)

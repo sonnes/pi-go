@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// sendArgs holds parameters for a single subprocess invocation.
+// sendArgs holds the parameters for one subprocess run.
 type sendArgs struct {
 	prompt          string
 	systemPrompt    string
@@ -25,9 +25,10 @@ type sendArgs struct {
 	partialMessages bool
 }
 
-// spawn starts a one-shot `claude --print` subprocess and returns its
-// stdout pipe plus a cleanup func that waits for the process to exit.
-// It holds no state and is safe to call concurrently.
+// spawn starts a one-shot `claude --print` subprocess. It returns the
+// stdout pipe of the subprocess and a cleanup func. The cleanup func
+// waits for the process to exit. spawn holds no state, and concurrent
+// calls are safe.
 func spawn(
 	ctx context.Context,
 	cfg config,
@@ -89,8 +90,9 @@ func spawn(
 	return stdout, cleanup, nil
 }
 
-// buildArgs constructs CLI arguments. The provider always runs the CLI
-// with --no-session-persistence so each call is non-persisted.
+// buildArgs builds the CLI arguments. If the caller sets no session ID,
+// the provider adds --no-session-persistence, and the call persists no
+// session.
 func buildArgs(cfg config, args sendArgs) []string {
 	a := []string{
 		"--print",
@@ -142,8 +144,9 @@ func buildArgs(cfg config, args sendArgs) []string {
 	return a
 }
 
-// cleanEnv returns the current environment minus variables that would
-// prevent a fresh Claude Code launch (e.g. nested-session detection).
+// cleanEnv returns the current environment without the variables that
+// prevent a new Claude Code start. Nested-session detection is one
+// example.
 func cleanEnv() []string {
 	var env []string
 	for _, e := range os.Environ() {
@@ -155,7 +158,8 @@ func cleanEnv() []string {
 	return env
 }
 
-// gracefulShutdown sends SIGINT, waits 3 seconds, then SIGKILL.
+// gracefulShutdown sends SIGINT. If the process does not exit in 3
+// seconds, gracefulShutdown sends SIGKILL.
 func gracefulShutdown(cmd *exec.Cmd, done <-chan struct{}) {
 	if cmd.Process == nil {
 		return

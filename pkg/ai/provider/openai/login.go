@@ -5,8 +5,8 @@ import "github.com/sonnes/pi-go/pkg/ai/oauth"
 // AuthorizeEndpoint is the OpenAI OAuth authorization endpoint.
 const AuthorizeEndpoint = "https://auth.openai.com/oauth/authorize"
 
-// LoginConfig returns an [oauth.LoginConfig] for OpenAI's OAuth flow.
-// The caller must set DisplayURL before passing to [oauth.Login].
+// LoginConfig returns an [oauth.LoginConfig] for the OpenAI OAuth flow.
+// The caller must set DisplayURL before it calls [oauth.Login].
 func LoginConfig(clientID string) oauth.LoginConfig {
 	return oauth.LoginConfig{
 		AuthorizeURL: AuthorizeEndpoint,

@@ -16,7 +16,7 @@ import (
 )
 
 func TestLogin_Success(t *testing.T) {
-	// Mock token endpoint.
+	// A mock token endpoint.
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 
@@ -35,17 +35,18 @@ func TestLogin_Success(t *testing.T) {
 	}))
 	defer tokenSrv.Close()
 
-	// Capture the authorize URL to extract state for the callback.
+	// Capture the authorize URL to get the state for the callback.
 	var authorizeURL string
 	cfg := LoginConfig{
 		AuthorizeURL: "https://example.com/authorize",
 		TokenURL:     tokenSrv.URL,
 		ClientID:     "test-client-id",
-		RedirectPort: 18931, // High port unlikely to conflict.
+		RedirectPort: 18931, // A high port with a low chance of a conflict.
 		Scopes:       []string{"openid", "profile"},
 		DisplayURL: func(u string) error {
 			authorizeURL = u
-			// Simulate the browser redirect by hitting the callback server.
+			// Simulate the browser redirect with a request to the callback
+			// server.
 			go func() {
 				// Parse the state from the authorize URL.
 				parsed, _ := url.Parse(u)
@@ -207,8 +208,8 @@ func TestParsePastedCode(t *testing.T) {
 	}
 }
 
-// TestLogin_ManualPaste verifies the flow completes via the ReadCode paste
-// callback when no localhost callback arrives.
+// TestLogin_ManualPaste makes sure that the flow completes through the
+// ReadCode paste callback when no localhost callback arrives.
 func TestLogin_ManualPaste(t *testing.T) {
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "pasted-code", r.FormValue("code"))
@@ -230,7 +231,7 @@ func TestLogin_ManualPaste(t *testing.T) {
 		Scopes:       []string{"openid"},
 		DisplayURL:   func(u string) error { return nil },
 		ReadCode: func(ctx context.Context) (string, error) {
-			// Paste a full redirect URL carrying the matching state.
+			// Paste a full redirect URL that carries the matching state.
 			parsed, _ := url.Parse(captured)
 			state := parsed.Query().Get("state")
 			return fmt.Sprintf(
@@ -252,8 +253,8 @@ func TestLogin_ManualPaste(t *testing.T) {
 	assert.Equal(t, "paste-access", creds.AccessToken)
 }
 
-// TestLogin_ManualPaste_ListenFailure verifies that when the localhost
-// callback port is unavailable, login still completes via paste.
+// TestLogin_ManualPaste_ListenFailure makes sure that login still completes
+// through the paste path when the localhost callback port is not available.
 func TestLogin_ManualPaste_ListenFailure(t *testing.T) {
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -264,7 +265,7 @@ func TestLogin_ManualPaste_ListenFailure(t *testing.T) {
 	}))
 	defer tokenSrv.Close()
 
-	// Occupy the callback port so net.Listen fails.
+	// Occupy the callback port to make net.Listen fail.
 	blocker, err := net.Listen("tcp", "127.0.0.1:18937")
 	require.NoError(t, err)
 	defer blocker.Close()

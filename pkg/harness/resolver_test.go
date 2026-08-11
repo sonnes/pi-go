@@ -69,7 +69,7 @@ func TestResolveQualifiesScopedNames(t *testing.T) {
 	got, err := h.baseline.resolve(context.Background())
 	require.NoError(t, err)
 
-	// An unscoped name stands alone; a scoped one is qualified with the
+	// An unscoped name stands alone. A scoped name is qualified with the
 	// directory it governs, so all three coexist.
 	assert.Equal(
 		t,
@@ -89,7 +89,7 @@ func TestResolveQualifiesScopedAgents(t *testing.T) {
 	assert.Equal(t, []string{"reviewer", "apps/web:reviewer"}, agentNames(got.agents))
 }
 
-// --- union across sources ---
+// --- sources combine ---
 
 func TestResolveUnionsAcrossResolvers(t *testing.T) {
 	h := newTestHarness(
@@ -143,8 +143,8 @@ func TestResolveLastResolverWinsKeepingPosition(t *testing.T) {
 	got, err := h.baseline.resolve(context.Background())
 	require.NoError(t, err)
 
-	// Replacement is whole-definition, and the name keeps the position it
-	// first appeared at, so an override does not reshuffle the listing.
+	// Replacement is whole-definition. The name keeps the position where
+	// it first appeared, so an override does not reshuffle the listing.
 	require.Len(t, got.agents, 2)
 	assert.Equal(t, "reviewer", got.agents[0].Name)
 	assert.Equal(t, "project", got.agents[0].Source)
@@ -192,8 +192,8 @@ func TestResolveDuplicateWithinResolverFails(t *testing.T) {
 			errs: []string{`duplicate skill "review"`, `qualified "review"`},
 		},
 		{
-			// Overriding is between sources, never within one, so a
-			// duplicate here is a malformed resolver rather than a layering
+			// An override is between sources, never within one. A
+			// duplicate here is a malformed resolver, not a layering
 			// decision. The name a model sees is not the name on disk, so
 			// the error prints the raw name, the scope, and the qualified
 			// name.
@@ -224,8 +224,8 @@ func TestResolveDuplicateWithinResolverFails(t *testing.T) {
 
 func TestResolveRejectsColonInName(t *testing.T) {
 	// ":" is how the harness spells qualification. A literal
-	// "apps/web:deploy" from a resolver must not silently collide with a
-	// scoped "deploy" from another.
+	// "apps/web:deploy" from one resolver must not collide without
+	// warning with a scoped "deploy" from another.
 	h := newTestHarness(
 		t,
 		&mockProvider{},
@@ -262,10 +262,10 @@ func TestResolveUnnamedArtifactFails(t *testing.T) {
 }
 
 func TestResolveDoesNotValidateAgentDefs(t *testing.T) {
-	// Model and Tools are advisory metadata: the harness consumes
-	// neither, so a definition asking for a model this catalog lacks or
-	// tools this toolbox lacks still resolves. The product that acts on
-	// the definition checks what it uses.
+	// Model and Tools are advisory metadata. The harness consumes
+	// neither. A definition that asks for a model this catalog lacks, or
+	// for tools this toolbox lacks, still resolves. The product that
+	// acts on the definition makes sure of what it uses.
 	h := newTestHarness(
 		t,
 		&mockProvider{},
@@ -320,9 +320,9 @@ func TestResolveInstructionsSkipIdenticalContent(t *testing.T) {
 	got, err := h.baseline.resolve(context.Background())
 	require.NoError(t, err)
 
-	// The same document registered twice — the double-registration
-	// footgun — costs its tokens once. The first occurrence keeps its
-	// position and provenance.
+	// The same document registered twice — an easy mistake — costs its
+	// tokens once. The first occurrence keeps its position and
+	// provenance.
 	require.Len(t, got.instructions, 2)
 	assert.Equal(t, "home", got.instructions[0].Source)
 	assert.Equal(t, "Own rules.", got.instructions[1].Content)

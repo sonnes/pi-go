@@ -20,8 +20,8 @@ type sseEvent struct {
 	data string
 }
 
-// newMockProvider returns a provider backed by a test server that replays
-// events, so streaming tests need no cassette.
+// newMockProvider returns a provider that uses a test server. The server
+// replays events, so streaming tests need no cassette.
 func newMockProvider(t *testing.T, events []sseEvent) (*anthropic.Provider, func()) {
 	t.Helper()
 

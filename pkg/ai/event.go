@@ -28,19 +28,19 @@ const (
 )
 
 // Event represents a single streaming event from a model response.
-// The final [Message] and any terminal error are not events — they are
-// the [EventStream] result, returned by Wait and surfaced on the
-// Events iterator.
+// The final [Message] and any terminal error are not events. They are the
+// [EventStream] result. Wait returns them, and the Events iterator also
+// reports them.
 //
-// Events are JSON-serializable so an application can forward a run to a
-// client as it happens; the zero value of every optional field is
-// omitted, and omitted fields decode back to that zero value.
+// Events are JSON-serializable, so an application can forward a run to a
+// client as it happens. Each optional field is omitted when it holds the
+// zero value. An omitted field decodes back to that zero value.
 type Event struct {
 	Type EventType `json:"type"`
-	// ContentIndex is which content block the event belongs to (for
-	// start/delta/end events).
+	// ContentIndex is the index of the content block that the event
+	// belongs to. It applies to start, delta, and end events.
 	ContentIndex int `json:"content_index,omitempty"`
-	// Delta is incremental text (text/thinking/toolcall deltas).
+	// Delta is incremental text for text, thinking, and tool-call deltas.
 	Delta string `json:"delta,omitempty"`
 	// Content is completed text (for end events).
 	Content string `json:"content,omitempty"`

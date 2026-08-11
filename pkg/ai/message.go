@@ -17,7 +17,7 @@ const (
 )
 
 // Message represents a message in a conversation.
-// Role-specific fields are zero-valued when not applicable.
+// If a field does not apply to the role, that field holds its zero value.
 type Message struct {
 	Role    Role
 	Content []Content
@@ -61,7 +61,7 @@ func UserImageMessage(text string, images ...Image) Message {
 	}
 }
 
-// UserFileMessage creates a user message with text and file/document content.
+// UserFileMessage creates a user message with text and file content.
 func UserFileMessage(text string, files ...File) Message {
 	content := make([]Content, 0, 1+len(files))
 	content = append(content, Text{Text: text})
@@ -95,7 +95,7 @@ func ToolResultMessage(toolCallID, toolName string, content ...Content) Message 
 	}
 }
 
-// ErrorToolResultMessage creates a tool result message indicating an error.
+// ErrorToolResultMessage creates a tool result message that reports an error.
 func ErrorToolResultMessage(toolCallID, toolName, errMsg string) Message {
 	return Message{
 		Role:       RoleToolResult,
@@ -130,7 +130,7 @@ func (m Message) ToolCalls() []ToolCall {
 }
 
 // String returns a short debug representation of the message.
-// Text is truncated to 100 characters.
+// It truncates the text to 100 characters.
 func (m Message) String() string {
 	const maxLen = 100
 

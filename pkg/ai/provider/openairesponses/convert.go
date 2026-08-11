@@ -14,7 +14,7 @@ import (
 )
 
 // convertInput converts ai messages to Responses API input items.
-// System prompt is handled separately via params.Instructions.
+// The system prompt goes into params.Instructions instead.
 func convertInput(
 	messages []ai.Message,
 ) responses.ResponseInputParam {
@@ -100,7 +100,8 @@ func convertUserMessage(
 }
 
 // convertFile converts an ai.File to a Responses API input file part.
-// The Responses API supports FileID (uploaded), FileData (base64), and FileURL.
+// The Responses API accepts FileID (uploaded), FileData (base64), and
+// FileURL.
 func convertFile(f ai.File) (responses.ResponseInputContentUnionParam, bool) {
 	if f.FileID == "" && f.Data == "" && f.URL == "" {
 		return responses.ResponseInputContentUnionParam{}, false
@@ -131,8 +132,8 @@ func convertFile(f ai.File) (responses.ResponseInputContentUnionParam, bool) {
 }
 
 // convertAssistantMessage converts an assistant message to Responses API
-// input items. Unlike chat completions, tool calls and reasoning are
-// separate input items, not part of the assistant message.
+// input items. Tool calls and reasoning become separate input items. They
+// are not part of the assistant message, unlike in chat completions.
 func convertAssistantMessage(
 	msg ai.Message,
 ) []responses.ResponseInputItemUnionParam {
@@ -209,9 +210,9 @@ func convertToolResultMessage(
 	}
 }
 
-// filterFunctionTools returns only function-kind tools, dropping server tools.
-// Used for the Codex dialect whose backend rejects server tool types such as
-// web_search.
+// filterFunctionTools returns only the function-kind tools. It removes the
+// server tools. The Codex dialect uses it, because the Codex backend rejects
+// server tool types such as web_search.
 func filterFunctionTools(tools []ai.ToolInfo) []ai.ToolInfo {
 	out := make([]ai.ToolInfo, 0, len(tools))
 	for _, t := range tools {
@@ -222,9 +223,10 @@ func filterFunctionTools(tools []ai.ToolInfo) []ai.ToolInfo {
 	return out
 }
 
-// convertTools converts ai.ToolInfo to Responses API tool params.
-// Function tools become OfFunction; server tools route through convertServerTool
-// and are silently skipped if the type is unsupported.
+// convertTools converts ai.ToolInfo to Responses API tool params. A function
+// tool becomes OfFunction. A server tool goes through convertServerTool. If
+// the adapter does not support the server tool type, it skips the tool
+// silently.
 func convertTools(
 	tools []ai.ToolInfo,
 ) []responses.ToolUnionParam {
@@ -256,14 +258,14 @@ func convertTools(
 	return result
 }
 
-// convertServerTool maps a pi-go server-tool ToolInfo to a Responses API typed
-// tool param. Returns false if the type is not currently supported by this
-// adapter.
+// convertServerTool maps a pi-go server-tool ToolInfo to a typed Responses
+// API tool param. It returns false when this adapter does not support the
+// type.
 //
-// Supported config keys:
+// Supported configuration keys:
 //   - web_search: search_context_size ("low"|"medium"|"high"), type
 //     ("web_search"|"web_search_2025_08_26")
-//   - code_execution: container (string container ID; empty = "auto")
+//   - code_execution: container (string container ID, empty means "auto")
 //   - file_search: vector_store_ids ([]string, required), max_num_results
 //   - computer: no configuration
 func convertServerTool(t ai.ToolInfo) (responses.ToolUnionParam, bool) {
@@ -349,9 +351,10 @@ func serverInt64(value any) (int64, bool) {
 	return 0, false
 }
 
-// openRouterServerToolName maps a pi-go [ai.ServerToolType] to the OpenRouter
-// namespaced tool type. Server tools that OpenRouter does not expose return
-// the empty string so the caller can drop them silently.
+// openRouterServerToolName maps a pi-go [ai.ServerToolType] to the
+// namespaced OpenRouter tool type. If OpenRouter does not provide the server
+// tool, it returns the empty string. The caller then removes the tool
+// silently.
 func openRouterServerToolName(t ai.ServerToolType) string {
 	switch t {
 	case ai.ServerToolWebSearch:
@@ -366,13 +369,15 @@ func openRouterServerToolName(t ai.ServerToolType) string {
 }
 
 // convertOpenRouterTools converts pi-go tools to the JSON-shaped slice that
-// OpenRouter's Responses API expects in the request body's "tools" array.
+// the OpenRouter Responses API expects in the "tools" array of the request
+// body.
 //
-// Function tools become `{"type": "function", ...}`; server tools become
-// `{"type": "openrouter:<name>", ...}` with [ai.ToolInfo.ServerConfig] keys
-// merged in. Server-tool types that OpenRouter does not expose (code
-// execution, file search, computer, MCP, bash, text editor) are dropped
-// silently — same convention as [convertServerTool] for the OpenAI adapter.
+// A function tool becomes `{"type": "function", ...}`. A server tool becomes
+// `{"type": "openrouter:<name>", ...}` and takes the
+// [ai.ToolInfo.ServerConfig] keys. OpenRouter does not provide these server
+// tool types: code execution, file search, computer, MCP, bash, and text
+// editor. This function removes them silently. [convertServerTool] follows
+// the same convention for the OpenAI adapter.
 func convertOpenRouterTools(tools []ai.ToolInfo) []map[string]any {
 	result := make([]map[string]any, 0, len(tools))
 	for _, t := range tools {
@@ -438,7 +443,7 @@ func convertToolChoice(
 }
 
 // convertInputTokenToolChoice converts a tool choice for the Responses
-// input-token endpoint, which uses a distinct SDK union type.
+// input-token endpoint. That endpoint uses a different SDK union type.
 func convertInputTokenToolChoice(
 	tc ai.ToolChoice,
 ) responses.InputTokenCountParamsToolChoiceUnion {
@@ -478,14 +483,14 @@ func mapStopReason(status responses.ResponseStatus) ai.StopReason {
 	}
 }
 
-// mapUsage converts Responses API usage to [ai.Usage], priced with model's
-// rates.
+// mapUsage converts Responses API usage to [ai.Usage]. It prices the tokens
+// with the rates of the model.
 //
-// The API reports input_tokens inclusive of the cached prefix, so the prefix
-// is subtracted out and billed once at the cache-read rate rather than twice.
-// Cache writes are implicit — the API reports no token count for them, so
-// there is nothing to bill. Reasoning tokens are already counted in
-// output_tokens and bill at the output rate.
+// The input_tokens field includes the cached prefix. This function subtracts
+// the prefix and bills it once at the cache-read rate, not twice. Cache
+// writes are implicit. The API reports no token count for them, so there is
+// nothing to bill. The output_tokens field already includes the reasoning
+// tokens. They bill at the output rate.
 func mapUsage(model ai.Model, u responses.ResponseUsage) ai.Usage {
 	cacheRead := int(u.InputTokensDetails.CachedTokens)
 

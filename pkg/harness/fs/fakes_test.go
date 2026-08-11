@@ -19,8 +19,8 @@ import (
 )
 
 // mockProvider is enough of a provider for "mock/small" to resolve.
-// These tests build agents to inspect the prompt.Env the harness
-// assembles; none of them run a turn.
+// These tests build agents to examine the prompt.Env the harness
+// assembles. None of them run a turn.
 type mockProvider struct{}
 
 func (m *mockProvider) StreamText(
@@ -74,7 +74,7 @@ func envFor(t *testing.T, opts ...agent.Option) *prompt.Env {
 }
 
 // unreadable wraps an FS so one path fails to open with a non-ErrNotExist
-// error, standing in for a permissions or I/O failure that no amount of
+// error. It stands in for a permissions or I/O error that no amount of
 // good authoring can fix.
 type unreadable struct {
 	iofs.FS
@@ -101,7 +101,7 @@ func writeTree(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// The `all:` prefix is required: without it, embed skips the dotted
+// The `all:` prefix is required. Without it, embed skips the dotted
 // .agents directory the convention is built on.
 //
 //go:embed all:testdata

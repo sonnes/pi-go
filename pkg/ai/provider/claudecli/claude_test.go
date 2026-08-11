@@ -55,8 +55,8 @@ const objectResultNDJSON = `{"type":"system","subtype":"init","session_id":"s1"}
 
 // --- stubs ---
 
-// stubSend replaces Provider.sendFn with a fake that returns canned
-// NDJSON and records the arguments it was called with.
+// stubSend replaces Provider.sendFn with a fake function. The fake
+// returns canned NDJSON and records the arguments of each call.
 func stubSend(
 	p *Provider,
 	output string,
@@ -296,8 +296,8 @@ func TestStreamText_ResumesSession(t *testing.T) {
 }
 
 // ai.WithSessionID is a prompt-cache affinity key, not a CLI session
-// handle. Resuming on it would hand the subprocess an ID it never
-// issued, so it must stay inert here.
+// handle. A resume on that key gives the subprocess an ID that it never
+// issued. The key must therefore stay inert here.
 func TestStreamText_IgnoresCacheSessionID(t *testing.T) {
 	p := New()
 	lastArgs, _, restore := stubSend(p, simpleTextNDJSON, nil)
@@ -797,8 +797,8 @@ func TestStreamText_UsageCost(t *testing.T) {
 	assert.Equal(t, 200, msg.Usage.CacheRead)
 	assert.Equal(t, 100, msg.Usage.CacheWrite)
 
-	// The CLI relays Anthropic's own usage block: four disjoint kinds,
-	// each billed once at its own rate.
+	// The CLI relays the usage block of Anthropic. It has four disjoint
+	// kinds, and each kind bills once at its own rate.
 	cost := msg.Usage.Cost
 	assert.InDelta(t, 0.0024, cost.Input, 1e-9)
 	assert.InDelta(t, 0.0075, cost.Output, 1e-9)

@@ -1,6 +1,6 @@
 package ai
 
-// Modality represents an input modality a model supports.
+// Modality represents an input modality that a model supports.
 type Modality string
 
 const (
@@ -12,9 +12,9 @@ const (
 )
 
 // Model describes an AI model and its capabilities. It is pure intrinsic
-// metadata — it carries no provider identity and no credentials, so the
-// same value can be bound to any provider that serves it (see
-// [NewLanguageModel]).
+// metadata. It carries no provider identity and no credentials. As a result,
+// you can bind the same value to any provider that serves it. See
+// [NewLanguageModel].
 type Model struct {
 	ID               string            `json:"id"`
 	Name             string            `json:"name"`
@@ -39,7 +39,8 @@ type Model struct {
 	Compat           ProviderCompat    `json:"-"`
 }
 
-// ProviderCompat is implemented by provider-specific compat structs.
+// ProviderCompat is the interface that provider-specific compat structs
+// implement.
 type ProviderCompat interface {
 	CompatAPI() string
 }
@@ -57,12 +58,12 @@ type Cost struct {
 
 // Usage contains token usage statistics for a model response.
 //
-// The categories are disjoint: Input counts uncached input tokens only, so a
-// caller that wants a grand total sums the fields it cares about. There is no
-// Total field, because providers disagree on what belongs in one.
+// The categories are disjoint. Input counts uncached input tokens only. To
+// get a grand total, a caller sums the fields it needs. There is no Total
+// field, because providers do not agree on what belongs in one.
 //
-// The JSON tags are the wire format: [Message] persists usage with them, and
-// so does any application that stores a Usage of its own.
+// The JSON tags are the wire format. [Message] stores usage with them. An
+// application that stores a Usage of its own uses the same tags.
 type Usage struct {
 	Input       int       `json:"input,omitempty"`
 	Output      int       `json:"output,omitempty"`
@@ -74,8 +75,8 @@ type Usage struct {
 	Cost        UsageCost `json:"cost,omitzero"`
 }
 
-// Add returns the category-wise sum of two usage values — the accumulator
-// for usage across turns and across runs.
+// Add returns the category-wise sum of two usage values. It is the
+// accumulator for usage across turns and across runs.
 func (u Usage) Add(other Usage) Usage {
 	return Usage{
 		Input:       u.Input + other.Input,
@@ -89,8 +90,8 @@ func (u Usage) Add(other Usage) Usage {
 	}
 }
 
-// UsageCost contains cost breakdown in USD, mirroring the categories of
-// [Usage]. Like Usage it carries no total; sum the categories.
+// UsageCost contains the cost breakdown in USD. It mirrors the categories of
+// [Usage]. Like Usage, it carries no total. Sum the categories to get a total.
 type UsageCost struct {
 	Input       float64 `json:"input,omitempty"`
 	Output      float64 `json:"output,omitempty"`

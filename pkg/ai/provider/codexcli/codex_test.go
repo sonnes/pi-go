@@ -135,8 +135,9 @@ func TestStreamText_SimpleText(t *testing.T) {
 	assert.Equal(t, "Hello!", msg.Text())
 	assert.Equal(t, "codex-cli", msg.API)
 	assert.Equal(t, "gpt-5.4", msg.Model)
-	// input_tokens includes cached, output_tokens includes reasoning; the
-	// categories are reported disjoint so a sum double-counts nothing.
+	// input_tokens includes the cached tokens, and output_tokens includes
+	// the reasoning tokens. The reported categories are disjoint, so a sum
+	// counts nothing twice.
 	assert.Equal(t, 7, msg.Usage.Input)
 	assert.Equal(t, 3, msg.Usage.Output)
 	assert.Equal(t, 3, msg.Usage.CacheRead)
@@ -455,7 +456,8 @@ func TestStreamText_UsageCost(t *testing.T) {
 	require.NotNil(t, msg)
 
 	// 7 uncached input, 3 non-reasoning output, 3 cache read, 2 reasoning.
-	// Reasoning bills at the output rate: OpenAI counts it as output.
+	// Reasoning bills at the output rate, because OpenAI counts it as
+	// output.
 	cost := msg.Usage.Cost
 	assert.InDelta(t, 0.000014, cost.Input, 1e-12)
 	assert.InDelta(t, 0.000024, cost.Output, 1e-12)

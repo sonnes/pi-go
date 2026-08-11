@@ -13,9 +13,10 @@ import (
 	"github.com/sonnes/pi-go/pkg/pi"
 )
 
-// objectCommand exercises structured output via [catalog.GenerateObject]. It
-// resolves the model spec to a provider, registers it in pi.Default, and asks
-// the model to fill a free-form JSON object derived from the prompt.
+// objectCommand exercises structured output with [catalog.GenerateObject]. It
+// resolves the model spec to a provider and registers that provider in
+// pi.Default. It then asks the model to fill a free-form JSON object built
+// from the prompt.
 func objectCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "object",

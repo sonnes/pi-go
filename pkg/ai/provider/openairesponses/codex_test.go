@@ -19,7 +19,8 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 )
 
-// jwtWithExp builds an unsigned JWT-shaped token carrying the given exp claim.
+// jwtWithExp builds an unsigned JWT-shaped token that holds the given exp
+// claim.
 func jwtWithExp(t *testing.T, exp int64) string {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{"exp": exp})
@@ -28,8 +29,8 @@ func jwtWithExp(t *testing.T, exp int64) string {
 	return "header." + enc + ".signature"
 }
 
-// jwtWithAuthClaim builds an unsigned JWT-shaped token whose payload carries
-// the given OpenAI auth claim, for testing account-id extraction.
+// jwtWithAuthClaim builds an unsigned JWT-shaped token. The payload holds
+// the given OpenAI auth claim. The tests for account-id extraction use it.
 func jwtWithAuthClaim(t *testing.T, payloadJSON string) string {
 	t.Helper()
 	enc := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
@@ -69,7 +70,7 @@ func TestJWTExpiry(t *testing.T) {
 	exp := time.Now().Add(2 * time.Hour).Unix()
 	assert.Equal(t, time.Unix(exp, 0), jwtExpiry(jwtWithExp(t, exp)))
 
-	// Non-JWT and no-exp tokens yield the zero time.
+	// A non-JWT token and a token without exp give the zero time.
 	assert.True(t, jwtExpiry("not-a-jwt").IsZero())
 	assert.True(t, jwtExpiry("header.bad-base64!.sig").IsZero())
 }
@@ -115,9 +116,9 @@ func TestCodexCLISource_Load(t *testing.T) {
 	assert.Equal(t, "acct-1", creds.Extras[chatgptAccountIDExtra])
 }
 
-// TestNewForCodexOAuth_UsesResponsesAPI verifies the ChatGPT/Codex OAuth path
-// builds a Responses-API provider. These tokens are honored only on the
-// Responses backend, not Chat Completions.
+// TestNewForCodexOAuth_UsesResponsesAPI makes sure that the ChatGPT Codex
+// OAuth path builds a Responses API provider. Only the Responses backend
+// accepts these tokens. Chat Completions rejects them.
 func TestNewForCodexOAuth_UsesResponsesAPI(t *testing.T) {
 	p := NewForCodexOAuth("app_test", "", oauth.Credentials{AccessToken: "test-token"})
 	require.NotNil(t, p)
@@ -173,8 +174,8 @@ func (f codexRoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, err
 	return f(req)
 }
 
-// TestCodexReReadRefresher_ReReads verifies the refresher returns the freshest
-// credentials from the source rather than running an HTTP refresh.
+// TestCodexReReadRefresher_ReReads makes sure that the refresher returns the
+// newest credentials from the source. It does not run an HTTP refresh.
 func TestCodexReReadRefresher_ReReads(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
@@ -189,8 +190,9 @@ func TestCodexReReadRefresher_ReReads(t *testing.T) {
 	assert.Equal(t, freshToken, got.AccessToken)
 }
 
-// TestCodexReReadRefresher_ExpiredError verifies that when the re-read token is
-// still expired, the refresher surfaces a re-auth error.
+// TestCodexReReadRefresher_ExpiredError makes sure that the refresher
+// returns an error that asks for a new login when the new token is also
+// expired.
 func TestCodexReReadRefresher_ExpiredError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "auth.json")
@@ -205,8 +207,8 @@ func TestCodexReReadRefresher_ExpiredError(t *testing.T) {
 	assert.Contains(t, err.Error(), "re-authenticate")
 }
 
-// TestCodexReReadRefresher_MissingSourceError verifies an absent source
-// surfaces a reload error.
+// TestCodexReReadRefresher_MissingSourceError makes sure that an absent
+// source gives a reload error.
 func TestCodexReReadRefresher_MissingSourceError(t *testing.T) {
 	refresher := codexReReadRefresher(codexCLISource{path: filepath.Join(t.TempDir(), "absent.json")})
 	_, err := refresher.RefreshToken(t.Context(), oauth.Credentials{})

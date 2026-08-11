@@ -10,15 +10,16 @@ import (
 type EventType string
 
 const (
-	// EventAgentStart brackets a single run — one [Agent.Run] call.
-	// Fires as the first event of the run's [Stream]. Caller-supplied
-	// input messages are not echoed back. For CLI-backed agents it
-	// carries the backend's [Event.SessionID] once known.
+	// EventAgentStart brackets a single run — one [Agent.Run] call. It
+	// is the first event on the [Stream] of the run. The stream does
+	// not echo the input messages of the caller. For a CLI-backed
+	// agent, the event carries the [Event.SessionID] of the backend as
+	// soon as that ID is known.
 	EventAgentStart EventType = "agent_start"
 
-	// EventAgentEnd is the final event of a successful run, carrying
-	// the new [Event.Messages] and accumulated [Event.Usage]. When the
-	// run fails there is no agent_end — the error ends the [Stream]
+	// EventAgentEnd is the final event of a successful run. It carries
+	// the new [Event.Messages] and the accumulated [Event.Usage]. If
+	// the run fails, there is no agent_end. The error ends the [Stream]
 	// iteration instead.
 	EventAgentEnd EventType = "agent_end"
 
@@ -32,8 +33,9 @@ const (
 	EventToolExecutionEnd    EventType = "tool_execution_end"
 )
 
-// Event represents a single agent streaming event.
-// Fields are populated based on Type — unused fields are zero-valued.
+// Event is a single agent streaming event.
+// The Type field controls which fields hold a value.
+// The unused fields keep their zero value.
 type Event struct {
 	Type EventType
 
@@ -41,7 +43,7 @@ type Event struct {
 	SessionID string // session identifier from the subprocess
 
 	// agent_end
-	Messages []ai.Message // all new messages produced this run
+	Messages []ai.Message // all new messages from this run
 	Usage    ai.Usage     // accumulated usage across all turns
 
 	// turn_end
@@ -50,12 +52,12 @@ type Event struct {
 	// message_start, message_update, message_end, turn_end
 	Message *ai.Message
 
-	// Input is true on message_start/message_end events emitted for
-	// messages a [BeforeStop] hook injected to keep the loop going.
-	// Caller-supplied input messages (from [Agent.Send] /
-	// [Agent.SendMessages]) are not echoed at all — the caller has
-	// already stored them. Consumers persisting from the event stream
-	// can ignore this field unless they also use BeforeStop hooks.
+	// Input is true on the message_start and message_end events for
+	// messages that a [BeforeStop] hook injected to continue the loop.
+	// The stream does not echo the input messages of the caller (from
+	// [Agent.Run]), because the caller already stored them. A consumer
+	// that stores messages from the event stream can ignore this field,
+	// unless it also uses BeforeStop hooks.
 	Input bool
 
 	// message_update
@@ -74,8 +76,8 @@ type Event struct {
 	IsError bool
 }
 
-// MarshalJSON encodes Event to JSON with only the relevant fields for each
-// event type, keeping the wire format clean.
+// MarshalJSON encodes Event to JSON. For each event type it writes only
+// the relevant fields. This choice keeps the wire format clean.
 func (e Event) MarshalJSON() ([]byte, error) {
 	switch e.Type {
 	case EventAgentStart:

@@ -1,11 +1,11 @@
-// Package demo drives the browser demo: the real agent loop, the real
-// typed tool, and the real session tree, over a provider that is either
-// scripted (no credentials, deterministic) or live (the visitor's own
-// OpenRouter key).
+// Package demo drives the browser demo. It uses the real agent loop, the
+// real typed tool, and the real session tree. The provider behind them is
+// scripted (no credentials, deterministic) or live (the OpenRouter key of
+// the visitor).
 //
-// Everything here is portable Go so it can be tested with `go test`.
-// The syscall/js bridge that exposes it to the page is the only part
-// built exclusively for wasm.
+// All the code here is portable Go, so `go test` can run it. The
+// syscall/js bridge that exposes it to the page is the only part built
+// for wasm alone.
 package demo
 
 import (
@@ -54,8 +54,8 @@ type Command struct {
 	Model   string `json:"model,omitempty"`
 }
 
-// Event is one update for the page. Unused fields are omitted so the
-// JSON on the wire stays readable in devtools.
+// Event is one update for the page. The encoder omits unused fields, so
+// the JSON on the wire stays readable in devtools.
 type Event struct {
 	Kind   string `json:"kind"`
 	Text   string `json:"text,omitempty"`
@@ -73,7 +73,7 @@ type Tool struct {
 	Result string         `json:"result,omitempty"`
 }
 
-// Node is one transcript entry in the shape the page renders.
+// Node is one transcript entry in the shape that the page draws.
 type Node struct {
 	ID       string `json:"id"`
 	Role     string `json:"role"`
@@ -81,8 +81,8 @@ type Node struct {
 	Children []Node `json:"children,omitempty"`
 }
 
-// WeatherInput is the tool's input — a Go type, not a hand-written
-// schema. DefineTool derives the JSON schema from it at init.
+// WeatherInput is the input of the tool. It is a Go type, not a
+// hand-written schema. DefineTool derives the JSON schema from it at init.
 type WeatherInput struct {
 	City string `json:"city" jsonschema:"required"`
 }
@@ -103,7 +103,7 @@ type Demo struct {
 	model string
 	lm    ai.LanguageModel
 
-	// scripted is kept across resets so its cursor can be rewound.
+	// scripted survives a reset, so its cursor can rewind.
 	scripted *Scripted
 
 	agent *durable.Agent
@@ -135,13 +135,13 @@ func New(ctx context.Context, emit func(Event)) (*Demo, error) {
 	return d, nil
 }
 
-// StreamDelay paces scripted deltas so streaming is visible in a
-// browser. Tests set it to zero through NewScripted directly.
+// StreamDelay paces scripted deltas, so a browser shows the stream.
+// Tests set it to zero through NewScripted directly.
 var StreamDelay = 28 * time.Millisecond
 
-// weatherTool is the demo's one tool. Its schema is derived from
-// WeatherInput at init — an unschematizable type would panic here,
-// at startup, rather than mid-conversation.
+// weatherTool is the one tool of the demo. DefineTool derives its schema
+// from WeatherInput at init. A type without a schema panics here, at
+// startup, and not in the middle of a conversation.
 var weatherTool = ai.DefineTool(
 	"get_weather",
 	"Get the current weather for a city",
@@ -185,9 +185,8 @@ func (d *Demo) Close() error {
 	return d.agent.Close()
 }
 
-// Handle executes one command and emits the resulting events. Every
-// command ends with a tree snapshot, so the page never has to track
-// state itself.
+// Handle runs one command and emits the events from it. Every command
+// ends with a tree snapshot, so the page never tracks state itself.
 func (d *Demo) Handle(ctx context.Context, c Command) error {
 	var err error
 
@@ -223,9 +222,9 @@ func (d *Demo) run(ctx context.Context, text string) error {
 
 	stream := d.agent.Run(ctx, durable.Text(text))
 
-	// A durable run lifts the inner agent's events, and forwards each
-	// only once the entries it asserts are in the store — so anything
-	// the page renders has already survived.
+	// A durable run lifts the events of the inner agent. It forwards
+	// each event only after the entries of that event reach the store.
+	// Everything the page shows has therefore already survived.
 	for e, err := range stream.Events() {
 		if err != nil {
 			return fmt.Errorf("demo: run: %w", err)
@@ -310,7 +309,7 @@ func (d *Demo) snapshot(ctx context.Context) error {
 	return nil
 }
 
-// nodesFrom converts a session tree into the page's shape.
+// nodesFrom converts a session tree into the shape of the page.
 func nodesFrom(roots []*session.Node) []Node {
 	out := make([]Node, 0, len(roots))
 	for _, r := range roots {

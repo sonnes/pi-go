@@ -294,7 +294,7 @@ func TestTransport_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, int64(n), reqCount.Load())
-	// Refresh should only happen once due to mutex
+	// The mutex allows only one refresh.
 	assert.Equal(t, int64(1), refreshCount.Load())
 }
 

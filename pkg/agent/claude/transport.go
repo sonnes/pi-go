@@ -17,31 +17,34 @@ import (
 	"time"
 )
 
-// transportIface is the interface consumed by [Agent] for a single CLI
-// subprocess. Implemented by the real [*transport] and by test fakes.
+// transportIface is the interface that [Agent] uses for one CLI
+// subprocess. The real [*transport] and the test fakes implement it.
 type transportIface interface {
 	// writeUserMessage writes a single SDKUserMessage NDJSON line to stdin.
 	writeUserMessage(line []byte) error
-	// writeControlResponse writes a control_response NDJSON line to stdin,
-	// answering a CLI-initiated control_request (e.g. can_use_tool).
+	// writeControlResponse writes a control_response NDJSON line to
+	// stdin. The line answers a control_request from the CLI, for
+	// example can_use_tool.
 	writeControlResponse(line []byte) error
-	// interrupt asks the CLI to abort the in-flight turn without killing the
-	// subprocess, by writing a stream-json control_request line to stdin.
+	// interrupt writes a stream-json control_request line to stdin. The
+	// line asks the CLI to abort the turn in progress. The subprocess
+	// keeps running.
 	interrupt() error
 	// stdout returns the reader for subprocess stdout.
 	stdout() io.Reader
-	// exited returns a channel that closes after the subprocess terminates.
+	// exited returns a channel that closes after the subprocess exits.
 	exited() <-chan struct{}
 	// exitErr returns the subprocess error once [exited] has closed.
 	exitErr() error
-	// close terminates the subprocess and returns any exit error.
+	// close stops the subprocess and returns any exit error.
 	close() error
 }
 
-// transport owns the long-lived `claude --print --input-format stream-json`
-// subprocess. A single transport serves many turns: each [Agent.Send] writes
-// one SDKUserMessage line to stdin and the Agent's reader goroutine
-// demultiplexes the NDJSON output.
+// transport owns the long-lived
+// `claude --print --input-format stream-json` subprocess. One transport
+// serves many turns. Each [Agent.Send] writes one SDKUserMessage line to
+// stdin. The reader goroutine of the Agent then demultiplexes the NDJSON
+// output.
 type transport struct {
 	cmd       *exec.Cmd
 	stdinPipe io.WriteCloser
@@ -51,23 +54,24 @@ type transport struct {
 	// interruptSeq generates monotonic control_request IDs for interrupt().
 	interruptSeq atomic.Uint64
 
-	// exitedCh is closed by [transport.waitLoop] after the subprocess terminates.
+	// exitedCh closes after the subprocess exits. [transport.waitLoop]
+	// closes this channel.
 	exitedCh chan struct{}
 	// exitErrVal holds the subprocess Wait error.
 	exitErrVal error
 	exitedOnce sync.Once
 }
 
-// newTransport starts the Claude CLI subprocess and begins waiting on it.
-// The caller owns reading from [transport.stdout] and must call
-// [transport.close] when done.
+// newTransport starts the Claude CLI subprocess and waits on it. The
+// caller reads from [transport.stdout]. The caller must call
+// [transport.close] when it is done.
 //
-// The subprocess is persistent and serves many turns, so its lifetime is
-// owned by [transport.close] (invoked from [Agent.Close]) — NOT by any single
-// turn's context. A turn is aborted with [transport.interrupt], which leaves
-// the subprocess running for the next turn. The ctx is accepted for signature
-// symmetry with the injectable factory but is intentionally not wired to
-// subprocess teardown.
+// The subprocess is persistent and serves many turns. [transport.close],
+// which [Agent.Close] calls, owns the lifetime of the subprocess. The
+// context of one turn does NOT own it. [transport.interrupt] aborts a
+// turn and leaves the subprocess running for the next turn. newTransport
+// accepts ctx only to match the signature of the injectable factory. The
+// ctx does not control the shutdown of the subprocess.
 func newTransport(_ context.Context, cfg config) (transportIface, error) {
 	cliArgs := buildArgs(cfg)
 	cmd := exec.Command(cfg.cliPath, cliArgs...)
@@ -109,13 +113,13 @@ func newTransport(_ context.Context, cfg config) (transportIface, error) {
 	return t, nil
 }
 
-// Ensure *transport implements transportIface at compile time.
+// Make sure that *transport implements transportIface at compile time.
 var _ transportIface = (*transport)(nil)
 
 // stdout returns the reader for subprocess stdout.
 func (t *transport) stdout() io.Reader { return t.stdoutR }
 
-// exited returns a channel that closes after the subprocess terminates.
+// exited returns a channel that closes after the subprocess exits.
 func (t *transport) exited() <-chan struct{} { return t.exitedCh }
 
 // exitErr returns the subprocess error once [exited] has closed.
@@ -134,8 +138,8 @@ func (t *transport) waitLoop() {
 	})
 }
 
-// writeUserMessage writes a single SDKUserMessage NDJSON line to stdin.
-// The write is serialized so concurrent Sends cannot interleave frames.
+// writeUserMessage writes one SDKUserMessage NDJSON line to stdin. The
+// writes are serialized, so concurrent Sends cannot interleave frames.
 func (t *transport) writeUserMessage(line []byte) error {
 	return t.writeLine(line)
 }
@@ -145,8 +149,8 @@ func (t *transport) writeControlResponse(line []byte) error {
 	return t.writeLine(line)
 }
 
-// writeLine writes a single NDJSON line to stdin. Writes are
-// serialized so concurrent writers cannot interleave frames.
+// writeLine writes one NDJSON line to stdin. The writes are serialized,
+// so concurrent writers cannot interleave frames.
 func (t *transport) writeLine(line []byte) error {
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
@@ -164,10 +168,11 @@ func (t *transport) writeLine(line []byte) error {
 	return err
 }
 
-// interrupt writes a stream-json control_request asking the CLI to abort the
-// in-flight turn. The subprocess keeps running, so the next [Agent.Send]
-// reuses the same session. The CLI responds by ending the current turn with a
-// result line, which the reader turns into the turn's [agent.EventAgentEnd].
+// interrupt writes a stream-json control_request. The request asks the
+// CLI to abort the turn in progress. The subprocess keeps running, so
+// the next [Agent.Send] reuses the same session. The CLI ends the
+// current turn with a result line. The reader converts that line into
+// the [agent.EventAgentEnd] of the turn.
 func (t *transport) interrupt() error {
 	id := "req_" + strconv.FormatUint(t.interruptSeq.Add(1), 10)
 	line, err := buildInterruptControl(id)
@@ -180,7 +185,7 @@ func (t *transport) interrupt() error {
 
 	select {
 	case <-t.exitedCh:
-		// Already exited — nothing to interrupt.
+		// The subprocess already exited. There is nothing to interrupt.
 		return nil
 	default:
 	}
@@ -189,8 +194,8 @@ func (t *transport) interrupt() error {
 	return err
 }
 
-// controlRequest is the stream-json control envelope the Claude CLI accepts on
-// stdin (mirrors the Agent SDK's interrupt request).
+// controlRequest is the stream-json control envelope that the Claude CLI
+// accepts on stdin. It matches the interrupt request of the Agent SDK.
 type controlRequest struct {
 	Type      string             `json:"type"`
 	RequestID string             `json:"request_id"`
@@ -201,8 +206,8 @@ type controlRequestBody struct {
 	Subtype string `json:"subtype"`
 }
 
-// buildInterruptControl encodes a single newline-terminated interrupt
-// control_request line for the given request id.
+// buildInterruptControl encodes one interrupt control_request line for
+// the given request ID. The line ends with a newline.
 func buildInterruptControl(requestID string) ([]byte, error) {
 	b, err := json.Marshal(controlRequest{
 		Type:      "control_request",
@@ -215,8 +220,8 @@ func buildInterruptControl(requestID string) ([]byte, error) {
 	return append(b, '\n'), nil
 }
 
-// controlResponse is the stream-json reply to a CLI-initiated
-// control_request (mirrors the Agent SDK's success envelope).
+// controlResponse is the stream-json reply to a control_request from the
+// CLI. It matches the success envelope of the Agent SDK.
 type controlResponse struct {
 	Type     string              `json:"type"`
 	Response controlResponseBody `json:"response"`
@@ -228,17 +233,17 @@ type controlResponseBody struct {
 	Response  permissionResult `json:"response"`
 }
 
-// permissionResult is the can_use_tool decision payload. Allow echoes
-// the tool input back as updatedInput; deny carries the reason.
+// permissionResult is the decision payload for can_use_tool. An allow
+// echoes the tool input back as updatedInput. A deny carries the reason.
 type permissionResult struct {
 	Behavior     string         `json:"behavior"`
 	UpdatedInput map[string]any `json:"updatedInput,omitempty"`
 	Message      string         `json:"message,omitempty"`
 }
 
-// buildPermissionResponse encodes a newline-terminated control_response
-// line answering a can_use_tool request. The CLI blocks the tool call
-// until this line arrives on stdin.
+// buildPermissionResponse encodes one control_response line that answers
+// a can_use_tool request. The line ends with a newline. The CLI blocks
+// the tool call until this line arrives on stdin.
 func buildPermissionResponse(
 	requestID string,
 	allow bool,
@@ -264,17 +269,17 @@ func buildPermissionResponse(
 	return append(b, '\n'), nil
 }
 
-// close shuts down the subprocess. Closing stdin gives the CLI a chance to
-// drain; if it doesn't exit within 3 s, [gracefulShutdown] escalates to
-// SIGINT then SIGKILL.
+// close stops the subprocess. A closed stdin lets the CLI drain its
+// output. If the CLI does not exit within 3 s, [gracefulShutdown] sends
+// SIGINT and then SIGKILL.
 func (t *transport) close() error {
 	t.shutdown()
 	<-t.exitedCh
 	return t.exitErrVal
 }
 
-// shutdown closes stdin and, if the process hasn't exited after a grace
-// period, signals it.
+// shutdown closes stdin. If the process does not exit after the grace
+// period, shutdown signals it.
 func (t *transport) shutdown() {
 	_ = t.stdinPipe.Close()
 
@@ -287,8 +292,9 @@ func (t *transport) shutdown() {
 	gracefulShutdown(t.cmd, t.exitedCh)
 }
 
-// buildArgs constructs CLI arguments for a persistent stream-json subprocess.
-// The positional prompt argument is never used — prompts arrive on stdin.
+// buildArgs builds the CLI arguments for a persistent stream-json
+// subprocess. It never uses the positional prompt argument, because the
+// prompts arrive on stdin.
 func buildArgs(cfg config) []string {
 	a := []string{
 		"--print",
@@ -344,8 +350,9 @@ func buildArgs(cfg config) []string {
 		a = append(a, "--resume", cfg.sessionID)
 	}
 	if len(cfg.beforeTool) > 0 {
-		// Route the CLI's tool-approval questions to this process as
-		// can_use_tool control requests instead of auto-deciding.
+		// Route the tool-approval questions of the CLI to this process
+		// as can_use_tool control requests. The CLI then does not decide
+		// by itself.
 		a = append(a, "--permission-prompt-tool", "stdio")
 	}
 	if cfg.permissionMode != "" {
@@ -355,8 +362,9 @@ func buildArgs(cfg config) []string {
 	return a
 }
 
-// cleanEnv returns the current environment with variables removed that
-// would prevent Claude Code from launching (e.g. nested session detection).
+// cleanEnv returns the current environment without the variables that
+// stop Claude Code from starting. One example is the detection of a
+// nested session.
 func cleanEnv() []string {
 	var env []string
 	for _, e := range os.Environ() {
@@ -368,8 +376,8 @@ func cleanEnv() []string {
 	return env
 }
 
-// gracefulShutdown sends SIGINT, waits 3 seconds, then SIGKILL.
-// The done channel must close when the process exits.
+// gracefulShutdown sends SIGINT and waits 3 seconds. It then sends
+// SIGKILL. The done channel must close when the process exits.
 func gracefulShutdown(cmd *exec.Cmd, done <-chan struct{}) {
 	if cmd.Process == nil {
 		return

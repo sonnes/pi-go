@@ -52,12 +52,13 @@ var testModel = ai.Model{
 
 //go:generate go test -httprecord=Test
 
-// cacheControlRegexp strips cache_control markers from JSON bodies so
-// existing httprr fixtures (recorded before caching was added) still match
-// production requests that now carry markers. Matches both {"type":"ephemeral"}
-// and {"type":"ephemeral","ttl":"1h"} forms with a leading comma (which is
-// always present because cache_control comes after "text" in the SDK's
-// canonical marshal order).
+// cacheControlRegexp removes cache_control markers from JSON bodies. The
+// existing httprr fixtures come from recordings that predate caching. Without
+// this change, those fixtures do not match production requests, which now carry
+// markers. The pattern matches the {"type":"ephemeral"} form and the
+// {"type":"ephemeral","ttl":"1h"} form, each with a leading comma. That comma
+// is always present, because cache_control comes after "text" in the marshal
+// order of the SDK.
 var cacheControlRegexp = regexp.MustCompile(`,"cache_control":\{[^}]*\}`)
 
 // scrubRequest normalizes requests for deterministic matching.
@@ -324,7 +325,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 		},
 	}
 
-	// First turn: model should call the tool.
+	// First turn: the model calls the tool.
 	firstMsg, err := p.StreamText(
 		context.Background(),
 		testModel,
@@ -349,7 +350,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 	}
 	require.NotNil(t, toolCall, "first turn should produce a tool call")
 
-	// Second turn: provide tool result and get final text.
+	// Second turn: send the tool result and get the final text.
 	secondMsg, err := p.StreamText(
 		context.Background(),
 		testModel,
@@ -441,7 +442,7 @@ func TestStreamEventSequence(t *testing.T) {
 
 	require.NotEmpty(t, eventTypes, "should have received events")
 
-	// Verify TextStart comes before any TextDelta.
+	// Make sure that TextStart comes before any TextDelta.
 	var firstStart, firstDelta int
 	for i, et := range eventTypes {
 		if et == ai.EventTextStart {
@@ -457,7 +458,7 @@ func TestStreamEventSequence(t *testing.T) {
 	}
 	assert.Less(t, firstStart, firstDelta, "TextStart should precede TextDelta")
 
-	// Verify the stream completes with a final message.
+	// Make sure that the stream ends with a final message.
 	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg, "expected final message")

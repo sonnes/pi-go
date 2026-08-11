@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ArtifactEntry is an application-defined custom entry used to test the
-// custom-entry codec path.
+// ArtifactEntry is an application-defined custom entry. The tests use it
+// for the custom-entry codec path.
 type ArtifactEntry struct {
 	session.CustomEntry
 	Title   string
@@ -60,8 +60,8 @@ func TestCodecDropsEphemeral(t *testing.T) {
 		Ephemeral:   true,
 	}
 
-	// Meta is the durable flavor and survives; ephemeral is defined by
-	// never reaching a store, so an entry read back is never ephemeral.
+	// Meta is the durable flavor and survives. An ephemeral entry never
+	// reaches a store, so an entry read back is never ephemeral.
 	got := roundTrip(t, orig)
 	me, ok := got.(session.MessageEntry)
 	require.True(t, ok)

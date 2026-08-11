@@ -16,8 +16,8 @@ import (
 	aior "github.com/sonnes/pi-go/pkg/ai/provider/openairesponses"
 )
 
-// sseServer creates a test server that returns SSE events for the
-// Responses API /v1/responses endpoint.
+// sseServer creates a test server that returns SSE events for the Responses
+// API endpoint at /v1/responses.
 func sseServer(t *testing.T, events []string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +159,8 @@ func TestMock_ToolCallEventSequence(t *testing.T) {
 }
 
 func TestMock_TextThenToolCall(t *testing.T) {
-	// Ported from pi-mono: text output followed by tool call in same response.
+	// Ported from pi-mono. One response holds text output and then a tool
+	// call.
 	events := []string{
 		`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_1","content":[]}}`,
 		`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"Let me check"}`,
@@ -184,13 +185,13 @@ func TestMock_TextThenToolCall(t *testing.T) {
 		types = append(types, e.Type)
 	}
 
-	// Should have both text and tool events
+	// The stream must hold both text events and tool events.
 	assert.Contains(t, types, ai.EventTextStart)
 	assert.Contains(t, types, ai.EventTextEnd)
 	assert.Contains(t, types, ai.EventToolStart)
 	assert.Contains(t, types, ai.EventToolEnd)
 
-	// TextEnd before ToolStart
+	// TextEnd comes before ToolStart.
 	textEndIdx := -1
 	toolStartIdx := -1
 	for i, tt := range types {
@@ -205,7 +206,8 @@ func TestMock_TextThenToolCall(t *testing.T) {
 }
 
 func TestMock_Reasoning(t *testing.T) {
-	// Ported from pi-mono: reasoning summary events for o-series models.
+	// Ported from pi-mono. These are the reasoning summary events of the
+	// o-series models.
 	events := []string{
 		`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_1"}}`,
 		`{"type":"response.reasoning_summary_part.added","output_index":0,"summary_index":0,"part":{"type":"text","text":""}}`,
@@ -234,7 +236,7 @@ func TestMock_Reasoning(t *testing.T) {
 	require.NotNil(t, msg)
 	assert.Equal(t, ai.StopReasonStop, msg.StopReason)
 
-	// Should have thinking content
+	// The message must hold thinking content.
 	var hasThinking, hasText bool
 	for _, c := range msg.Content {
 		if _, ok := ai.AsContent[ai.Thinking](c); ok {
@@ -292,7 +294,7 @@ func TestMock_ReasoningEventSequence(t *testing.T) {
 }
 
 func TestMock_IncompleteResponse(t *testing.T) {
-	// Ported from pi-mono: incomplete response maps to StopReasonLength.
+	// Ported from pi-mono. An incomplete response maps to StopReasonLength.
 	events := []string{
 		`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"partial..."}`,
 		`{"type":"response.output_text.done","output_index":0,"content_index":0,"text":"partial..."}`,
@@ -327,8 +329,8 @@ func TestMock_CachedTokens(t *testing.T) {
 	}, ai.StreamOptions{}).Wait()
 
 	require.NoError(t, err)
-	// input_tokens includes cached_tokens on the wire; Usage.Input reports
-	// only the uncached remainder so the two never bill twice.
+	// On the wire, input_tokens includes cached_tokens. Usage.Input reports
+	// only the uncached remainder, so the two never bill twice.
 	assert.Equal(t, 20, msg.Usage.Input)
 	assert.Equal(t, 5, msg.Usage.Output)
 	assert.Equal(t, 80, msg.Usage.CacheRead)
@@ -367,15 +369,16 @@ func TestMock_ErrorEvent(t *testing.T) {
 }
 
 func TestMock_MultiTurnToolCallConversion(t *testing.T) {
-	// Ported from pi-mono: verify that multi-turn with tool results
-	// correctly builds the input items (assistant tool call + tool result).
+	// Ported from pi-mono. Make sure that a multi-turn exchange with tool
+	// results builds the correct input items. The items are the assistant
+	// tool call and the tool result.
 	events := []string{
 		`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"It's 72F in NYC."}`,
 		`{"type":"response.output_text.done","output_index":0,"content_index":0,"text":"It's 72F in NYC."}`,
 		`{"type":"response.completed","response":{"id":"resp_2","status":"completed","usage":{"input_tokens":50,"output_tokens":10,"total_tokens":60,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}}}}`,
 	}
 
-	// Capture the request body to verify conversion.
+	// Capture the request body to make sure that the conversion is correct.
 	var capturedBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
@@ -412,7 +415,8 @@ func TestMock_MultiTurnToolCallConversion(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "It's 72F in NYC.", msg.Text())
 
-	// Verify the request contains function_call and function_call_output items
+	// Make sure that the request holds function_call and
+	// function_call_output items.
 	assert.Contains(t, capturedBody, "function_call")
 	assert.Contains(t, capturedBody, "function_call_output")
 	assert.Contains(t, capturedBody, "call_abc")
@@ -438,8 +442,8 @@ func TestMock_UsageCost(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
-	// 800 uncached input tokens, not 1000 — the 200 cached ones bill at the
-	// cache rate only.
+	// There are 800 uncached input tokens, not 1000. The 200 cached tokens
+	// bill at the cache rate only.
 	cost := msg.Usage.Cost
 	assert.InDelta(t, 0.0016, cost.Input, 1e-9)
 	assert.InDelta(t, 0.004, cost.Output, 1e-9)

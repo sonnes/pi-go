@@ -13,25 +13,25 @@ import (
 )
 
 // Agents returns a resolver over every markdown file in the tree under
-// dir, one agent definition per file. Files that are not .md are
-// ignored, dot-directories are skipped, and a missing directory resolves
-// to nothing rather than an error — a convention nobody has adopted yet
-// is not a misconfiguration.
+// dir, one agent definition per file. The walk ignores files that are
+// not .md and skips dot-directories. A missing directory resolves to
+// nothing rather than an error: a convention nobody has adopted yet is
+// not a mistake in the configuration.
 //
-// A malformed file is skipped, silently: a definition a user is halfway
-// through writing must not fail every session that shares the
+// The walk skips a malformed file, and it does so silently. A definition
+// a user is halfway through must not fail every session that shares the
 // directory. A file that cannot be read at all — permissions, I/O — is
-// still an error, because that is not something authoring can fix.
-// When a definition does not appear, read it with [AgentFile], which
-// reports what the walk passed over.
+// still an error, because authoring cannot fix that. If a definition
+// does not appear, read it with [AgentFile], which reports what the walk
+// passed over.
 //
-// A file in a subdirectory is scoped to it, so agents/review/api.md is
+// A file in a subdirectory is scoped to it. So agents/review/api.md is
 // named "api" with a [def.Agent.Scope] of "review", which the harness
 // qualifies to "review:api". A subdirectory is therefore a namespace:
 // two teams can both have an "api" agent.
 //
-// It takes an [io/fs.FS] rather than a path so definitions can be
-// embedded with [embed.FS] as easily as read from disk:
+// It takes an [io/fs.FS] rather than a path. Definitions in an [embed.FS]
+// then resolve exactly like definitions on disk:
 //
 //	fs.Agents(os.DirFS(dir), "agents")
 //	fs.Agents(builtin, "defs/agents")   // an embed.FS
@@ -40,9 +40,9 @@ func Agents(fsys iofs.FS, dir string) def.AgentResolver {
 }
 
 // Skills returns a resolver over every directory in the tree under dir
-// that holds a SKILL.md. Directories without one are skipped rather than
-// reported — a skill library grows support files — dot-directories are
-// skipped, and a missing dir resolves to nothing.
+// that holds a SKILL.md. The walk skips a directory without one rather
+// than reports it, because a skill library grows support files. The walk
+// skips dot-directories too, and a missing dir resolves to nothing.
 //
 // It takes an [io/fs.FS], so the same call serves a directory on disk
 // and skills compiled into the binary:
@@ -50,34 +50,33 @@ func Agents(fsys iofs.FS, dir string) def.AgentResolver {
 //	fs.Skills(os.DirFS(dir), "skills")
 //	fs.Skills(builtin, "defs/skills")   // an embed.FS
 //
-// A skill owns everything below it: the walk does not descend past a
-// SKILL.md, so a skill's own examples/ or scripts/ never become skills
-// themselves — and that holds for a skill whose SKILL.md did not parse
-// too.
+// A skill owns everything below it. The walk does not descend past a
+// SKILL.md, so the examples/ or scripts/ of a skill never become skills
+// themselves. That holds for a skill whose SKILL.md did not parse too.
 //
-// A malformed SKILL.md is skipped, silently: one bad file must not fail
-// every session that shares the tree. A file that cannot be read at all
-// — permissions, I/O — is still an error, because that is not something
-// authoring can fix. When a skill does not appear, read it with
+// The walk skips a malformed SKILL.md, and it does so silently. One bad
+// file must not fail every session that shares the tree. A file that
+// cannot be read at all — permissions, I/O — is still an error, because
+// authoring cannot fix that. If a skill does not appear, read it with
 // [SkillDir], which reports what the walk passed over.
 //
-// The directories above a skill are its namespace. A skill at
+// The directories that hold a skill are its namespace. A skill at
 // skills/apps/web/deploy is named "deploy" with a [def.Skill.Scope] of
-// "apps/web", which the harness qualifies to "apps/web:deploy" — so it
-// coexists with a "deploy" at the root instead of colliding with it.
+// "apps/web". The harness qualifies that to "apps/web:deploy", so it
+// coexists with a "deploy" at the root and does not collide with it.
 //
-// [def.Skill.Dir] is left empty, because an [io/fs.FS] path is not one
-// the agent can reach in general. For a tree on disk, use [SkillsAt],
-// which fills Dir with the absolute path.
+// Skills leaves [def.Skill.Dir] empty, because an agent cannot reach an
+// [io/fs.FS] path in general. For a tree on disk, use [SkillsAt], which
+// fills Dir with the absolute path.
 func Skills(fsys iofs.FS, dir string) def.SkillResolver {
 	return skillTree{fsys: fsys, dir: dir}
 }
 
 // SkillsAt is [Skills] over a directory on disk: root is an on-disk
-// path, dir the subdirectory to scan within it. Because the tree is
-// reachable by the agent, each skill's [def.Skill.Dir] is set to the
-// absolute path of its directory, so the skill tool can point the
-// model at the skill's support files.
+// path, dir the subdirectory to scan within it. The agent can reach that
+// tree, so SkillsAt sets [def.Skill.Dir] on each skill to the absolute
+// path of its directory. The skill tool can then point the model at the
+// support files of the skill.
 func SkillsAt(root, dir string) def.SkillResolver {
 	return skillTree{fsys: os.DirFS(root), dir: dir, diskRoot: root}
 }
@@ -88,32 +87,32 @@ func SkillsAt(root, dir string) def.SkillResolver {
 //
 //	fs.Instructions(os.DirFS(dir), "AGENTS.md")
 //
-// The root document carries no [def.Instructions.Dir]; a nested one is
-// bound to the directory it sits in. Dot-directories are skipped, so a
-// .git full of hooks costs nothing, and a tree with no such file
+// The root document carries no [def.Instructions.Dir]. A nested document
+// is bound to the directory it sits in. The walk skips dot-directories,
+// so a .git full of hooks costs nothing. A tree with no such file
 // resolves to nothing rather than an error.
 //
 // The walk visits the entire tree on every build — O(repository),
-// node_modules included. When only the root document matters, use
+// node_modules included. If only the root document matters, use
 // [InstructionsFile], which reads one file and walks nothing.
 //
-// What happens to a bound document is the caller's call.
-// [prompt.Default] renders only the unbound ones, so a nested document
-// is discovered and handed to your builder without being paid for in
-// every session. See the package documentation for why the harness does
-// not decide this for you.
+// The caller decides what happens to a bound document. [prompt.Default]
+// writes only the unbound ones into the prompt. A nested document is
+// therefore discovered and handed to your builder, and no session pays
+// for it. The package documentation explains why the harness does not
+// decide this for you.
 func Instructions(fsys iofs.FS, name string) def.InstructionResolver {
 	return instructionTree{fsys: fsys, name: name}
 }
 
-// InstructionsFile returns a resolver over exactly one file — no walk,
-// so it costs one read however large the tree around it is:
+// InstructionsFile returns a resolver over exactly one file. There is no
+// walk, so it costs one read however large the tree around it is:
 //
 //	fs.InstructionsFile(os.DirFS(repo), "AGENTS.md")
 //
-// A missing file resolves to zero documents rather than an error, the
-// package's convention for a convention not adopted. The document
-// carries no [def.Instructions.Dir].
+// A missing file resolves to zero documents rather than an error. That is
+// the convention of this package for a convention nobody adopted. The
+// document carries no [def.Instructions.Dir].
 func InstructionsFile(fsys iofs.FS, filePath string) def.InstructionResolver {
 	return instructionFile{fsys: fsys, path: filePath}
 }
@@ -149,8 +148,8 @@ func (d agentDir) Agents(context.Context) ([]def.Agent, error) {
 }
 
 // skillTree resolves skills from a tree of skill directories. A
-// non-empty diskRoot marks the tree as reachable on disk, which is
-// what lets Dir carry an absolute path.
+// non-empty diskRoot marks the tree as reachable on disk. Dir can then
+// carry an absolute path.
 type skillTree struct {
 	fsys     iofs.FS
 	dir      string
@@ -164,11 +163,11 @@ func (t skillTree) Skills(context.Context) ([]def.Skill, error) {
 		if !entry.IsDir() {
 			return nil
 		}
-		// Reading is the presence check: no SKILL.md means this is an
-		// ordinary directory, so keep descending. A directory that has
-		// one belongs to a skill whether or not the file parsed, so the
-		// subtree is pruned either way — support files never become
-		// skills of their own.
+		// The read is the test for presence. No SKILL.md means this is
+		// an ordinary directory, so the walk continues down. A directory
+		// that has one belongs to a skill whether or not the file
+		// parsed, so the walk prunes the subtree either way. Support
+		// files never become skills of their own.
 		s, err := SkillDir(t.fsys, dir)
 		switch {
 		case errors.Is(err, iofs.ErrNotExist):
@@ -191,8 +190,8 @@ func (t skillTree) Skills(context.Context) ([]def.Skill, error) {
 	return out, nil
 }
 
-// walk visits every entry under root, skipping dot-directories and
-// treating a missing root as an empty one. A visit that returns
+// walk visits every entry under root. It skips dot-directories and
+// treats a missing root as an empty one. A visit that returns
 // [io/fs.SkipDir] prunes that directory, which is how a skill claims
 // everything below it.
 func walk(fsys iofs.FS, root string, visit func(p string, e iofs.DirEntry) error) error {
@@ -214,9 +213,9 @@ func walk(fsys iofs.FS, root string, visit func(p string, e iofs.DirEntry) error
 	return err
 }
 
-// scopeOf reports where dir sits relative to the resolver's root, which
-// is the namespace an artifact there belongs to. The root itself is no
-// namespace at all.
+// scopeOf reports where dir sits relative to the root of the resolver,
+// which is the namespace an artifact there belongs to. The root itself
+// is no namespace at all.
 func scopeOf(root, dir string) string {
 	if dir == root {
 		return ""

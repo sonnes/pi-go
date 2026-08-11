@@ -16,7 +16,7 @@ func TestGeneratePKCE(t *testing.T) {
 	assert.NotEmpty(t, p.Verifier)
 	assert.NotEmpty(t, p.Challenge)
 
-	// 32 random bytes base64url-encoded without padding = 43 characters.
+	// 32 random bytes in base64url form, without padding, give 43 characters.
 	assert.Len(t, p.Verifier, 43)
 }
 
@@ -24,7 +24,8 @@ func TestGeneratePKCE_ChallengeMatchesVerifier(t *testing.T) {
 	p, err := GeneratePKCE()
 	require.NoError(t, err)
 
-	// SHA-256 hash the verifier, then base64url-encode without padding.
+	// Hash the verifier with SHA-256. Then encode it as base64url, without
+	// padding.
 	h := sha256.Sum256([]byte(p.Verifier))
 	want := base64.RawURLEncoding.EncodeToString(h[:])
 

@@ -16,14 +16,15 @@ func TestClaudeNew_BuildsAgent(t *testing.T) {
 }
 
 func TestClaudeNew_UsesModelID(t *testing.T) {
-	// The CLI agent uses Model.Name, falling back to Model.ID when Name
-	// is empty, as the model name it forwards to the subprocess.
+	// The CLI agent forwards a model name to the subprocess. It uses
+	// Model.Name. If Name is empty, it uses Model.ID.
 	a := New(ai.Model{ID: "claude-sonnet-4-5"})
 	assert.Equal(t, "claude-sonnet-4-5", a.cfg.model)
 }
 
 func TestClaudeNew_ComposesAgentAndClaudeOptions(t *testing.T) {
-	// Agent-level and claude-specific options flow through a single slice.
+	// The agent-level options and the claude-specific options go through
+	// one slice.
 	a := New(
 		ai.Model{ID: "sonnet", Name: "sonnet"},
 		agent.WithMaxTurns(7),

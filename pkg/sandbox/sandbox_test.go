@@ -42,7 +42,7 @@ func TestFS_Root(t *testing.T) {
 	assert.Equal(t, dir, New(dir).Root())
 }
 
-// By default the FS is flexible: a "../" name resolves outside the root.
+// By default the FS is flexible. A "../" name resolves outside the root.
 func TestFS_Flexible_TraversesOutsideRoot(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "root")
@@ -61,7 +61,7 @@ func TestFS_Flexible_TraversesOutsideRoot(t *testing.T) {
 	assert.Equal(t, "secret", string(got))
 }
 
-// Strict mode confines access: "../" names are rejected.
+// Strict mode confines access. It rejects "../" names.
 func TestFS_Strict_RejectsEscape(t *testing.T) {
 	sb := New(t.TempDir(), Strict())
 
@@ -148,7 +148,7 @@ func TestResolve_Strict_AllowDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "../../opt/shared/lib.go", got)
 
-	// A path outside both root and the allowed dir is still rejected.
+	// Resolve still rejects a path outside both root and the allowed dir.
 	_, err = Resolve(root, "/etc/passwd", Strict(), AllowDir(extra))
 	assert.Error(t, err)
 }

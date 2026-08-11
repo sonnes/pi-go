@@ -15,12 +15,12 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/provider/google"
 )
 
-// A base URL sends the module's traffic somewhere other than Google's own
-// endpoint — a gateway, a proxy, a compatible API. It is the one thing the
-// other provider modules already accept and this one did not.
+// A base URL sends the traffic of the module to an endpoint other than the
+// Google endpoint. The target can be a gateway, a proxy, or a compatible API.
+// The other provider modules already accept a base URL. This module did not.
 //
-// The version path is not part of it: genai appends its own ("v1beta"), so
-// the option takes a host and nothing more.
+// The version path is not part of the base URL. genai appends its own version
+// ("v1beta"), so the option takes a host and nothing more.
 func TestWithBaseURL(t *testing.T) {
 	var got string
 
@@ -57,7 +57,7 @@ func TestWithBaseURL(t *testing.T) {
 	)
 }
 
-// An unset base URL leaves the module on Google's own endpoint.
+// An unset base URL leaves the module on the Google endpoint.
 func TestWithoutBaseURL(t *testing.T) {
 	var got string
 

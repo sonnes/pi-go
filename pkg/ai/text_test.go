@@ -54,7 +54,7 @@ func TestGenerateText_WithFakeProvider(t *testing.T) {
 }
 
 // fakeProvider is a test double for ai.TextProvider. It records the model
-// it was called with and returns a canned message.
+// from the call and returns a canned message.
 type fakeProvider struct {
 	api      string
 	message  *ai.Message

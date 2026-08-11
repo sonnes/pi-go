@@ -15,13 +15,13 @@ import (
 )
 
 // Description is the default tool documentation, embedded from
-// description.md. Clients register the tool under any name and may pass
-// this (or their own text) as the description.
+// description.md. A client registers the tool under any name. The client
+// can pass this text, or its own text, as the description.
 //
 //go:embed description.md
 var Description string
 
-// ToolName is the suggested default registry name for this tool.
+// ToolName is the default name for this tool in the registry.
 const ToolName = "find"
 
 // DefaultLimit is the default maximum number of results returned.
@@ -34,32 +34,34 @@ type Input struct {
 	Limit   *int   `json:"limit,omitempty" jsonschema:"Maximum number of file paths to return."`
 }
 
-// fsys is the filesystem the find tool searches: it walks files, resolves
-// the search base against its own root, and reports that root for
-// user-facing paths.
+// fsys is the filesystem that the find tool searches. It walks files and
+// resolves the search base against its own root. It also reports that
+// root for user-facing paths.
 type fsys interface {
 	fs.FS
 	ResolveDir(path string) (string, error)
 	Root() string
 }
 
-// finder searches a confined filesystem. It carries only the tool's real
-// dependency — identity (name, description) belongs to the client that
-// registers it.
+// finder searches a confined filesystem. It holds only the tool's real
+// dependency. Identity (name, description) belongs to the client that
+// registers the tool.
 type finder struct{ fsys fsys }
 
 // Option configures a find tool.
 type Option interface{ apply(*finder) }
 
-// FS sets the filesystem the tool searches. It resolves and confines
-// paths against its own root (e.g. a sandbox.FS).
+// FS sets the filesystem that the tool searches, for example a
+// sandbox.FS. The filesystem resolves and confines paths against its own
+// root.
 type FS struct{ FS fsys }
 
 func (f FS) apply(fd *finder) { fd.fsys = f.FS }
 
-// New returns the find tool's runner: it locates files by glob pattern and
-// returns newline-separated paths (or a message when none match). Pass it
-// to [ai.DefineTool]/[ai.DefineParallelTool] with a name and description.
+// New returns the find tool's runner. The runner locates files by glob
+// pattern and returns newline-separated paths. If no file matches, the
+// runner returns a message. Pass the runner to
+// [ai.DefineTool]/[ai.DefineParallelTool] with a name and description.
 func New(opts ...Option) func(context.Context, Input) (string, error) {
 	f := &finder{}
 	for _, o := range opts {

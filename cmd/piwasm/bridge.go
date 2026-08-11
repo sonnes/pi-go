@@ -15,9 +15,9 @@ import (
 //	piDemo.start(onEvent)   // onEvent(jsonString) for every event
 //	piDemo.send(jsonString) // one demo.Command
 //
-// Commands run on a goroutine because syscall/js callbacks execute on
-// the browser's only thread — handling a run inline would freeze the
-// page for the length of the turn.
+// Commands run on a goroutine. The syscall/js callbacks run on the only
+// thread of the browser. An inline run therefore freezes the page for
+// the length of the turn.
 type bridge struct {
 	demo *demo.Demo
 	emit js.Value
@@ -30,7 +30,7 @@ func (b *bridge) install() {
 	}))
 }
 
-// start wires the page's callback and opens a scripted session.
+// start wires the callback of the page and opens a scripted session.
 func (b *bridge) start(_ js.Value, args []js.Value) any {
 	if len(args) == 0 || args[0].Type() != js.TypeFunction {
 		return errorEvent("piDemo.start needs an event callback")
@@ -45,7 +45,7 @@ func (b *bridge) start(_ js.Value, args []js.Value) any {
 
 	b.demo = d
 
-	// Send the page an empty tree so it can render before any input.
+	// Send an empty tree, so the page can draw before any input.
 	go b.handle(demo.Command{Kind: demo.CmdReset})
 
 	return nil
@@ -89,8 +89,9 @@ func (b *bridge) publish(e demo.Event) {
 	b.emit.Invoke(string(data))
 }
 
-// errorEvent is returned synchronously for misuse of the API itself,
-// where there is no session to publish through yet.
+// errorEvent builds an error event for misuse of the API itself. The
+// caller returns it at once, because there is no session to publish
+// through yet.
 func errorEvent(msg string) any {
 	data, _ := json.Marshal(demo.Event{Kind: demo.KindError, Text: msg})
 

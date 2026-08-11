@@ -11,13 +11,13 @@ import (
 )
 
 // Description is the default tool documentation, embedded from
-// description.md. Clients register the tool under any name and may pass
-// this (or their own text) as the description.
+// description.md. A client registers the tool under any name. The client
+// can pass this text, or its own text, as the description.
 //
 //go:embed description.md
 var Description string
 
-// ToolName is the suggested default registry name for this tool.
+// ToolName is the default name for this tool in the registry.
 const ToolName = "write"
 
 // Input defines the parameters for the Write tool.
@@ -26,9 +26,9 @@ type Input struct {
 	Content string `json:"content" jsonschema:"Full contents to write. Any existing file at this path is overwritten."`
 }
 
-// fsys is the filesystem surface the Write tool needs: resolve a user
-// path against its own root, then create the file and any parent
-// directories it requires.
+// fsys is the filesystem surface that the Write tool needs. The tool
+// resolves a user path against the root of the filesystem. Then the tool
+// creates the file and any parent directories that the file requires.
 type fsys interface {
 	fs.FS
 	Resolve(path string) (string, error)
@@ -36,22 +36,24 @@ type fsys interface {
 	MkdirAll(path string, perm fs.FileMode) error
 }
 
-// writer creates files on a confined filesystem. It carries only the
-// tool's real dependency — identity (name, description) belongs to the
-// client that registers it.
+// writer creates files on a confined filesystem. It holds only the
+// tool's real dependency. Identity (name, description) belongs to the
+// client that registers the tool.
 type writer struct{ fsys fsys }
 
 // Option configures a Write tool.
 type Option interface{ apply(*writer) }
 
-// FS sets the filesystem the tool writes to. It resolves and confines
-// paths against its own root (e.g. a sandbox.FS).
+// FS sets the filesystem that the tool writes to, for example a
+// sandbox.FS. The filesystem resolves and confines paths against its own
+// root.
 type FS struct{ FS fsys }
 
 func (f FS) apply(w *writer) { w.fsys = f.FS }
 
-// New returns the Write tool's runner: it writes a file and returns a
-// confirmation. Pass it to ai.DefineTool with a name and description.
+// New returns the Write tool's runner. The runner writes a file and
+// returns a confirmation. Pass the runner to ai.DefineTool with a name and
+// description.
 func New(opts ...Option) func(context.Context, Input) (string, error) {
 	w := &writer{}
 	for _, o := range opts {

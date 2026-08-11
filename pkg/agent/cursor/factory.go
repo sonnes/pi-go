@@ -9,9 +9,9 @@ import (
 )
 
 // Factory returns an [agent.Factory] that builds a Cursor CLI agent from
-// a "<kind>/<model>" spec, e.g. "cursor/gpt-5". Register it with a
-// catalog under the kind prefix. base options apply to every built
-// agent, before any per-call options.
+// a "<kind>/<model>" spec, for example "cursor/gpt-5". Register it with a
+// catalog under the kind prefix. The base options apply to every agent
+// that the factory builds. The per-call options apply after them.
 func Factory(base ...agent.Option) agent.Factory {
 	return func(spec string, opts ...agent.Option) (agent.Agent, error) {
 		_, model, ok := strings.Cut(spec, "/")

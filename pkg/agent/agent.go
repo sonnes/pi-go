@@ -9,27 +9,27 @@ import (
 
 // Agent is the interface for an agentic conversation loop.
 type Agent interface {
-	// Run appends msgs to the conversation history and executes the
-	// loop, returning the run's event stream. Zero msgs continues from
-	// the current state. Cancel ctx to abort the run — the run ends
-	// with ctx's error on the stream.
+	// Run appends msgs to the conversation history and runs the loop.
+	// It returns the event stream of the run. With zero msgs, the loop
+	// continues from the current state. If you cancel ctx, the run
+	// stops and the stream ends with the context error.
 	//
-	// Runs are sequential: calling Run while another run is active
-	// fails the returned stream. Errors — including pre-flight ones —
-	// surface on the stream, never as a panic or a lost run.
+	// Runs are sequential. If another run is active, Run fails the
+	// returned stream. All errors reach the stream, including
+	// pre-flight errors. Run never panics and never loses a run.
 	Run(ctx context.Context, msgs ...ai.Message) *Stream
 
 	// Messages returns a copy of the current conversation history.
 	Messages() []ai.Message
 
-	// Close releases backend resources (e.g. a CLI subprocess). For
-	// purely in-process agents it is a no-op.
+	// Close releases backend resources, for example a CLI subprocess.
+	// For an in-process agent, Close does nothing.
 	Close() error
 }
 
-// Prompt sends a user message, blocks until the run completes, and
-// returns the run's final assistant message. Convenience for
-// Run + [Stream.Wait].
+// Prompt sends a user message and blocks until the run is complete. It
+// returns the final assistant message of the run. Prompt is a shortcut
+// for Run and [Stream.Wait].
 func Prompt(ctx context.Context, a Agent, input string) (*ai.Message, error) {
 	msgs, err := a.Run(ctx, ai.UserMessage(input)).Wait()
 	if err != nil {
@@ -58,16 +58,16 @@ type config struct {
 // Option configures an [Agent].
 type Option func(*config)
 
-// WithExtension stores a sub-package configuration value under key.
-// Factories read [Config.Extensions] to pull out their own slot.
+// WithExtension stores a configuration value for a sub-package under key.
+// A factory reads its own slot from [Config.Extensions].
 func WithExtension(key string, value any) Option {
 	return WithExtensionMutator(key, func(any) any { return value })
 }
 
-// WithExtensionMutator reads the current extension value under key (or
-// nil if absent), passes it to mutate, and stores the result. This lets
-// sub-packages compose multiple options that layer onto a single struct
-// without exposing their internals.
+// WithExtensionMutator reads the current extension value under key,
+// passes it to mutate, and stores the result. If the key is absent, the
+// value is nil. A sub-package uses this option to compose several options
+// onto one struct and to keep its internals private.
 func WithExtensionMutator(key string, mutate func(any) any) Option {
 	return func(c *config) {
 		if c.extensions == nil {
@@ -77,10 +77,11 @@ func WithExtensionMutator(key string, mutate func(any) any) Option {
 	}
 }
 
-// WithTools sets the tools available for the agent. Mix client-side
-// function tools (e.g. [ai.DefineTool]) with provider-hosted server
-// tools (e.g. [ai.DefineServerTool]) — the agent advertises both to
-// the model and runs only the function tools locally.
+// WithTools sets the tools that the agent can use. You can mix
+// client-side function tools, for example [ai.DefineTool], with
+// provider-hosted server tools, for example [ai.DefineServerTool]. The
+// agent advertises both kinds to the model. It runs only the function
+// tools locally.
 func WithTools(tools ...ai.Tool) Option {
 	return func(c *config) { c.tools = tools }
 }
@@ -95,19 +96,20 @@ func WithSystemPrompt(s string) Option {
 	return func(c *config) { c.systemPrompt = s }
 }
 
-// WithStreamOpts sets options passed to each LLM stream call.
+// WithStreamOpts sets the options that the agent passes to each LLM
+// stream call.
 func WithStreamOpts(opts ...ai.Option) Option {
 	return func(c *config) { c.streamOpts = opts }
 }
 
-// WithMaxTurns limits the number of turns to prevent infinite loops.
-// Zero means unlimited.
+// WithMaxTurns limits the number of turns to prevent an infinite loop.
+// Zero means no limit.
 func WithMaxTurns(n int) Option {
 	return func(c *config) { c.maxTurns = n }
 }
 
-// WithHook registers a lifecycle hook for the given event. Multiple
-// hooks per event run in registration order.
+// WithHook registers a lifecycle hook for the given event. If one event
+// has several hooks, they run in registration order.
 func WithHook(event HookEvent, h Hook) Option {
 	return func(c *config) {
 		if c.hooks == nil {

@@ -8,12 +8,12 @@ import (
 )
 
 // DurableAgent builds a session-backed [durable.Agent] for a
-// "<kind>/<model>" spec. It resolves the spec through the catalog like
-// [Catalog.Agent], then binds the resulting [ai.LanguageModel] to a
+// "<kind>/<model>" spec. It resolves the spec through the catalog, like
+// [Catalog.Agent]. Then it binds the resulting [ai.LanguageModel] to a
 // durable session loop.
 //
-// Pass durable options ([durable.WithStore], [durable.WithSessionID])
-// alongside agent options.
+// Pass the durable options ([durable.WithStore], [durable.WithSessionID])
+// together with the agent options.
 func (c *Catalog) DurableAgent(
 	ctx context.Context,
 	spec string,

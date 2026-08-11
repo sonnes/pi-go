@@ -19,33 +19,34 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 )
 
-// This file implements ChatGPT/Codex OAuth: the Responses provider routed
-// through the Codex backend, plus detection from the OPENAI_OAUTH_TOKEN
-// environment variable and from an existing Codex CLI login.
+// This file implements ChatGPT and Codex OAuth. It routes the Responses
+// provider through the Codex backend. It also detects credentials from the
+// OPENAI_OAUTH_TOKEN environment variable and from an existing Codex CLI
+// login.
 
-// openAICodexBaseURL is the ChatGPT/Codex Responses API mount. ChatGPT OAuth
-// access tokens are honored only on this backend, not on the standard
-// api.openai.com Chat Completions endpoint.
+// openAICodexBaseURL is the mount point of the ChatGPT Codex Responses API.
+// This backend is the only one that accepts ChatGPT OAuth access tokens. The
+// standard api.openai.com Chat Completions endpoint rejects them.
 const (
 	openAICodexBaseURL = "https://chatgpt.com/backend-api/codex"
-	// codexModelsClientVersion is the compatibility version Codex source
-	// builds use. The models endpoint requires a semantic client version;
-	// 0.0.0 selects the current development catalog whose stable fields this
-	// package consumes.
+	// codexModelsClientVersion is the compatibility version that Codex
+	// source builds use. The models endpoint requires a semantic client
+	// version. The value 0.0.0 selects the current development catalog.
+	// This package reads only the stable fields of that catalog.
 	codexModelsClientVersion = "0.0.0"
 )
 
-// chatgptAccountIDExtra is the [oauth.Credentials.Extras] key under which the
-// Codex reuse tier stashes the ChatGPT account ID, so it survives token
-// re-reads and can be applied as the chatgpt-account-id header.
+// chatgptAccountIDExtra is the [oauth.Credentials.Extras] key that holds the
+// ChatGPT account ID for the Codex reuse tier. The ID survives a token
+// re-read. The provider sends it as the chatgpt-account-id header.
 const chatgptAccountIDExtra = "chatgpt_account_id"
 
-// NewForCodexOAuth builds a Responses provider authenticated with a
-// ChatGPT/Codex OAuth token. It routes through the Codex base URL because these
-// tokens are rejected on the standard Chat Completions endpoint, and it sends
-// the chatgpt-account-id header the Codex backend requires — read from
-// accountID, or decoded from the token's JWT claims when accountID is empty.
-// Optional refresh options persist rotated tokens.
+// NewForCodexOAuth builds a Responses provider that authenticates with a
+// ChatGPT Codex OAuth token. It routes through the Codex base URL because
+// the standard Chat Completions endpoint rejects these tokens. It also sends
+// the chatgpt-account-id header that the Codex backend requires. The value
+// comes from accountID. If accountID is empty, the value comes from the JWT
+// claims of the token. The optional refresh options store rotated tokens.
 func NewForCodexOAuth(
 	clientID, accountID string,
 	creds oauth.Credentials,
@@ -65,10 +66,10 @@ func NewForCodexOAuth(
 	return NewForCodex(opts...)
 }
 
-// ListCodexModels returns the models the authenticated ChatGPT account can
-// use through the Codex backend. Models hidden from the picker or unsupported
-// by the API are omitted. Optional transport settings can persist refreshed
-// credentials or replace the HTTP transport in tests.
+// ListCodexModels returns the models that the authenticated ChatGPT account
+// can use through the Codex backend. It omits a model that the picker hides
+// or that the API does not support. The optional transport options can store
+// refreshed credentials. They can also replace the HTTP transport in tests.
 func ListCodexModels(
 	ctx context.Context,
 	clientID, accountID string,
@@ -156,8 +157,9 @@ type codexModelsResponse struct {
 	} `json:"models"`
 }
 
-// DetectOAuthEnv builds a Codex OAuth provider from OPENAI_OAUTH_TOKEN (with
-// the optional OPENAI_OAUTH_CLIENT_ID) and reports whether it was set.
+// DetectOAuthEnv builds a Codex OAuth provider from OPENAI_OAUTH_TOKEN and
+// the optional OPENAI_OAUTH_CLIENT_ID. It reports whether OPENAI_OAUTH_TOKEN
+// is set.
 func DetectOAuthEnv() (*Provider, bool) {
 	token := os.Getenv("OPENAI_OAUTH_TOKEN")
 	if token == "" {
@@ -167,9 +169,10 @@ func DetectOAuthEnv() (*Provider, bool) {
 	return NewForCodexOAuth(clientID, "", oauth.Credentials{AccessToken: token}), true
 }
 
-// DetectCodexCLI builds a provider from an existing Codex CLI login and reports
-// whether one was found. It reads the CLI's own $CODEX_HOME/auth.json store and
-// re-reads it on refresh rather than running its own OAuth rotation.
+// DetectCodexCLI builds a provider from an existing Codex CLI login and
+// reports whether it found one. It reads the $CODEX_HOME/auth.json store of
+// the CLI. On refresh it reads that file again. It does not run its own
+// OAuth rotation.
 func DetectCodexCLI() (*Provider, bool) {
 	src := codexCLISource{}
 	creds, err := src.load()
@@ -180,10 +183,10 @@ func DetectCodexCLI() (*Provider, bool) {
 	return NewForCodexOAuth("", accountID, creds, oauth.WithRefresher(codexReReadRefresher(src))), true
 }
 
-// codexCLISource reads the Codex CLI's OAuth credentials from
-// $CODEX_HOME/auth.json (default ~/.codex/auth.json).
+// codexCLISource reads the OAuth credentials of the Codex CLI from
+// $CODEX_HOME/auth.json (~/.codex/auth.json by default).
 type codexCLISource struct {
-	// path overrides the auth.json location (for tests).
+	// path replaces the auth.json location. Tests use it.
 	path string
 }
 
@@ -213,10 +216,11 @@ func codexAuthPath() (string, error) {
 	return filepath.Join(home, ".codex", "auth.json"), nil
 }
 
-// parseCodexCreds maps the Codex CLI's auth.json to [oauth.Credentials]. The
-// schema is {"tokens":{"access_token","refresh_token","account_id","id_token"}}.
-// Codex carries no explicit expiry, so it is derived from the access token's
-// JWT "exp" claim. The account ID is stashed in Extras for the
+// parseCodexCreds maps the auth.json file of the Codex CLI to
+// [oauth.Credentials]. The schema is
+// {"tokens":{"access_token","refresh_token","account_id","id_token"}}.
+// Codex holds no explicit expiry. The expiry comes from the JWT "exp" claim
+// of the access token. The account ID goes into Extras for the
 // chatgpt-account-id header.
 func parseCodexCreds(data []byte) (oauth.Credentials, error) {
 	var doc struct {
@@ -247,9 +251,10 @@ func parseCodexCreds(data []byte) (oauth.Credentials, error) {
 	return creds, nil
 }
 
-// codexReReadRefresher returns a [oauth.TokenRefresher] that re-reads
-// credentials from the Codex CLI's own store rather than running an HTTP
-// refresh, surfacing a re-auth error if the re-read token is also expired.
+// codexReReadRefresher returns an [oauth.TokenRefresher] that reads the
+// credentials again from the store of the Codex CLI. It does not run an HTTP
+// refresh. If the new token is also expired, it returns an error that asks
+// for a new login.
 func codexReReadRefresher(src codexCLISource) oauth.TokenRefresher {
 	return oauth.TokenRefresherFunc(func(_ context.Context, _ oauth.Credentials) (oauth.Credentials, error) {
 		creds, err := src.load()
@@ -265,10 +270,10 @@ func codexReReadRefresher(src codexCLISource) oauth.TokenRefresher {
 	})
 }
 
-// chatgptAccountID extracts the ChatGPT account ID from an OpenAI OAuth access
-// token. The token is a JWT whose payload carries the ID under the
-// "https://api.openai.com/auth" claim. It returns "" if the token is not a
-// well-formed JWT or the claim is absent.
+// chatgptAccountID extracts the ChatGPT account ID from an OpenAI OAuth
+// access token. The token is a JWT. The payload holds the ID under the
+// "https://api.openai.com/auth" claim. If the token is not a well-formed
+// JWT, it returns "". It also returns "" when the claim is absent.
 func chatgptAccountID(token string) string {
 	payload, err := jwtPayload(token)
 	if err != nil {
@@ -285,8 +290,9 @@ func chatgptAccountID(token string) string {
 	return claims.Auth.ChatGPTAccountID
 }
 
-// jwtExpiry returns the expiry encoded in a JWT's "exp" claim, or the zero time
-// if the token is not a well-formed JWT or carries no exp.
+// jwtExpiry returns the expiry from the "exp" claim of a JWT. It returns the
+// zero time when the token is not a well-formed JWT. It also returns the
+// zero time when the token holds no exp claim.
 func jwtExpiry(token string) time.Time {
 	payload, err := jwtPayload(token)
 	if err != nil {
@@ -301,8 +307,9 @@ func jwtExpiry(token string) time.Time {
 	return time.Unix(claims.Exp, 0)
 }
 
-// jwtPayload decodes the payload segment of a JWT. It returns an error if the
-// token is not a three-segment JWT or the payload is not valid base64url.
+// jwtPayload decodes the payload segment of a JWT. It returns an error when
+// the token does not have three segments. It also returns an error when the
+// payload is not valid base64url.
 func jwtPayload(token string) ([]byte, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {

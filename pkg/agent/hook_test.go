@@ -12,7 +12,7 @@ import (
 
 // --- BeforeTool hook tests ---
 
-// Test: BeforeTool passes through — tool runs normally.
+// Test: BeforeTool does not deny the call — the tool runs as normal.
 func TestBeforeTool_PassesThrough(t *testing.T) {
 	var called bool
 	hook := func(
@@ -49,7 +49,7 @@ func TestBeforeTool_PassesThrough(t *testing.T) {
 	assert.False(t, toolResult.IsError)
 }
 
-// Test: BeforeTool blocks execution — returns Deny.
+// Test: BeforeTool blocks the tool run — it returns Deny.
 func TestBeforeTool_BlocksExecution(t *testing.T) {
 	var toolRan bool
 	guardedTool := ai.DefineTool[toolInput, string](
@@ -93,7 +93,7 @@ func TestBeforeTool_BlocksExecution(t *testing.T) {
 	assert.Contains(t, toolResult.Content[0].(ai.Text).Text, "blocked by policy")
 }
 
-// Test: BeforeTool returns error.
+// Test: BeforeTool returns an error.
 func TestBeforeTool_ReturnsError(t *testing.T) {
 	hook := func(
 		_ context.Context,
@@ -124,7 +124,7 @@ func TestBeforeTool_ReturnsError(t *testing.T) {
 	assert.True(t, toolResult.IsError)
 }
 
-// Test: Multiple BeforeTool hooks — first deny short-circuits.
+// Test: Several BeforeTool hooks — the first deny stops the chain.
 func TestBeforeTool_FirstDenyWins(t *testing.T) {
 	var h2Called bool
 
@@ -158,7 +158,7 @@ func TestBeforeTool_FirstDenyWins(t *testing.T) {
 	assert.False(t, h2Called, "second hook should not run when first denies")
 }
 
-// Test: BeforeTool with parallel tools — hook called for each.
+// Test: BeforeTool with parallel tools — the hook runs for each tool.
 func TestBeforeTool_ParallelTools(t *testing.T) {
 	var count atomic.Int32
 	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
@@ -186,7 +186,7 @@ func TestBeforeTool_ParallelTools(t *testing.T) {
 	assert.Equal(t, int32(2), count.Load(), "hook should be called for both parallel tools")
 }
 
-// Test: No hooks — nil hooks, identical behavior.
+// Test: No hooks — with nil hooks the behavior is the same.
 func TestHook_NilHooks(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
@@ -211,7 +211,7 @@ func TestHook_NilHooks(t *testing.T) {
 
 // --- AfterTool hook tests ---
 
-// Test: AfterTool modifies result.
+// Test: AfterTool modifies the result.
 func TestAfterTool_ModifiesResult(t *testing.T) {
 	hook := func(
 		_ context.Context,
@@ -249,7 +249,8 @@ func TestAfterTool_ModifiesResult(t *testing.T) {
 	assert.Equal(t, "modified", text.Text)
 }
 
-// Test: Multiple AfterTool hooks chain — each sees previous result.
+// Test: Several AfterTool hooks chain — each hook sees the previous
+// result.
 func TestAfterTool_Chains(t *testing.T) {
 	h1 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
 		modified := *input.ToolResult
@@ -289,7 +290,7 @@ func TestAfterTool_Chains(t *testing.T) {
 
 // --- BeforeCall hook tests ---
 
-// Test: BeforeCall replaces the messages sent to the model.
+// Test: BeforeCall replaces the messages that go to the model.
 func TestBeforeCall_ReplacesMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
@@ -315,7 +316,7 @@ func TestBeforeCall_ReplacesMessages(t *testing.T) {
 func TestBeforeCall_FiltersMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	// Return an empty slice (not nil) to explicitly send zero messages.
+	// Return an empty slice, not nil, to send zero messages.
 	hook := func(_ context.Context, _ *HookInput) (*HookOutput, error) {
 		return &HookOutput{Messages: []ai.Message{}}, nil
 	}
@@ -336,7 +337,7 @@ func TestBeforeCall_FiltersMessages(t *testing.T) {
 	assert.Empty(t, mock.prompts[0].Messages)
 }
 
-// Test: BeforeCall called each turn (multi-turn).
+// Test: BeforeCall runs on each turn (multi-turn).
 func TestBeforeCall_CalledEachTurn(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
@@ -365,7 +366,7 @@ func TestBeforeCall_CalledEachTurn(t *testing.T) {
 	assert.Equal(t, 2, callCount, "hook should be called once per turn")
 }
 
-// Test: No BeforeCall hooks — history is sent to the model as-is.
+// Test: No BeforeCall hooks — the agent sends the history unchanged.
 func TestBeforeCall_NilFallback(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
@@ -377,18 +378,18 @@ func TestBeforeCall_NilFallback(t *testing.T) {
 	require.Len(t, mock.prompts[0].Messages, 1)
 }
 
-// Test: Multiple BeforeCall hooks chain — Messages field chains.
+// Test: Several BeforeCall hooks chain — the Messages field chains.
 func TestBeforeCall_ChainsMessages(t *testing.T) {
 	mock := registerMock(t, textStream("ok", ai.Usage{}))
 
-	// First hook filters messages (keep only last one).
+	// The first hook filters the messages and keeps only the last one.
 	h1 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
 		if len(input.Messages) > 1 {
 			return &HookOutput{Messages: input.Messages[len(input.Messages)-1:]}, nil
 		}
 		return nil, nil
 	}
-	// Second hook sees the filtered list and passes it through.
+	// The second hook sees the filtered list and returns it unchanged.
 	h2 := func(_ context.Context, input *HookInput) (*HookOutput, error) {
 		return &HookOutput{Messages: input.Messages}, nil
 	}
@@ -406,7 +407,7 @@ func TestBeforeCall_ChainsMessages(t *testing.T) {
 	_, err := a.Run(t.Context(), ai.UserMessage("new")).Wait()
 	require.NoError(t, err)
 
-	// h1 kept only "new" message, h2 converted it.
+	// h1 kept only the "new" message. h2 converted it.
 	require.Len(t, mock.prompts, 1)
 	require.Len(t, mock.prompts[0].Messages, 1)
 	assert.Equal(t, ai.RoleUser, mock.prompts[0].Messages[0].Role)
@@ -414,7 +415,8 @@ func TestBeforeCall_ChainsMessages(t *testing.T) {
 
 // --- AfterTurn hook tests ---
 
-// Test: AfterTurn receives messages and turn result after each turn.
+// Test: AfterTurn receives the messages and the turn result after each
+// turn.
 func TestAfterTurn_CalledWithState(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
@@ -488,7 +490,7 @@ func TestAfterTurn_ReplacesMessages(t *testing.T) {
 	assert.Len(t, mock.prompts[2].Messages, 2, "third turn should see compacted messages")
 }
 
-// Test: AfterTurn nil output means no change.
+// Test: A nil AfterTurn output means no change.
 func TestAfterTurn_NilNoChange(t *testing.T) {
 	registerMock(t, textStream("ok", ai.Usage{}))
 
@@ -531,7 +533,7 @@ func TestBeforeStop_ContinuesLoop(t *testing.T) {
 	assert.Equal(t, ai.RoleAssistant, msgs[2].Role)
 }
 
-// Test: BeforeStop returning nil lets agent stop.
+// Test: If BeforeStop returns nil, the agent stops.
 func TestBeforeStop_NilStops(t *testing.T) {
 	registerMock(t, textStream("done", ai.Usage{}))
 
@@ -546,7 +548,7 @@ func TestBeforeStop_NilStops(t *testing.T) {
 	require.Len(t, msgs, 1)
 }
 
-// Test: BeforeStop respects maxTurns.
+// Test: BeforeStop obeys maxTurns.
 func TestBeforeStop_RespectsMaxTurns(t *testing.T) {
 	registerMock(t,
 		textStream("turn 1", ai.Usage{}),
@@ -571,7 +573,7 @@ func TestBeforeStop_RespectsMaxTurns(t *testing.T) {
 	require.Len(t, msgs, 3)
 }
 
-// Test: BeforeStop not called when tool calls continue the loop.
+// Test: If tool calls continue the loop, BeforeStop does not run.
 func TestBeforeStop_NotCalledOnToolContinue(t *testing.T) {
 	toolCall := ai.ToolCall{
 		ID:        "call_1",
@@ -666,7 +668,7 @@ func TestHooks_FullScenario(t *testing.T) {
 	assert.Equal(t, []string{"echo", "echo"}, callNames)
 }
 
-// Test: Context flows through BeforeTool to tool execution.
+// Test: The context flows through BeforeTool to the tool run.
 func TestBeforeTool_ContextFlows(t *testing.T) {
 	type ctxKey struct{}
 
@@ -682,7 +684,7 @@ func TestBeforeTool_ContextFlows(t *testing.T) {
 		},
 	)
 
-	// This test verifies the hook receives the correct context.
+	// This test makes sure that the hook receives the correct context.
 	var hookCtxOK bool
 	hook := func(ctx context.Context, _ *HookInput) (*HookOutput, error) {
 		hookCtxOK = ctx != nil

@@ -10,9 +10,9 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// TestUsageJSON pins the usage wire format: snake_case like the rest of
-// the package, every field omitted when zero, and the cost breakdown
-// absent entirely when nothing was priced. Callers persist ai.Usage
+// TestUsageJSON pins the usage wire format. The keys are snake_case, like
+// the rest of the package. Every field is omitted when it is zero. The cost
+// breakdown is absent when nothing was priced. Callers store ai.Usage
 // directly, so these keys are the format.
 func TestUsageJSON(t *testing.T) {
 	t.Run("keys are snake_case", func(t *testing.T) {
@@ -69,7 +69,7 @@ func TestUsageJSON(t *testing.T) {
 	})
 }
 
-// TestUsageAdd covers the accumulator callers use to sum usage across
+// TestUsageAdd covers the accumulator that callers use to sum usage across
 // turns and runs.
 func TestUsageAdd(t *testing.T) {
 	a := ai.Usage{

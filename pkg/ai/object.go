@@ -28,7 +28,7 @@ type ObjectResponse struct {
 	Model string
 }
 
-// ObjectResult is the generic typed result returned by [GenerateObject].
+// ObjectResult is the generic typed result that [GenerateObject] returns.
 type ObjectResult[T any] struct {
 	Object T
 	Raw    string
@@ -36,16 +36,16 @@ type ObjectResult[T any] struct {
 }
 
 // ObjectModel is the object-generation upgrade of a [LanguageModel].
-// [GenerateObject] upgrades to it at runtime. The default binding from
-// [NewLanguageModel] implements it when the bound provider is an
-// [ObjectProvider]; wrappers around a LanguageModel (middleware,
-// decorators) should implement and forward it to keep object support.
+// [GenerateObject] upgrades to it at runtime. If the bound provider is an
+// [ObjectProvider], the default binding from [NewLanguageModel] implements
+// it. A wrapper around a LanguageModel, such as middleware or a decorator,
+// must implement and forward it to keep object support.
 type ObjectModel interface {
 	GenerateObject(ctx context.Context, p Prompt, schema *jsonschema.Schema, opts StreamOptions) (*ObjectResponse, error)
 }
 
-// GenerateObject implements [ObjectModel] by delegating to the bound
-// provider. It errors when the provider is not an [ObjectProvider].
+// GenerateObject implements [ObjectModel]. It delegates to the bound
+// provider. If the provider is not an [ObjectProvider], it returns an error.
 func (m languageModel) GenerateObject(
 	ctx context.Context,
 	p Prompt,
@@ -59,9 +59,9 @@ func (m languageModel) GenerateObject(
 	return op.GenerateObject(ctx, m.info, p, schema, opts)
 }
 
-// GenerateObject generates a typed object from lm. It requires lm's bound
-// provider to implement [ObjectProvider]; otherwise it returns an error.
-// T must be JSON-deserializable.
+// GenerateObject generates a typed object from lm. The provider bound to lm
+// must implement [ObjectProvider]. If it does not, GenerateObject returns an
+// error. T must be JSON-deserializable.
 func GenerateObject[T any](
 	ctx context.Context,
 	lm LanguageModel,

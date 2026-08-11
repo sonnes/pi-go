@@ -1,13 +1,13 @@
-// Package oauth provides optional OAuth authentication support for AI providers.
+// Package oauth adds optional OAuth authentication for AI providers.
 //
-// The core abstraction is [Transport], an [http.RoundTripper] that injects
-// Bearer tokens and transparently refreshes expired credentials before each
-// request. Callers opt in by constructing a Transport and passing an
-// [http.Client] that uses it to their provider.
+// The core type is [Transport], an [http.RoundTripper]. It adds a Bearer token
+// to each request. It also refreshes expired credentials before the request
+// runs. The caller builds a Transport and gives the provider an [http.Client]
+// that uses it.
 //
-// Provider-specific helpers (e.g. NewAnthropicTransport) live in their
-// respective provider packages and wire up the correct refresher and
-// headers for a given provider.
+// Provider-specific helpers, for example NewAnthropicTransport, live in their
+// provider packages. Each helper sets the correct refresher and headers for
+// that provider.
 package oauth
 
 import (
@@ -15,12 +15,12 @@ import (
 	"time"
 )
 
-// expiryMargin is the safety buffer before actual expiry during which
-// credentials are considered expired and will be refreshed.
+// expiryMargin is the time before the true expiry when credentials count as
+// expired. The transport refreshes credentials inside this window.
 const expiryMargin = 5 * time.Minute
 
 // Credentials holds OAuth token data.
-// The Extras map allows provider-specific fields.
+// The Extras map holds provider-specific fields.
 type Credentials struct {
 	AccessToken  string
 	RefreshToken string
@@ -28,8 +28,8 @@ type Credentials struct {
 	Extras       map[string]any
 }
 
-// IsExpired reports whether the access token has expired or will
-// expire within the safety margin.
+// IsExpired reports whether the access token is expired, or expires inside
+// the safety margin.
 func (c Credentials) IsExpired() bool {
 	return time.Now().After(c.ExpiresAt.Add(-expiryMargin))
 }
@@ -39,7 +39,8 @@ type TokenRefresher interface {
 	RefreshToken(ctx context.Context, creds Credentials) (Credentials, error)
 }
 
-// TokenRefresherFunc adapts an ordinary function to the [TokenRefresher] interface.
+// TokenRefresherFunc adapts an ordinary function to the [TokenRefresher]
+// interface.
 type TokenRefresherFunc func(ctx context.Context, creds Credentials) (Credentials, error)
 
 // RefreshToken calls f(ctx, creds).
@@ -47,8 +48,7 @@ func (f TokenRefresherFunc) RefreshToken(ctx context.Context, creds Credentials)
 	return f(ctx, creds)
 }
 
-// OnRefresh is called after a successful token refresh, allowing the caller to
-// persist updated credentials. Returning an error prevents the request from
-// using credentials whose rotation was not persisted. Storage concerns stay
-// outside the SDK.
+// OnRefresh runs after a successful token refresh. The caller uses it to store
+// the new credentials. If OnRefresh returns an error, the request does not use
+// the rotated credentials. The SDK does not store credentials itself.
 type OnRefresh func(creds Credentials) error

@@ -8,14 +8,14 @@ import (
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
 
-// cacheMarker resolves the stream options' cache retention into an Anthropic
-// cache_control value. The second return value is false when caching is
-// disabled (either explicitly via [ai.CacheRetentionNone]) and callers should
-// skip marker placement entirely.
+// cacheMarker converts the cache retention in the stream options into an
+// Anthropic cache_control value. The second return value is false when
+// [ai.CacheRetentionNone] turns caching off. The caller must then place no
+// marker.
 //
-// The 1h TTL is only attached when the client talks to api.anthropic.com
-// directly. Proxies and compatible endpoints receive the marker without a
-// TTL so the request still serializes cleanly.
+// The function attaches the 1h TTL only when the client talks to
+// api.anthropic.com directly. A proxy or a compatible endpoint gets the marker
+// without a TTL, so the request still serializes correctly.
 func cacheMarker(
 	opts ai.StreamOptions,
 	baseURL string,
@@ -32,10 +32,10 @@ func cacheMarker(
 	return marker, true
 }
 
-// isOfficialAnthropicURL reports whether the configured base URL supports the
-// 1h cache TTL extension. An empty URL is treated as official since the SDK's
-// default routes to api.anthropic.com. OpenRouter is included because it
-// explicitly documents support for the "ttl": "1h" field.
+// isOfficialAnthropicURL reports whether the base URL supports the 1h cache TTL
+// extension. An empty URL counts as official, because the SDK default routes to
+// api.anthropic.com. OpenRouter also counts as official, because it documents
+// support for the "ttl": "1h" field.
 func isOfficialAnthropicURL(baseURL string) bool {
 	if baseURL == "" {
 		return true
@@ -46,9 +46,9 @@ func isOfficialAnthropicURL(baseURL string) bool {
 
 // applyCacheControlToLastBlock attaches a cache_control marker to the final
 // content block of the final message. This is the terminal-breakpoint
-// placement strategy: on each turn a marker says "everything before this
-// point is cacheable," and on the next turn the previous terminal block
-// falls into the cached interior automatically.
+// strategy. On each turn, the marker states that all content before that point
+// is cacheable. On the next turn, the previous terminal block moves into the
+// cached interior.
 func applyCacheControlToLastBlock(
 	messages []anthropic.MessageParam,
 	cc anthropic.CacheControlEphemeralParam,

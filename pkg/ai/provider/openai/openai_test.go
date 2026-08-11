@@ -35,7 +35,7 @@ var weatherToolSchema = func() *jsonschema.Schema {
 	return &s
 }()
 
-// testPerson is a test struct for object generation tests.
+// testPerson is the struct that the object generation tests use.
 type testPerson struct {
 	Name string `json:"name" jsonschema:"The person's name"`
 	Age  int    `json:"age" jsonschema:"The person's age"`
@@ -46,7 +46,7 @@ const testModelID = "gpt-4o"
 
 //go:generate go test -httprecord=Test
 
-// scrubRequest normalizes requests for deterministic matching.
+// scrubRequest normalizes a request so that the match is deterministic.
 func scrubRequest(req *http.Request) error {
 	req.Header.Del("Authorization")
 	req.Header.Del("OpenAI-Organization")
@@ -61,7 +61,7 @@ func scrubRequest(req *http.Request) error {
 	return nil
 }
 
-// newTestProvider creates an OpenAI provider configured for testing.
+// newTestProvider creates an OpenAI provider for the tests.
 func newTestProvider(t *testing.T) (*aiopenai.Provider, func()) {
 	t.Helper()
 
@@ -321,7 +321,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 		},
 	}
 
-	// First turn: model should call the tool.
+	// First turn: the model must call the tool.
 	firstStream := p.StreamText(
 		context.Background(),
 		model,
@@ -350,7 +350,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 	}
 	require.NotNil(t, toolCall, "first turn should produce a tool call")
 
-	// Second turn: provide tool result and get final text.
+	// Second turn: send the tool result and get the final text.
 	secondStream := p.StreamText(
 		context.Background(),
 		model,
@@ -457,7 +457,7 @@ func TestStreamEventSequence(t *testing.T) {
 
 	require.NotEmpty(t, eventTypes, "should have received events")
 
-	// Verify TextStart comes before any TextDelta.
+	// Make sure that TextStart comes before any TextDelta.
 	var firstStart, firstDelta int
 	for i, et := range eventTypes {
 		if et == ai.EventTextStart {
@@ -473,7 +473,7 @@ func TestStreamEventSequence(t *testing.T) {
 	}
 	assert.Less(t, firstStart, firstDelta, "TextStart should precede TextDelta")
 
-	// Verify TextEnd comes after all TextDeltas.
+	// Make sure that TextEnd comes after all TextDeltas.
 	var lastDelta, firstEnd int
 	for i, et := range eventTypes {
 		if et == ai.EventTextDelta {
@@ -488,7 +488,7 @@ func TestStreamEventSequence(t *testing.T) {
 	}
 	assert.Less(t, lastDelta, firstEnd, "TextEnd should come after last TextDelta")
 
-	// Verify the stream completes with a final message.
+	// Make sure that the stream completes with a final message.
 	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg, "expected final message")

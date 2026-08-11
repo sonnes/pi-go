@@ -32,13 +32,13 @@ const multiTurnNDJSON = `{"type":"system","subtype":"init","session_id":"sess-2"
 
 // --- fake transport ---
 
-// fakeTransport is an in-memory transportIface. It connects stdout via an
-// io.Pipe so tests can stream NDJSON on demand; stdin writes are captured
-// for inspection.
+// fakeTransport is an in-memory transportIface. It connects stdout with
+// an io.Pipe, so a test can stream NDJSON on demand. It also captures
+// the stdin writes for inspection.
 type fakeTransport struct {
 	mu           sync.Mutex
 	stdinWrites  [][]byte
-	pendingWrite chan struct{} // unblocks a goroutine waiting to observe a write
+	pendingWrite chan struct{} // unblocks a goroutine that waits for a write
 
 	controlWrites  [][]byte
 	controlWritten chan struct{} // signals a captured control response
@@ -66,8 +66,8 @@ func newFakeTransport() *fakeTransport {
 	}
 }
 
-// interrupt records the abort request and unblocks anyone waiting on
-// interruptedCh, without terminating the subprocess.
+// interrupt records the abort request and unblocks every waiter on
+// interruptedCh. It does not stop the subprocess.
 func (f *fakeTransport) interrupt() error {
 	f.interruptedOnce.Do(func() { close(f.interruptedCh) })
 	return nil
@@ -110,7 +110,8 @@ func (f *fakeTransport) writeControlResponse(line []byte) error {
 	return nil
 }
 
-// controlResponses returns a copy of captured control response writes.
+// controlResponses returns a copy of the captured control response
+// writes.
 func (f *fakeTransport) controlResponses() [][]byte {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -132,13 +133,13 @@ func (f *fakeTransport) close() error {
 	return f.exitErrVal
 }
 
-// emit writes NDJSON to stdout. Blocks until the reader consumes enough to
-// make room (pipe has no internal buffering).
+// emit writes NDJSON to stdout. It blocks until the reader reads enough
+// to make room, because the pipe has no internal buffer.
 func (f *fakeTransport) emit(s string) {
 	_, _ = f.stdoutW.Write([]byte(s))
 }
 
-// writes returns a copy of captured stdin writes.
+// writes returns a copy of the captured stdin writes.
 func (f *fakeTransport) writes() [][]byte {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -149,18 +150,19 @@ func (f *fakeTransport) writes() [][]byte {
 	return out
 }
 
-// writeCount returns how many stdin writes were captured.
+// writeCount returns the number of captured stdin writes.
 func (f *fakeTransport) writeCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.stdinWrites)
 }
 
-// newTestAgent builds an Agent wired to a fake transport. The emitter
-// runs in a goroutine and receives the transport so it can choose when
-// to emit lines (typically after waiting on [fakeTransport.pendingWrite]
-// to mirror the real Claude CLI, which only emits its `system/init`
-// line and any subsequent output in response to a stdin user message).
+// newTestAgent builds an Agent that uses a fake transport. The emitter
+// runs in a goroutine and receives the transport. The emitter therefore
+// chooses when to emit lines. It usually waits on
+// [fakeTransport.pendingWrite] first, to match the real Claude CLI. That
+// CLI emits its `system/init` line and all later output only after a
+// user message arrives on stdin.
 func newTestAgent(
 	t *testing.T,
 	startErr error,
@@ -182,9 +184,9 @@ func newTestAgent(
 }
 
 // emitString returns an emitter that emits the given NDJSON only after
-// the agent writes a user message to stdin — matching the real Claude
-// CLI which is silent until it receives input and then streams its
-// `system/init` line followed by the assistant/result blocks.
+// the agent writes a user message to stdin. This matches the real Claude
+// CLI. That CLI is silent until it receives input. It then streams its
+// `system/init` line, followed by the assistant and result blocks.
 func emitString(s string) func(*fakeTransport) {
 	return func(ft *fakeTransport) {
 		select {
@@ -274,10 +276,10 @@ func TestAgent_Run_MultiTurn(t *testing.T) {
 	assert.Equal(t, "The file says hello.", last.Messages[1].Text())
 }
 
-// permissionNDJSON opens a turn whose Bash call requires approval: the
-// CLI (launched with --permission-prompt-tool stdio) emits a
-// control_request with subtype can_use_tool and blocks until the
-// control_response arrives on stdin.
+// permissionNDJSON opens a turn in which the Bash call needs approval.
+// The CLI runs with --permission-prompt-tool stdio. It emits a
+// control_request with the subtype can_use_tool. It then blocks until
+// the control_response arrives on stdin.
 const permissionRequestNDJSON = `{"type":"system","subtype":"init","session_id":"sess-p"}
 {"type":"control_request","request_id":"cr-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"tu-1"}}
 `
@@ -286,9 +288,10 @@ const permissionResultNDJSON = `{"type":"assistant","message":{"role":"assistant
 {"type":"result","subtype":"success","result":"Done.","session_id":"sess-p"}
 `
 
-// newPermissionTestAgent wires an Agent whose fake CLI asks for
-// permission, waits for the agent's control_response, then finishes
-// the turn — mirroring the real CLI's blocking behavior.
+// newPermissionTestAgent builds an Agent with a fake CLI that asks for
+// permission. The fake CLI waits for the control_response of the agent
+// and then finishes the turn. This matches the blocking behavior of the
+// real CLI.
 func newPermissionTestAgent(t *testing.T, hook agent.Hook) (*Agent, *fakeTransport) {
 	t.Helper()
 	ft := newFakeTransport()
@@ -328,12 +331,12 @@ func TestAgent_Run_CanUseToolAllow(t *testing.T) {
 	_, err := a.Run(context.Background(), ai.UserMessage("run ls")).Wait()
 	require.NoError(t, err)
 
-	// The hook saw the CLI's tool call.
+	// The hook saw the tool call of the CLI.
 	assert.Equal(t, "Bash", gotCall.Name)
 	assert.Equal(t, "tu-1", gotCall.ID)
 	assert.Equal(t, map[string]any{"command": "ls"}, gotCall.Arguments)
 
-	// The agent answered allow, echoing the input.
+	// The agent answered allow and echoed the input.
 	responses := ft.controlResponses()
 	require.Len(t, responses, 1)
 	var resp struct {
@@ -382,8 +385,8 @@ func TestAgent_Run_CanUseToolDeny(t *testing.T) {
 	assert.Equal(t, "denied by user", resp.Response.Response.Message)
 }
 
-// A hook error denies execution with the error text — mirroring the
-// Default agent's before_tool semantics.
+// A hook error denies the call and gives the error text. This matches
+// the before_tool rules of the Default agent.
 func TestAgent_Run_CanUseToolHookError(t *testing.T) {
 	hook := func(context.Context, *agent.HookInput) (*agent.HookOutput, error) {
 		return nil, errors.New("gate exploded")
@@ -401,8 +404,9 @@ func TestAgent_Run_CanUseToolHookError(t *testing.T) {
 	assert.Contains(t, string(responses[0]), "gate exploded")
 }
 
-// streamingNDJSON mirrors --include-partial-messages output: stream_event
-// lines with content-block deltas interleaved with the assistant line.
+// streamingNDJSON matches the output of --include-partial-messages. It
+// has stream_event lines with content-block deltas, mixed with the
+// assistant line.
 const streamingNDJSON = `{"type":"system","subtype":"init","session_id":"sess-s"}
 {"type":"stream_event","event":{"type":"message_start","message":{"role":"assistant","content":[]}}}
 {"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}
@@ -448,9 +452,9 @@ func TestAgent_Run_StreamingDeltas(t *testing.T) {
 	assert.Equal(t, "Hello!", last.Messages[0].Text())
 }
 
-// Canceling the Run context interrupts the in-flight turn (writes the
-// control request via the transport) — the persistent subprocess stays
-// alive for the next Run.
+// If the caller cancels the Run context, the agent interrupts the turn
+// in progress. The agent writes the control request through the
+// transport. The persistent subprocess stays alive for the next Run.
 func TestAgent_Run_CancelInterruptsTurnKeepsSubprocess(t *testing.T) {
 	ft := newFakeTransport()
 	a := New(ai.Model{})
@@ -464,8 +468,9 @@ func TestAgent_Run_CancelInterruptsTurnKeepsSubprocess(t *testing.T) {
 			return
 		}
 		ft.emit(`{"type":"system","subtype":"init","session_id":"sess-i"}` + "\n")
-		// Stay mid-turn until the agent asks for an interrupt, then emit a
-		// result line so the turn closes — as the real CLI does on interrupt.
+		// Stay in the middle of the turn until the agent asks for an
+		// interrupt. Then emit a result line so that the turn closes. The
+		// real CLI does the same on an interrupt.
 		select {
 		case <-ft.interruptedCh:
 		case <-ft.exitedCh:
@@ -520,8 +525,8 @@ func TestAgent_Messages_Accumulate(t *testing.T) {
 }
 
 func TestAgent_Run_ConcurrentRejected(t *testing.T) {
-	// Emitter never fires the result line, so the first turn stays open
-	// until we force-close.
+	// The emitter never sends the result line. The first turn therefore
+	// stays open until the test forces a close.
 	a, ft := newTestAgent(t, nil, func(ft *fakeTransport) {
 		ft.emit(`{"type":"system","subtype":"init","session_id":"sess"}` + "\n")
 	})
@@ -538,7 +543,7 @@ func TestAgent_Run_ConcurrentRejected(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already running")
 
-	// Close terminates the transport; awaitTurn sees exited and finishes.
+	// Close stops the transport. awaitTurn sees the exit and finishes.
 	_ = ft.close()
 	_, err = first.Wait()
 	require.Error(t, err)
@@ -582,7 +587,8 @@ func TestAgent_MalformedNDJSON(t *testing.T) {
 	assert.Equal(t, "Still works", msgs[0].Text())
 }
 
-// toolLoopNDJSON simulates: system → assistant (tool_use) → user (tool_result) → assistant (final) → result
+// toolLoopNDJSON simulates this sequence: system, assistant with
+// tool_use, user with tool_result, final assistant, and result.
 const toolLoopNDJSON = `{"type":"system","subtype":"init","session_id":"sess-3"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Let me read that."},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/tmp/foo"}}],"stop_reason":"tool_use"}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"package main"}]}}
@@ -664,8 +670,9 @@ func TestAgent_Run_TwoTurnsReuseTransport(t *testing.T) {
 		return ft, nil
 	}
 
-	// Mimic the real CLI: silent until the first stdin write. The
-	// init line accompanies the first turn's assistant/result block.
+	// Copy the real CLI. It is silent until the first stdin write. The
+	// init line comes with the assistant and result block of the first
+	// turn.
 	go func() {
 		for _, body := range []string{turn1, turn2} {
 			select {
@@ -724,8 +731,8 @@ func eventTypes(events []agent.Event) []agent.EventType {
 	return types
 }
 
-// collectRun drains a run's stream with a watchdog timeout, returning
-// its events and terminal error.
+// collectRun drains the stream of a run with a watchdog timeout. It
+// returns the events of the run and the final error.
 func collectRun(t *testing.T, s *agent.Stream) ([]agent.Event, error) {
 	t.Helper()
 

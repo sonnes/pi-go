@@ -28,8 +28,8 @@ func TestOptionsMixLayers(t *testing.T) {
 
 	cfg := agent.ApplyOptions(opts...)
 
-	// Each layer reads its own extension slot; agent options land on the
-	// config itself. One flat list, three consumers.
+	// Each layer reads its own extension slot. Agent options land on the
+	// configuration itself. One flat list, three consumers.
 	assert.Equal(t, 3, cfg.MaxTurns)
 	assert.NotNil(t, cfg.Extensions["harness"])
 	assert.NotNil(t, cfg.Extensions["durable"])
@@ -46,8 +46,8 @@ func TestRepeatedResolverOptionsAppend(t *testing.T) {
 	c := &fakeResolver{name: "c"}
 
 	// Resolvers are a list of sources, lowest first, so repeated options
-	// add to it. Whether one displaces another is settled at resolve time,
-	// by name.
+	// add to that list. The name settles at resolve time whether one
+	// displaces another.
 	cfg := agent.ApplyOptions(
 		WithSkills(a),
 		WithSkills(b, c),
@@ -77,8 +77,8 @@ func TestMergeLeavesBothInputsUntouched(t *testing.T) {
 	require.Len(t, got.skills, 2, "sources append, baseline first")
 	require.Len(t, got.tools, 2)
 
-	// Neither input is disturbed, which is what lets one harness serve
-	// many concurrent builds.
+	// merge disturbs neither input. One harness can therefore serve many
+	// concurrent builds.
 	assert.Equal(t, "/baseline", base.workDir)
 	require.Len(t, base.skills, 1)
 	require.Len(t, over.skills, 1)

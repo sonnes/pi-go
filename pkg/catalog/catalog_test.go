@@ -56,8 +56,8 @@ func TestLanguageModel_BareModelID(t *testing.T) {
 	c := catalog.New()
 	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
 
-	// A spec without a provider prefix resolves when exactly one
-	// registered provider serves the model.
+	// A spec with no provider prefix resolves when exactly one registered
+	// provider serves the model.
 	lm, err := c.LanguageModel("m1")
 	require.NoError(t, err)
 	assert.Equal(t, "m1", lm.Model().ID)
@@ -75,7 +75,7 @@ func TestLanguageModel_BareModelID_Ambiguous(t *testing.T) {
 	_, err := c.LanguageModel("m1")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "ambiguous")
-	// The error names the full specs so the caller can disambiguate.
+	// The error names the full specs, so the caller can choose one.
 	assert.ErrorContains(t, err, "alpha/m1")
 	assert.ErrorContains(t, err, "beta/m1")
 }
@@ -100,12 +100,12 @@ func TestAgent_DefaultAndCustom(t *testing.T) {
 	c := catalog.New()
 	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
 
-	// Default: any registered model becomes an agent.
+	// By default, any registered model becomes an agent.
 	ag, err := c.Agent("fake/m1")
 	require.NoError(t, err)
 	require.NotNil(t, ag)
 
-	// Custom kind wins over the default path.
+	// A custom kind wins over the default path.
 	var called bool
 	c.RegisterAgent("cli", func(spec string, _ ...agent.Option) (agent.Agent, error) {
 		called = true

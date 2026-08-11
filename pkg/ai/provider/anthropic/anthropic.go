@@ -83,9 +83,10 @@ func New(opts ...Option) *Provider {
 }
 
 // Detect builds a provider from environment credentials and reports whether
-// any were present. ANTHROPIC_OAUTH_TOKEN — or an ANTHROPIC_API_KEY holding
-// an "sk-ant-oat" OAuth token — authenticates via OAuth with the optional
-// ANTHROPIC_OAUTH_CLIENT_ID; a plain ANTHROPIC_API_KEY uses the API-key path.
+// any credentials were present. ANTHROPIC_OAUTH_TOKEN selects OAuth. An
+// ANTHROPIC_API_KEY that holds an "sk-ant-oat" OAuth token also selects OAuth.
+// The OAuth path uses the optional ANTHROPIC_OAUTH_CLIENT_ID. A plain
+// ANTHROPIC_API_KEY uses the API-key path.
 func Detect() (*Provider, bool) {
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if token := os.Getenv("ANTHROPIC_OAUTH_TOKEN"); token != "" {
@@ -124,10 +125,11 @@ func (p *Provider) StreamText(
 		// Track block types by index for content_block_stop.
 		var blockTypes []string
 
-		// Pending server-tool calls awaiting their result block. Server tools
-		// stream as two paired blocks (server_tool_use + web_search_tool_result);
-		// we merge them into a single ai.ToolCall with Output populated when the
-		// result arrives, and emit one EventToolEnd at that point.
+		// Server-tool calls that wait for their result block. A server tool
+		// streams as two paired blocks (server_tool_use +
+		// web_search_tool_result). When the result arrives, the provider merges
+		// the two blocks into one ai.ToolCall with Output set. It then pushes
+		// one EventToolEnd.
 		pendingServerCalls := map[string]*ai.ToolCall{}
 
 		for stream.Next() {
@@ -170,7 +172,8 @@ func (p *Provider) StreamText(
 						Delta:        chunk.Delta.Thinking,
 					})
 				case "signature_delta":
-					// Signature is accumulated by acc.Accumulate; no separate event.
+					// acc.Accumulate collects the signature. There is no separate
+					// event.
 				case "input_json_delta":
 					push(ai.Event{
 						Type:         ai.EventToolDelta,
@@ -216,7 +219,7 @@ func (p *Provider) StreamText(
 							})
 						}
 					case "server_tool_use":
-						// Stash the call; emit when its result block arrives.
+						// Store the call. Push it when its result block arrives.
 						if idx < len(acc.Content) {
 							stu := acc.Content[idx].AsServerToolUse()
 							pendingServerCalls[stu.ID] = &ai.ToolCall{
@@ -251,8 +254,9 @@ func (p *Provider) StreamText(
 			}
 		}
 
-		// Drain any server-tool calls that never received a result (rare; usually
-		// indicates an upstream error mid-stream). Emit them with no Output.
+		// Drain the server-tool calls that got no result. This is rare, and it
+		// usually points to an upstream error in the middle of the stream. Push
+		// these calls with no Output.
 		for _, call := range pendingServerCalls {
 			push(ai.Event{
 				Type:     ai.EventToolEnd,
@@ -268,7 +272,8 @@ func (p *Provider) StreamText(
 	})
 }
 
-// CountTokens counts the tokens in prompt before generating a response.
+// CountTokens counts the tokens in prompt before the provider generates a
+// response.
 func (p *Provider) CountTokens(
 	ctx context.Context,
 	model ai.Model,
@@ -285,7 +290,7 @@ func (p *Provider) CountTokens(
 	return &ai.TokenCount{Total: int(response.InputTokens)}, nil
 }
 
-// buildParams constructs Anthropic MessageNewParams from types.
+// buildParams builds the Anthropic MessageNewParams from the pi-go types.
 func buildParams(
 	model ai.Model,
 	prompt ai.Prompt,
@@ -335,7 +340,7 @@ func buildParams(
 			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
 			params.MaxTokens = maxTokens + budget
 		}
-		// Temperature not supported with thinking.
+		// The API does not support temperature with thinking.
 		params.Temperature = param.Opt[float64]{}
 	}
 
@@ -358,9 +363,9 @@ func buildParams(
 	return params, reqOpts
 }
 
-// buildCountTokensParams constructs the matching Anthropic token-counting
-// request. Token counts must include the same system prompt, history, and
-// tool definitions as a generation request.
+// buildCountTokensParams builds the matching Anthropic token-counting request.
+// A token count must include the same system prompt, history, and tool
+// definitions as a generation request.
 func buildCountTokensParams(
 	model ai.Model,
 	prompt ai.Prompt,
@@ -436,7 +441,8 @@ func usesAdaptiveThinking(model ai.Model) bool {
 		strings.Contains(id, "-4-9")
 }
 
-// thinkingEffort maps a pi-go thinking level onto Claude's adaptive effort.
+// thinkingEffort maps a pi-go thinking level onto the adaptive effort of
+// Claude.
 func thinkingEffort(level ai.ThinkingLevel) anthropic.OutputConfigEffort {
 	switch level {
 	case ai.ThinkingMinimal, ai.ThinkingLow:
@@ -452,16 +458,17 @@ func thinkingEffort(level ai.ThinkingLevel) anthropic.OutputConfigEffort {
 	}
 }
 
-// buildMessage constructs the final ai.Message from the accumulated response.
+// buildMessage builds the final ai.Message from the accumulated response.
 //
-// Server-tool blocks (server_tool_use + web_search_tool_result) are merged into
-// a single ai.ToolCall with Server=true and Output populated. Function tool_use
-// blocks remain as bare ai.ToolCall (Output nil; client executes them).
+// buildMessage merges the server-tool blocks (server_tool_use +
+// web_search_tool_result) into one ai.ToolCall with Server=true and Output set.
+// A function tool_use block stays as a bare ai.ToolCall with a nil Output. The
+// client runs those tools.
 func buildMessage(model ai.Model, acc *anthropic.Message) *ai.Message {
 	var content []ai.Content
 
-	// Maps server_tool_use ID to the index in content where its merged ToolCall
-	// lives, so the matching result block can attach Output without re-scanning.
+	// serverIdx maps a server_tool_use ID to the index of its merged ToolCall in
+	// content. The matching result block then sets Output without a new scan.
 	serverIdx := map[string]int{}
 
 	for _, block := range acc.Content {
@@ -540,8 +547,8 @@ func mapStopReason(reason string) ai.StopReason {
 	}
 }
 
-// serverTypeForName maps an Anthropic server-tool block name to the canonical
-// pi-go [ai.ServerToolType]. Unknown names yield the empty type.
+// serverTypeForName maps an Anthropic server-tool block name to the pi-go
+// [ai.ServerToolType]. An unknown name gives the empty type.
 func serverTypeForName(name string) ai.ServerToolType {
 	switch name {
 	case "web_search":
@@ -551,9 +558,9 @@ func serverTypeForName(name string) ai.ServerToolType {
 	}
 }
 
-// serverToolInputToMap converts a server_tool_use Input (typed as `any` by
-// the SDK because the shape varies per tool) to a map[string]any so it can
-// fit pi-go's [ai.ToolCall.Arguments].
+// serverToolInputToMap converts a server_tool_use Input to a map[string]any.
+// The SDK types the input as `any` because the shape changes with each tool.
+// The map fits [ai.ToolCall.Arguments].
 func serverToolInputToMap(input any) map[string]any {
 	if input == nil {
 		return nil
@@ -571,10 +578,10 @@ func serverToolInputToMap(input any) map[string]any {
 }
 
 // buildWebSearchOutput converts a [WebSearchToolResultBlock] to an
-// [ai.ServerToolOutput]. Successful results are rendered as a numbered list
-// of "Title — URL" entries; errors are surfaced via IsError with the error
-// code in Content. Raw retains the provider's full JSON for callers that want
-// to extract per-result fields like encrypted_content for follow-up turns.
+// [ai.ServerToolOutput]. A successful result becomes a numbered list of
+// "Title — URL" entries. For an error, the function sets IsError and puts the
+// error code in Content. Raw keeps the full JSON from the provider. A caller
+// can read per-result fields such as encrypted_content for follow-up turns.
 func buildWebSearchOutput(res anthropic.WebSearchToolResultBlock) *ai.ServerToolOutput {
 	out := &ai.ServerToolOutput{
 		Raw: json.RawMessage(res.RawJSON()),
@@ -617,9 +624,9 @@ func WithAPIKey(apiKey string) Option {
 }
 
 // WithOAuth configures the provider for OAuth Bearer token authentication.
-// It sets up the auth token, OAuth-specific headers, and automatic token
-// refresh via the [oauth.Transport] middleware. Additional transport options
-// (e.g. [oauth.WithOnRefresh] for credential persistence) can be passed.
+// It sets the auth token, the OAuth headers, and automatic token refresh
+// through the [oauth.Transport] middleware. The caller can pass more transport
+// options, for example [oauth.WithOnRefresh] to store credentials.
 func WithOAuth(clientID string, creds oauth.Credentials, opts ...oauth.TransportOption) Option {
 	return func(o *options) {
 		o.oauthClientID = clientID
@@ -633,7 +640,7 @@ func WithBaseURL(baseURL string) Option {
 	return func(o *options) { o.baseURL = baseURL }
 }
 
-// WithHeaders sets additional HTTP headers for requests.
+// WithHeaders sets extra HTTP headers for requests.
 func WithHeaders(headers map[string]string) Option {
 	return func(o *options) {
 		maps.Copy(o.headers, headers)
@@ -646,7 +653,7 @@ func WithHTTPClient(client *http.Client) Option {
 }
 
 // GenerateObject generates a structured object. Current Claude models use
-// native JSON-schema output; older models retain the tool-use fallback.
+// native JSON-schema output. Older models use the tool-use fallback.
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,
@@ -775,7 +782,7 @@ func buildObjectParams(
 	return params
 }
 
-// schemaMap converts a JSON schema into the map shape expected by the API.
+// schemaMap converts a JSON schema into the map shape that the API expects.
 func schemaMap(schema *jsonschema.Schema) (map[string]any, error) {
 	if schema == nil {
 		return nil, nil

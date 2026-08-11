@@ -1,10 +1,11 @@
-// Package sandbox resolves user-supplied paths against a base directory
-// and provides a filesystem rooted at it. By default it is flexible:
-// absolute paths, relative paths, and parent traversal ("..") all resolve
-// to their target. Pass [Strict] to confine resolution and access to the
-// base directory, rejecting anything that escapes it — the containment
-// boundary shared by the filesystem tools (read, write, edit, find, grep).
-// [AllowDir] opts specific extra directories back in under [Strict].
+// Package sandbox resolves user-supplied paths against a base directory.
+// It also provides a filesystem rooted at that directory. By default the
+// package is flexible. Absolute paths, relative paths, and parent
+// traversal ("..") all resolve to their target. Pass [Strict] to confine
+// resolution and access to the base directory. A strict sandbox rejects
+// every path that escapes the base directory. This is the containment
+// boundary that the filesystem tools share (read, write, edit, find,
+// grep). [AllowDir] adds specific extra directories back under [Strict].
 package sandbox
 
 import (
@@ -24,16 +25,16 @@ type options struct {
 	dirs   []string
 }
 
-// Strict confines resolution and filesystem access to the base directory,
-// rejecting absolute or "../" paths that escape it.
+// Strict confines resolution and filesystem access to the base directory.
+// It rejects absolute or "../" paths that escape the base directory.
 func Strict() Option {
 	return func(o *options) { o.strict = true }
 }
 
-// AllowDir opts additional directories into a [Strict] sandbox: paths that
-// resolve inside dirs (or their subtrees) are permitted even though they
-// lie outside the root. It has no effect without [Strict]. Pass absolute
-// directories.
+// AllowDir adds more directories to a [Strict] sandbox. The sandbox
+// permits a path that resolves inside dirs or their subtrees, even when
+// the path lies outside the root. AllowDir has no effect without [Strict].
+// Pass absolute directories.
 func AllowDir(dirs ...string) Option {
 	return func(o *options) { o.dirs = append(o.dirs, dirs...) }
 }
@@ -47,10 +48,10 @@ func apply(opts []Option) options {
 }
 
 // FS is a filesystem rooted at a real OS directory. It is the union of
-// every filesystem surface the tools need: reading, writing, directory
-// creation, and reporting its own root. Unless [Strict] is given, names
-// may traverse outside the root via ".."; [AllowDir] opts specific extra
-// directories back in under [Strict].
+// every filesystem surface that the tools need: reading, writing,
+// directory creation, and access to its own root. Without [Strict], a name
+// can traverse outside the root with "..". [AllowDir] adds specific extra
+// directories back under [Strict].
 type FS struct {
 	root   string
 	strict bool
@@ -63,14 +64,14 @@ func New(root string, opts ...Option) *FS {
 	return &FS{root: root, strict: o.strict, dirs: o.dirs}
 }
 
-// osPath maps a name to its on-disk path, reporting whether access is
-// permitted under the filesystem's strictness.
+// osPath maps a name to its on-disk path. It also reports whether the
+// filesystem permits access to that path.
 func (f *FS) osPath(name string) (string, bool) {
 	abs := filepath.Join(f.root, filepath.FromSlash(name))
 	return abs, !f.strict || allowed(f.root, f.dirs, abs)
 }
 
-// Open implements [fs.FS], opening name relative to the root.
+// Open implements [fs.FS]. It opens name relative to the root.
 func (f *FS) Open(name string) (fs.File, error) {
 	abs, ok := f.osPath(name)
 	if !ok {
@@ -88,7 +89,7 @@ func (f *FS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	return os.WriteFile(abs, data, perm)
 }
 
-// MkdirAll creates path, and any parents needed, under the root.
+// MkdirAll creates path and its parent directories under the root.
 func (f *FS) MkdirAll(path string, perm fs.FileMode) error {
 	abs, ok := f.osPath(path)
 	if !ok {
@@ -97,35 +98,36 @@ func (f *FS) MkdirAll(path string, perm fs.FileMode) error {
 	return os.MkdirAll(abs, perm)
 }
 
-// Root returns the OS directory the filesystem is rooted at.
+// Root returns the OS directory that the filesystem is rooted at.
 func (f *FS) Root() string {
 	return f.root
 }
 
-// Resolve turns a user-supplied path into a name valid for this
-// filesystem, resolving it against the root and applying the filesystem's
-// own strictness. It saves callers from tracking the root separately.
+// Resolve turns a user-supplied path into a name that is valid for this
+// filesystem. It resolves the path against the root and applies the
+// strictness of the filesystem. The caller does not track the root
+// separately.
 func (f *FS) Resolve(path string) (string, error) {
 	return resolve(f.root, f.dirs, path, true, f.strict)
 }
 
-// ResolveDir is like [FS.Resolve] but maps an empty path to "." (the
-// root), for directory or search bases.
+// ResolveDir is like [FS.Resolve], but it maps an empty path to "." (the
+// root). Use it for directory or search bases.
 func (f *FS) ResolveDir(path string) (string, error) {
 	return resolve(f.root, f.dirs, path, false, f.strict)
 }
 
-// Resolve turns a user-supplied path — absolute or relative — into a name
-// relative to dir, suitable for an [FS] rooted at dir. By default the name
-// may traverse outside dir (e.g. "../sibling"); with [Strict] such paths
-// are rejected. An empty path is an error.
+// Resolve turns a user-supplied path, absolute or relative, into a name
+// relative to dir. The name suits an [FS] rooted at dir. By default the
+// name can traverse outside dir, for example "../sibling". With [Strict],
+// Resolve rejects such a path. An empty path is an error.
 func Resolve(dir, path string, opts ...Option) (string, error) {
 	o := apply(opts)
 	return resolve(dir, o.dirs, path, true, o.strict)
 }
 
-// ResolveDir is like [Resolve] but maps an empty path to "." (the root),
-// for directory or search bases.
+// ResolveDir is like [Resolve], but it maps an empty path to "." (the
+// root). Use it for directory or search bases.
 func ResolveDir(dir, path string, opts ...Option) (string, error) {
 	o := apply(opts)
 	return resolve(dir, o.dirs, path, false, o.strict)
@@ -162,9 +164,9 @@ func resolve(dir string, dirs []string, path string, emptyErr, strict bool) (str
 }
 
 // allowed reports whether abs lies within root or any of the extra
-// permitted directories (or their subtrees). Both sides are canonicalized
-// through symlinks first, so a link inside the root that points outside it
-// cannot be used to escape.
+// permitted directories, or their subtrees. allowed canonicalizes both
+// sides through symlinks first. As a result, a link inside the root that
+// points outside it does not permit an escape.
 func allowed(root string, dirs []string, abs string) bool {
 	real := realPath(abs)
 	if within(realPath(root), real) {
@@ -187,10 +189,10 @@ func within(base, abs string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-// realPath resolves symlinks along the longest existing prefix of p,
-// leaving any not-yet-existing trailing components appended lexically. It
-// lets containment checks follow symlinks without requiring the full path
-// to exist — e.g. a file about to be created by write.
+// realPath resolves symlinks along the longest existing prefix of p. It
+// appends the trailing components that do not exist yet without change.
+// Containment tests then follow symlinks even when the full path does not
+// exist, for example a file that write is about to create.
 func realPath(p string) string {
 	if resolved, err := filepath.EvalSymlinks(p); err == nil {
 		return resolved

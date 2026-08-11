@@ -1,6 +1,6 @@
 // Package codexcli provides an [ai.TextProvider] and [ai.ObjectProvider]
-// implementation backed by the `codex` CLI running in non-interactive
-// `exec --json` mode.
+// implementation. The `codex` CLI does the work. The CLI runs in
+// non-interactive `exec --json` mode.
 package codexcli
 
 import (
@@ -26,12 +26,12 @@ var (
 // ID is the Codex CLI provider identity.
 const ID = "codex-cli"
 
-// Provider implements [ai.TextProvider] and [ai.ObjectProvider] by delegating
-// each call to a fresh `codex exec --json` subprocess.
+// Provider implements [ai.TextProvider] and [ai.ObjectProvider]. Each
+// call goes to a new `codex exec --json` subprocess.
 type Provider struct {
 	cfg config
 
-	// sendFn spawns the subprocess. Defaults to [spawn]; overridden in tests.
+	// sendFn starts the subprocess. The default is [spawn]. Tests replace it.
 	sendFn func(ctx context.Context, cfg config, args sendArgs) (io.ReadCloser, func() error, error)
 }
 
@@ -62,19 +62,19 @@ func WithWorkDir(dir string) Option {
 	return func(c *config) { c.workDir = dir }
 }
 
-// WithAddDirs adds additional writable directories via --add-dir flags.
+// WithAddDirs adds more writable directories through --add-dir flags.
 func WithAddDirs(dirs ...string) Option {
 	return func(c *config) { c.addDirs = dirs }
 }
 
-// WithEnv sets additional environment variables for each subprocess.
-// Each entry should be in "KEY=VALUE" format.
+// WithEnv sets more environment variables for each subprocess. Each
+// entry must have the "KEY=VALUE" format.
 func WithEnv(env ...string) Option {
 	return func(c *config) { c.env = env }
 }
 
-// WithModel overrides the default model. Per-call [ai.Model.ID] values
-// take precedence over this setting.
+// WithModel overrides the default model. A per-call [ai.Model.ID] value
+// has precedence over this setting.
 func WithModel(model string) Option {
 	return func(c *config) { c.model = model }
 }
@@ -85,33 +85,35 @@ func WithSandbox(mode string) Option {
 	return func(c *config) { c.sandbox = mode }
 }
 
-// WithApprovalPolicy sets the Codex approval policy. Defaults to "never"
-// so non-interactive calls cannot hang waiting for terminal approval.
+// WithApprovalPolicy sets the Codex approval policy. The default is
+// "never", so a non-interactive call does not wait for terminal approval.
 func WithApprovalPolicy(policy string) Option {
 	return func(c *config) { c.approvalPolicy = policy }
 }
 
-// WithSkipGitRepoCheck allows running Codex outside a Git repository.
+// WithSkipGitRepoCheck lets Codex run outside a Git repository.
 func WithSkipGitRepoCheck() Option {
 	return func(c *config) { c.skipGitRepoCheck = true }
 }
 
-// WithIgnoreUserConfig prevents loading $CODEX_HOME/config.toml.
+// WithIgnoreUserConfig stops Codex from loading $CODEX_HOME/config.toml.
 func WithIgnoreUserConfig() Option {
 	return func(c *config) { c.ignoreUserConfig = true }
 }
 
-// WithIgnoreRules prevents loading user or project execpolicy rules.
+// WithIgnoreRules stops Codex from loading user or project execpolicy
+// rules.
 func WithIgnoreRules() Option {
 	return func(c *config) { c.ignoreRules = true }
 }
 
 // reasoningEffortForThinkingLevel maps a per-call
-// [ai.StreamOptions.ThinkingLevel] onto Codex's model_reasoning_effort
-// scale (minimal/low/medium/high/xhigh). Codex has no "off":
-// "off"/unknown return "" (omit the override); every other level maps
-// through unchanged. "xhigh" is model-dependent, so Codex applies its
-// own fallback when the active model does not support it.
+// [ai.StreamOptions.ThinkingLevel] onto the model_reasoning_effort scale
+// of Codex (minimal/low/medium/high/xhigh). Codex has no "off" level. An
+// "off" or unknown level returns "", and the caller omits the override.
+// Every other level maps through unchanged. The "xhigh" level depends on
+// the model, so Codex applies its own fallback when the active model does
+// not support it.
 func reasoningEffortForThinkingLevel(level ai.ThinkingLevel) string {
 	switch level {
 	case ai.ThinkingMinimal,
@@ -140,14 +142,14 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// StreamText runs a one-shot `codex exec --json --ephemeral` subprocess
-// and streams [ai.Event]s extracted from its JSONL output.
+// StreamText runs a one-shot `codex exec --json --ephemeral` subprocess.
+// It streams the [ai.Event] values that it reads from the JSONL output.
 //
-// The Codex CLI emits completed items rather than token-level deltas, so
-// each text or command-execution item produces a single start/end pair
-// where the delta carries the full content. Only the last user message in
-// [ai.Prompt.Messages] is sent; [ai.Prompt.System] is prefixed into the
-// prompt because the CLI does not expose a dedicated system-prompt flag.
+// The Codex CLI emits completed items, not token-level deltas. Each text
+// item or command-execution item therefore produces one start/end pair,
+// and the delta carries the full content. StreamText sends only the last
+// user message in [ai.Prompt.Messages]. It adds [ai.Prompt.System] to the
+// front of the prompt, because the CLI has no separate system-prompt flag.
 func (p *Provider) StreamText(
 	ctx context.Context,
 	model ai.Model,
@@ -209,8 +211,8 @@ func (p *Provider) StreamText(
 	})
 }
 
-// GenerateObject runs `codex exec --json --output-schema <schema-file>` and
-// returns the raw JSON text the model produced.
+// GenerateObject runs `codex exec --json --output-schema <schema-file>`.
+// It returns the raw JSON text that the model produced.
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,

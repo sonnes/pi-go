@@ -88,10 +88,10 @@ Never edit generated files.`,
 }
 
 func TestDefaultNeverMentionsResolvedAgents(t *testing.T) {
-	// There is no tool that invokes an agent definition, so rendering
-	// them would invite the model to hallucinate one. They are handed to
-	// the builder like directory-bound instructions, and the default
-	// builder decides not to render them.
+	// No tool runs an agent definition, so a list of them invites the
+	// model to hallucinate one. The harness hands them to the builder
+	// like directory-bound instructions, and the default builder writes
+	// nothing for them.
 	env := &prompt.Env{
 		Skills: []def.Skill{{Name: "commit", Description: "Writes a commit message."}},
 		Agents: []def.Agent{{Name: "reviewer", Description: "Reviews a diff for defects."}},

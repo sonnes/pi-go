@@ -19,7 +19,7 @@ import (
 )
 
 // newTestHarness builds a harness over the mock catalog with the given
-// extra options, failing the test if construction errors.
+// extra options. If construction returns an error, it fails the test.
 func newTestHarness(t *testing.T, p *mockProvider, opts ...agent.Option) *Harness {
 	t.Helper()
 	base := []agent.Option{
@@ -34,7 +34,7 @@ func newTestHarness(t *testing.T, p *mockProvider, opts ...agent.Option) *Harnes
 // --- provider / catalog doubles ---
 
 // mockProvider replays scripted [ai.EventStream] responses in order and
-// records every prompt it is handed.
+// records every prompt it receives.
 type mockProvider struct {
 	mu        sync.Mutex
 	prompts   []ai.Prompt
@@ -139,7 +139,7 @@ func (f *fakeResolver) Instructions(context.Context) ([]def.Instructions, error)
 }
 
 // mutableResolver is an agent resolver whose list can change between
-// builds, standing in for a file edited mid-session.
+// builds. It stands in for a file edited during a session.
 type mutableResolver struct {
 	agents []def.Agent
 }
@@ -150,8 +150,9 @@ func (m *mutableResolver) Agents(context.Context) ([]def.Agent, error) {
 	return m.agents, nil
 }
 
-// flakyStore fails AppendEntries while fail is set, standing in for a
-// store that was briefly unavailable on a session's first run.
+// flakyStore returns an error from AppendEntries while fail is set. It
+// stands in for a store that was briefly unavailable on the first run
+// of a session.
 type flakyStore struct {
 	session.Store
 	fail bool
@@ -173,8 +174,8 @@ func noopTool(name string) ai.Tool {
 	return descTool(name, "test tool "+name)
 }
 
-// descTool is a noop tool with a chosen description, so an override can
-// be told apart from the tool it replaced.
+// descTool is a noop tool with a chosen description. A test can
+// therefore tell an override apart from the tool it replaced.
 func descTool(name, desc string) ai.Tool {
 	return ai.DefineTool(
 		name,
@@ -185,9 +186,9 @@ func descTool(name, desc string) ai.Tool {
 
 // --- builders and seeders ---
 
-// capturingBuilder records the Env it is handed and returns a fixed
-// prompt, so a test can assert on the snapshot the harness assembled
-// without depending on how prompt.Default renders it.
+// capturingBuilder records the Env it receives and returns a fixed
+// prompt. A test can then assert on the snapshot the harness assembled,
+// without a dependency on the output of prompt.Default.
 func capturingBuilder(into **prompt.Env) prompt.Builder {
 	return func(_ context.Context, env *prompt.Env) (string, error) {
 		*into = env
@@ -238,8 +239,9 @@ func skillNames(skills []def.Skill) []string {
 	return out
 }
 
-// promptText joins every message in a prompt, so a test can ask what
-// the model saw without caring where in the history it landed.
+// promptText joins every message in a prompt. A test can then ask what
+// the model saw, without a concern for where in the history the text
+// landed.
 func promptText(p ai.Prompt) string {
 	var b strings.Builder
 	for _, m := range p.Messages {

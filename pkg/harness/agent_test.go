@@ -136,13 +136,13 @@ func TestSeedInjectedOnFirstRunOnly(t *testing.T) {
 	_, err = a.Run(ctx, durable.Text("first")).Wait()
 	require.NoError(t, err)
 
-	// The seed reached the model ahead of the user's input.
+	// The seed reached the model before the input of the user.
 	first := p.prompt(0)
 	require.GreaterOrEqual(t, len(first.Messages), 2)
 	assert.Equal(t, "ENVIRONMENT", first.Messages[0].Text())
 	assert.Equal(t, "first", first.Messages[1].Text())
 
-	// It is durable, and hidden from the transcript.
+	// The seed is durable, and hidden from the transcript.
 	entries, err := a.Entries(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, countText(entries, "ENVIRONMENT"))
@@ -176,13 +176,13 @@ func TestSeedSurvivesAFailedFirstRun(t *testing.T) {
 	a, err := h.Agent(ctx)
 	require.NoError(t, err)
 
-	// The first run dies persisting its input, before the model call —
-	// nothing durable happened, including the seed.
+	// The first run dies when it persists its input, before the model
+	// call. Nothing durable happened, the seed included.
 	_, err = a.Run(ctx, durable.Text("first")).Wait()
 	require.Error(t, err)
 
-	// The store recovers. The retry is still the session's first durable
-	// run, so it must carry the seed again.
+	// The store recovers. The retry is still the first durable run of
+	// the session, so it must carry the seed again.
 	store.fail = false
 	_, err = a.Run(ctx, durable.Text("retry")).Wait()
 	require.NoError(t, err)
@@ -217,7 +217,7 @@ func TestResumedSessionDoesNotReseed(t *testing.T) {
 	_, err = first.Run(ctx, durable.Text("first")).Wait()
 	require.NoError(t, err)
 
-	// A second instance resumes the same session: history already
+	// A second instance resumes the same session. History already
 	// carries the seed, so there is nothing to inject.
 	resumed, err := h.Agent(ctx)
 	require.NoError(t, err)
@@ -233,8 +233,8 @@ func TestNoSeedDisablesSeeding(t *testing.T) {
 	p := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	ctx := context.Background()
 
-	// WithSeed(nil) would mean "use the default"; NoSeed is how a caller
-	// says "seed nothing".
+	// WithSeed(nil) means "use the default". NoSeed is how a caller says
+	// "seed nothing".
 	h := newTestHarness(t, p, WithSeed(prompt.NoSeed))
 
 	a, err := h.Agent(ctx)
@@ -252,8 +252,8 @@ func TestSeedEntriesAreMeta(t *testing.T) {
 	ctx := context.Background()
 
 	h := newTestHarness(t, p, WithSeed(func(context.Context, *prompt.Env) ([]session.Entry, error) {
-		// A seeder that forgets to mark its entry still gets meta
-		// semantics — the harness owns that contract.
+		// A seeder that does not mark its entry still gets meta
+		// semantics. The harness owns that contract.
 		return []session.Entry{durable.Text("ENVIRONMENT")}, nil
 	}))
 
@@ -274,15 +274,16 @@ func TestSeedEntriesAreMeta(t *testing.T) {
 	t.Fatal("seed entry not found")
 }
 
-// Seeding is implemented as durable middleware, registered last so it
-// ends up innermost. These two pin that arrangement from the outside.
+// Seeding is durable middleware. The harness registers it last, so it
+// ends up innermost. These two tests pin that arrangement from the
+// outside.
 
 func TestSeedIsInnermostMiddleware(t *testing.T) {
 	p := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	ctx := context.Background()
 
 	// A middleware registered by the caller sees the run before the
-	// harness's seeding adds anything to it.
+	// seeding of the harness adds anything to it.
 	var sawAtEntry int
 	spy := func(next durable.Runner) durable.Runner {
 		return func(ctx context.Context, entries ...session.Entry) *durable.Stream {
@@ -329,9 +330,10 @@ func TestSeederRunsEvenWhenTheSessionIsResumed(t *testing.T) {
 	_, err = resumed.Run(ctx, durable.Text("second")).Wait()
 	require.NoError(t, err)
 
-	// The seed is built eagerly, before the session is bound, so the
-	// seeder runs per build — the resumed build simply discards what it
-	// produced. The cost of keeping seeder errors at build time.
+	// The harness builds the seed eagerly, before it binds the session,
+	// so the seeder runs on every build. The resumed build discards what
+	// the seeder produced. This is the cost of seeder errors at build
+	// time.
 	assert.Equal(t, 2, seeds, "the seeder runs on every build")
 
 	entries, err := resumed.Entries(ctx)

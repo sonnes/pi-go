@@ -41,7 +41,7 @@ const testModelID = "gpt-4o"
 
 //go:generate go test -httprecord=Test
 
-// scrubRequest normalizes requests for deterministic matching.
+// scrubRequest normalizes a request so that the match is deterministic.
 func scrubRequest(req *http.Request) error {
 	req.Header.Del("Authorization")
 	req.Header.Del("OpenAI-Organization")
@@ -56,7 +56,7 @@ func scrubRequest(req *http.Request) error {
 	return nil
 }
 
-// newTestProvider creates an OpenAI Responses provider configured for testing.
+// newTestProvider creates an OpenAI Responses provider for the tests.
 func newTestProvider(t *testing.T) (*aior.Provider, func()) {
 	t.Helper()
 
@@ -205,7 +205,7 @@ func TestStreamEventSequence(t *testing.T) {
 
 	require.NotEmpty(t, events, "expected events")
 
-	// Verify ordering: TextStart before TextEnd, and a final message.
+	// Make sure that TextStart comes before TextEnd. A final message follows.
 	textStartIdx := -1
 	textEndIdx := -1
 
@@ -268,7 +268,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 
 	maxTokens := 4000
 
-	// First turn: model calls the tool
+	// First turn: the model calls the tool.
 	stream := p.StreamText(ctx, model, ai.Prompt{
 		System: "You are a helpful assistant. Use the get_weather tool to answer weather questions.",
 		Messages: []ai.Message{
@@ -285,7 +285,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 	toolCalls := msg.ToolCalls()
 	require.NotEmpty(t, toolCalls)
 
-	// Second turn: provide tool result
+	// Second turn: send the tool result.
 	stream = p.StreamText(ctx, model, ai.Prompt{
 		System: "You are a helpful assistant. Use the get_weather tool to answer weather questions.",
 		Messages: []ai.Message{

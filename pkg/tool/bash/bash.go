@@ -1,4 +1,4 @@
-// Package bash provides the Bash tool for executing shell commands.
+// Package bash provides the Bash tool. The tool runs shell commands.
 package bash
 
 import (
@@ -16,13 +16,13 @@ import (
 )
 
 // Description is the default tool documentation, embedded from
-// description.md. Clients register the tool under any name and may pass
-// this (or their own text) as the description.
+// description.md. A client registers the tool under any name. The client
+// can pass this text, or its own text, as the description.
 //
 //go:embed description.md
 var Description string
 
-// ToolName is the suggested default registry name for this tool.
+// ToolName is the default name for this tool in the registry.
 const ToolName = "bash"
 
 // MaxOutputLength is the maximum output length before truncation.
@@ -34,10 +34,10 @@ type Input struct {
 	Command string `json:"command" jsonschema:"The shell command to run."`
 }
 
-// bash runs shell commands, keeping the working directory alive across
-// calls: a `cd` in one command carries into the next. It carries only
-// the tool's real dependencies — identity (name, description) belongs to
-// the client that registers it.
+// bash runs shell commands. The working directory stays alive across
+// calls, so a `cd` in one command carries into the next. This type holds
+// only the tool's real dependencies. Identity (name, description) belongs
+// to the client that registers the tool.
 type bash struct {
 	shell string
 	cwd   string
@@ -47,20 +47,21 @@ type bash struct {
 // Option configures a Bash tool.
 type Option interface{ apply(*bash) }
 
-// Dir sets the initial working directory the command runs in.
+// Dir sets the initial working directory that the command runs in.
 type Dir string
 
 func (d Dir) apply(b *bash) { b.cwd = string(d) }
 
-// Shell overrides the shell used to run commands ("bash").
+// Shell overrides the shell that runs commands. The default is "bash".
 type Shell string
 
 func (s Shell) apply(b *bash) { b.shell = string(s) }
 
-// New returns the Bash tool's runner: it executes a shell command and
-// returns the combined stdout and stderr, truncated if very long. The
-// working directory persists across calls on the returned runner. Pass
-// it to [ai.DefineTool] with a name and description.
+// New returns the Bash tool's runner. The runner runs one shell command
+// and returns the combined stdout and stderr. If the output is very long,
+// the runner truncates it. The working directory persists across calls on
+// the same runner. Pass the runner to [ai.DefineTool] with a name and
+// description.
 func New(opts ...Option) func(context.Context, Input) (string, error) {
 	b := &bash{shell: "bash"}
 	for _, o := range opts {
@@ -78,7 +79,7 @@ func (b *bash) run(ctx context.Context, input Input) (string, error) {
 	dir := b.cwd
 	b.mu.Unlock()
 
-	// A timeout is applied only when the caller provides one (in seconds).
+	// If the caller gives a timeout in seconds, the tool applies it.
 	var timeout time.Duration
 	if input.Timeout != nil && *input.Timeout > 0 {
 		timeout = time.Duration(*input.Timeout) * time.Second
@@ -115,7 +116,7 @@ func (b *bash) run(ctx context.Context, input Input) (string, error) {
 		output += stderr.String()
 	}
 
-	// Truncate if necessary
+	// Truncate output longer than MaxOutputLength
 	if len(output) > MaxOutputLength {
 		half := MaxOutputLength / 2
 		output = output[:half] + "\n\n... (output truncated) ...\n\n" + output[len(output)-half:]

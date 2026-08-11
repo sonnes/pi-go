@@ -1,13 +1,13 @@
 // Package ai provides a provider-agnostic SDK for building AI agents in Go.
-// It supports text generation, structured object generation, image generation,
-// tool calling, streaming, and usage tracking across multiple providers
-// (Anthropic, OpenAI, Google).
+// It supports text generation, structured object generation, image
+// generation, tool calling, streaming, and usage tracking. The supported
+// providers are Anthropic, OpenAI, and Google.
 //
 // # Providers and models
 //
-// A [Model] is pure metadata — it holds no credentials and cannot generate on
-// its own. A provider is a credentialed [TextProvider]
-// (or [ObjectProvider], [ImageProvider], [SpeechProvider]). Bind the two into
+// A [Model] is pure metadata. It holds no credentials and cannot generate on
+// its own. A provider holds the credentials. It implements [TextProvider],
+// [ObjectProvider], [ImageProvider], or [SpeechProvider]. Bind the two into
 // a callable [LanguageModel] with [NewLanguageModel]:
 //
 //	import "github.com/sonnes/pi-go/pkg/ai/provider/anthropic"
@@ -60,7 +60,8 @@
 //
 // # Tool Calling
 //
-// Define typed tools with automatic JSON schema generation using [DefineTool]:
+// [DefineTool] defines a typed tool and generates its JSON schema
+// automatically:
 //
 //	type WeatherInput struct {
 //		City string `json:"city"`
@@ -85,7 +86,7 @@
 //		Tools:    []ai.ToolInfo{weather.Info()},
 //	})
 //
-// When the model returns a [ToolCall], execute it and send the result back:
+// When the model returns a [ToolCall], run it and send the result back:
 //
 //	for _, c := range msg.Content {
 //		if tc, ok := ai.AsContent[ai.ToolCall](c); ok {

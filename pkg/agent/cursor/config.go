@@ -47,14 +47,14 @@ func WithWorkDir(dir string) agent.Option {
 	return mutate(func(c *config) { c.workDir = dir })
 }
 
-// WithEnv sets additional environment variables for the subprocess.
-// Each entry should be in "KEY=VALUE" format.
+// WithEnv sets more environment variables for the subprocess. Each entry
+// must have the "KEY=VALUE" format.
 func WithEnv(env ...string) agent.Option {
 	return mutate(func(c *config) { c.env = env })
 }
 
-// WithAPIKey passes a Cursor API key via --api-key. Most callers should prefer
-// CURSOR_API_KEY or `cursor-agent login`.
+// WithAPIKey passes a Cursor API key through --api-key. Most callers use
+// CURSOR_API_KEY or `cursor-agent login` instead.
 func WithAPIKey(key string) agent.Option {
 	return mutate(func(c *config) { c.apiKey = key })
 }
@@ -70,12 +70,14 @@ func WithSessionID(id string) agent.Option {
 	return mutate(func(c *config) { c.sessionID = id })
 }
 
-// WithMode sets Cursor's read-only execution mode, such as "ask" or "plan".
+// WithMode sets the read-only execution mode of Cursor, such as "ask" or
+// "plan".
 func WithMode(mode string) agent.Option {
 	return mutate(func(c *config) { c.mode = mode })
 }
 
-// WithSandbox sets Cursor's sandbox mode, such as "enabled" or "disabled".
+// WithSandbox sets the sandbox mode of Cursor, such as "enabled" or
+// "disabled".
 func WithSandbox(mode string) agent.Option {
 	return mutate(func(c *config) { c.sandbox = mode })
 }
@@ -91,7 +93,7 @@ func WithApproveMCPs() agent.Option {
 	return mutate(func(c *config) { c.approveMCPs = true })
 }
 
-// WithBrowser enables Cursor CLI browser automation support.
+// WithBrowser turns on the browser automation support of the Cursor CLI.
 func WithBrowser() agent.Option {
 	return mutate(func(c *config) { c.browser = true })
 }

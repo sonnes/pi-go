@@ -80,9 +80,9 @@ func convertUserParts(content []ai.Content) []*genai.Part {
 	return parts
 }
 
-// convertFile converts an ai.File to a Google genai Part. URL/FileID-based
-// files use FileData; base64 Data uses InlineData. Unrecognized files (no
-// data, URL, or FileID) are skipped.
+// convertFile converts an ai.File to a Google genai Part. A file with a URL or
+// a FileID uses FileData. A file with base64 Data uses InlineData. The function
+// skips a file that has no data, no URL, and no FileID.
 func convertFile(f ai.File) *genai.Part {
 	switch {
 	case f.URL != "":
@@ -157,7 +157,8 @@ func convertAssistantParts(content []ai.Content) []*genai.Part {
 	return parts
 }
 
-// convertToolResult converts a tool result message to a Google function response part.
+// convertToolResult converts a tool result message to a Google function
+// response part.
 func convertToolResult(msg ai.Message) *genai.Part {
 	var responseText string
 	for _, c := range msg.Content {

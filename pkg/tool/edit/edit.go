@@ -12,24 +12,25 @@ import (
 )
 
 // Description is the default tool documentation, embedded from
-// description.md. Clients register the tool under any name and may pass
-// this (or their own text) as the description.
+// description.md. A client registers the tool under any name. The client
+// can pass this text, or its own text, as the description.
 //
 //go:embed description.md
 var Description string
 
-// ToolName is the suggested default registry name for this tool.
+// ToolName is the default name for this tool in the registry.
 const ToolName = "edit"
 
-// Edit is a single targeted replacement. Each Edit is matched against the
-// original file content, not applied incrementally.
+// Edit is a single targeted replacement. The tool matches each Edit
+// against the original file content. The tool does not apply one edit to
+// the result of another.
 type Edit struct {
 	OldString string `json:"old_string" jsonschema:"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].old_string in the same call."`
 	NewString string `json:"new_string" jsonschema:"Replacement text for this targeted edit."`
 }
 
-// Input defines the parameters for the Edit tool. Provide either a single
-// flat edit (old_string/new_string) or a batch (edits), but not both.
+// Input defines the parameters for the Edit tool. Provide a single flat
+// edit (old_string/new_string), or a batch (edits). Do not provide both.
 type Input struct {
 	Path      string `json:"path" jsonschema:"Path to the file to edit. Absolute, or relative to the working directory."`
 	OldString string `json:"old_string,omitempty" jsonschema:"Exact text to replace for a single edit. Must be unique in the file. Provide this with new_string instead of edits[] for one replacement."`
@@ -37,8 +38,9 @@ type Input struct {
 	Edits     []Edit `json:"edits,omitempty" jsonschema:"A batch of targeted replacements as an alternative to old_string/new_string. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."`
 }
 
-// edits returns the effective edit list, accepting either the flat
-// old_string/new_string form or the batch edits[] form, but not both.
+// edits returns the effective edit list. The input uses the flat
+// old_string/new_string form, or the batch edits[] form. If the input has
+// both forms, edits returns an error.
 func (in Input) edits() ([]Edit, error) {
 	flat := in.OldString != "" || in.NewString != ""
 	switch {
@@ -51,32 +53,32 @@ func (in Input) edits() ([]Edit, error) {
 	}
 }
 
-// fsys is the filesystem surface the Edit tool needs: resolve a user path
-// against its own root, read the existing content, then write the
-// replacement back.
+// fsys is the filesystem surface that the Edit tool needs. The tool
+// resolves a user path against the root of the filesystem. Then the tool
+// reads the existing content and writes the replacement back.
 type fsys interface {
 	fs.FS
 	Resolve(path string) (string, error)
 	WriteFile(name string, data []byte, perm fs.FileMode) error
 }
 
-// editor modifies files on a confined filesystem. It carries only the
-// tool's real dependency — identity (name, description) belongs to the
-// client that registers it.
+// editor modifies files on a confined filesystem. It holds only the
+// tool's real dependency. Identity (name, description) belongs to the
+// client that registers the tool.
 type editor struct{ fsys fsys }
 
 // Option configures an Edit tool.
 type Option interface{ apply(*editor) }
 
-// FS sets the filesystem the tool edits. It resolves and confines paths
-// against its own root (e.g. a sandbox.FS).
+// FS sets the filesystem that the tool edits, for example a sandbox.FS.
+// The filesystem resolves and confines paths against its own root.
 type FS struct{ FS fsys }
 
 func (f FS) apply(e *editor) { e.fsys = f.FS }
 
-// New returns the Edit tool's runner: it applies targeted replacements to a
-// file and returns a confirmation. Pass it to ai.DefineTool with a name and
-// description.
+// New returns the Edit tool's runner. The runner applies targeted
+// replacements to a file and returns a confirmation. Pass the runner to
+// ai.DefineTool with a name and description.
 func New(opts ...Option) func(context.Context, Input) (string, error) {
 	e := &editor{}
 	for _, o := range opts {
@@ -125,18 +127,18 @@ func (e *editor) run(_ context.Context, input Input) (string, error) {
 	return fmt.Sprintf("Successfully applied %d edit(s) to %s", len(edits), name), nil
 }
 
-// match is a located edit: where its old_string was found in the content
-// and the new_string to splice in.
+// match is a located edit. It holds the position of old_string in the
+// content and the new_string that replaces it.
 type match struct {
 	index   int
 	length  int
 	newText string
 }
 
-// applyEdits validates and applies all edits against the same LF-normalized
-// content. Each old_string must be present exactly once, and matches must
-// not overlap. Replacements are applied in reverse order so earlier indices
-// stay valid.
+// applyEdits makes sure that every edit is valid, then applies all edits
+// against the same LF-normalized content. Each old_string must be present
+// exactly once. Matches must not overlap. applyEdits applies the
+// replacements in reverse order, so earlier indices stay valid.
 func applyEdits(content string, edits []Edit) (string, error) {
 	matches := make([]match, 0, len(edits))
 	for i, e := range edits {
@@ -183,8 +185,9 @@ func applyEdits(content string, edits []Edit) (string, error) {
 	return out, nil
 }
 
-// detectLineEnding reports the dominant line ending of content: "\r\n" if
-// the first newline is part of a CRLF, otherwise "\n".
+// detectLineEnding returns the dominant line ending of content. If the
+// first newline is part of a CRLF, the result is "\r\n". If not, the
+// result is "\n".
 func detectLineEnding(content string) string {
 	crlf := strings.Index(content, "\r\n")
 	lf := strings.IndexByte(content, '\n')
@@ -210,8 +213,8 @@ func restoreLineEndings(text, ending string) string {
 	return text
 }
 
-// stripBOM splits a leading UTF-8 BOM off content so it can be re-attached
-// after editing.
+// stripBOM splits a leading UTF-8 BOM off content. The caller attaches the
+// BOM again after the edit.
 func stripBOM(content string) (bom, text string) {
 	const bomRune = "\uFEFF"
 	if strings.HasPrefix(content, bomRune) {

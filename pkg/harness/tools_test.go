@@ -37,8 +37,8 @@ func TestSynthesizedToolsAppearOnlyWhenArtifactsExist(t *testing.T) {
 	tools = full.baseline.compileTools(res)
 	assert.NotNil(t, findTool(tools, skillToolName))
 
-	// Agent definitions are resolved data, not behavior: no tool is
-	// synthesized from them, and nothing beyond the registered tools
+	// Agent definitions are resolved data, not behavior. The harness
+	// synthesizes no tool from them. Nothing beyond the registered tools
 	// and the skill tool reaches the model.
 	assert.Nil(t, findTool(tools, agentToolName), "resolved agent defs synthesize no tool")
 	require.Len(t, tools, 2)
@@ -66,12 +66,12 @@ func TestSkillToolSchemaListsNames(t *testing.T) {
 	require.NotNil(t, nameProp)
 	assert.Equal(t, []any{"commit", "review"}, nameProp.Enum)
 
-	// The description carries the catalogue, so a model choosing a
-	// skill never has to guess what one does.
+	// The description carries the catalogue. A model that chooses a
+	// skill never has to guess what the skill does.
 	assert.Contains(t, tool.Info().Description, "writes a commit")
 
-	// Loading a skill is a pure read, so a batch containing it should
-	// not serialize.
+	// A skill load is a pure read, so a batch that contains one does not
+	// serialize.
 	assert.True(t, tool.Info().Parallel)
 }
 
@@ -95,8 +95,8 @@ func TestScopedArtifactsAdvertiseTheirDirectory(t *testing.T) {
 		tool.Info().InputSchema.Properties["name"].Enum,
 	)
 
-	// Two skills that do the same thing in different places are told
-	// apart by where they apply, not by their descriptions.
+	// Two skills that do the same work in different places differ by
+	// where they apply, not by their descriptions.
 	assert.Contains(t, tool.Info().Description, "Ships it. Applies to work in apps/web.")
 }
 
@@ -121,7 +121,8 @@ func TestSkillToolServesTheBody(t *testing.T) {
 	require.NotNil(t, tool)
 
 	// The body stays out of the system prompt and arrives through the
-	// tool, prefixed with the skill's directory when it has one.
+	// tool. The directory of the skill prefixes the body when the skill
+	// has one.
 	out, err := tool.Run(ctx, ai.ToolCallReq{ID: "c1", Input: `{"name":"commit"}`})
 	require.NoError(t, err)
 	assert.False(t, out.IsError)
@@ -154,8 +155,8 @@ func TestSkillBodyIsPartOfTheBuildSnapshot(t *testing.T) {
 	// The file changes after the build captured its snapshot.
 	write("new body")
 
-	// A built agent's artifacts are a snapshot for its lifetime — the
-	// body included. The invocation-time re-read used to be the one
+	// The artifacts of a built agent are a snapshot for its lifetime,
+	// the body included. The re-read at call time used to be the one
 	// escape from that rule.
 	out, err := tool.Run(ctx, ai.ToolCallReq{ID: "c1", Input: `{"name":"commit"}`})
 	require.NoError(t, err)

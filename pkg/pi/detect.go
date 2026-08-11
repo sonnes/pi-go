@@ -12,10 +12,10 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/provider/openairesponses"
 )
 
-// Detector builds a text provider from one credential source. Detect reports
-// (nil, false) when its source is absent. ProviderID and Models are the
-// explicit catalog metadata; Name is used for hint filtering and logging;
-// Source labels where the credential came from.
+// Detector builds a text provider from one credential source. If its source
+// is absent, Detect reports (nil, false). ProviderID and Models are the
+// explicit catalog metadata. Name filters on a hint and appears in the logs.
+// Source labels the origin of the credential.
 type Detector struct {
 	ProviderID string
 	Name       string
@@ -24,16 +24,16 @@ type Detector struct {
 	Detect     func() (ai.TextProvider, bool)
 }
 
-// Detection describes a successful auto-detection: the catalog identity of the
-// registered provider plus which detector and source produced it.
+// Detection describes a successful auto-detection. It holds the catalog
+// identity of the registered provider, the detector, and the source.
 type Detection struct {
-	Provider string // catalog identity, e.g. "anthropic-messages"
-	Name     string // detector name, e.g. "anthropic"
-	Source   string // credential source, e.g. "ANTHROPIC_API_KEY"
+	Provider string // catalog identity, for example "anthropic-messages"
+	Name     string // detector name, for example "anthropic"
+	Source   string // credential source, for example "ANTHROPIC_API_KEY"
 }
 
-// ProviderDetector adapts a provider package's Detect function, which returns
-// its own concrete type, into a [Detector.Detect].
+// ProviderDetector adapts the Detect function of a provider package into a
+// [Detector.Detect]. That function returns its own concrete type.
 func ProviderDetector[T ai.TextProvider](fn func() (T, bool)) func() (ai.TextProvider, bool) {
 	return func() (ai.TextProvider, bool) {
 		p, ok := fn()
@@ -45,8 +45,9 @@ func ProviderDetector[T ai.TextProvider](fn func() (T, bool)) func() (ai.TextPro
 }
 
 // detectors is the precedence-ordered detection chain. Each provider owns its
-// own environment detection (see the provider package's Detect); applications
-// prepend higher-priority sources — e.g. stored logins — with [AddDetector].
+// own environment detection. See the Detect function in each provider
+// package. An application prepends higher-priority sources, such as stored
+// logins, with [AddDetector].
 var detectors = []Detector{
 	{
 		ProviderID: anthropic.ID,
@@ -95,16 +96,17 @@ func registerDetected(c *catalog.Catalog, d Detector, p ai.TextProvider) {
 	}
 }
 
-// AddDetector prepends detectors to the default chain, giving them priority
-// over the built-in environment detectors. Call it before the first resolution
-// so the added sources participate in auto-wiring.
+// AddDetector prepends detectors to the default chain. They then take
+// priority over the built-in environment detectors. Call AddDetector before
+// the first resolution, so the added sources join the auto-wiring.
 func AddDetector(d ...Detector) {
 	detectors = append(append([]Detector(nil), d...), detectors...)
 }
 
-// Detect finds the first available API provider in the detection chain
-// (honoring hint, a provider Name filter), registers it in [Default], and
-// returns the detection. It errors when no source yields credentials.
+// Detect finds the first available API provider in the detection chain. The
+// hint filters the chain on the provider Name. Detect registers the provider
+// in [Default] and returns the detection. If no source yields credentials,
+// Detect returns an error.
 func Detect(hint string) (Detection, error) {
 	for _, d := range detectors {
 		if hint != "" && d.Name != hint {

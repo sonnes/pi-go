@@ -17,13 +17,13 @@ const TokenEndpoint = "https://platform.claude.com/v1/oauth/token"
 
 // Refresher implements [oauth.TokenRefresher] for Anthropic OAuth.
 type Refresher struct {
-	// Client is the HTTP client used for token requests.
-	// If nil, [http.DefaultClient] is used.
+	// Client is the HTTP client for token requests. If Client is nil, the
+	// Refresher uses [http.DefaultClient].
 	Client *http.Client
-	// TokenURL overrides the default Anthropic token endpoint.
-	// If empty, [TokenEndpoint] is used.
+	// TokenURL overrides the default Anthropic token endpoint. If TokenURL
+	// is empty, the Refresher uses [TokenEndpoint].
 	TokenURL string
-	// ClientID is the OAuth client ID. Required.
+	// ClientID is the OAuth client ID. It is required.
 	ClientID string
 }
 
@@ -90,7 +90,7 @@ func (r *Refresher) RefreshToken(ctx context.Context, creds oauth.Credentials) (
 		return oauth.Credentials{}, fmt.Errorf("oauth: decode refresh response: %w", err)
 	}
 
-	// Preserve the refresh token if the response doesn't include a new one.
+	// If the response does not include a new refresh token, keep the old one.
 	refreshToken := tokenResp.RefreshToken
 	if refreshToken == "" {
 		refreshToken = creds.RefreshToken
@@ -104,8 +104,8 @@ func (r *Refresher) RefreshToken(ctx context.Context, creds oauth.Credentials) (
 	}, nil
 }
 
-// OAuthHeaders returns the HTTP headers required for
-// Anthropic OAuth requests.
+// OAuthHeaders returns the HTTP headers that Anthropic OAuth requests
+// require.
 func OAuthHeaders() map[string]string {
 	return map[string]string{
 		"anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
@@ -113,8 +113,8 @@ func OAuthHeaders() map[string]string {
 	}
 }
 
-// NewOAuthTransport creates an [oauth.Transport] configured for Anthropic
-// OAuth with automatic token refresh and the required headers.
+// NewOAuthTransport creates an [oauth.Transport] for Anthropic OAuth. The
+// transport refreshes tokens automatically and sends the required headers.
 func NewOAuthTransport(clientID string, creds oauth.Credentials, opts ...oauth.TransportOption) *oauth.Transport {
 	defaults := []oauth.TransportOption{
 		oauth.WithRefresher(&Refresher{ClientID: clientID}),

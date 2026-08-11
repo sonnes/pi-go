@@ -1,11 +1,11 @@
 // Package claudecli provides an [ai.TextProvider] and [ai.ObjectProvider]
-// implementation backed by the `claude` CLI (Claude Code) running
-// in one-shot `--print --no-session-persistence` mode.
+// implementation. The `claude` CLI (Claude Code) does the work. The CLI
+// runs in one-shot `--print --no-session-persistence` mode.
 //
-// Unlike the agent in pkg/agent/claude, this provider is stateless:
-// each call spawns a fresh subprocess and writes nothing to disk. It
-// is safe for concurrent use. Authentication follows the CLI's normal
-// resolution order (OAuth session, ANTHROPIC_API_KEY, apiKeyHelper).
+// This provider is stateless, unlike the agent in pkg/agent/claude. Each
+// call starts a new subprocess and writes nothing to disk. Concurrent use
+// is safe. The CLI resolves authentication in its normal order (OAuth
+// session, ANTHROPIC_API_KEY, apiKeyHelper).
 //
 // Bind a model to the provider with [Provider.LanguageModel]:
 //
@@ -35,12 +35,12 @@ var (
 // ID is the Claude CLI provider identity.
 const ID = "claude-cli"
 
-// Provider implements [ai.TextProvider] and [ai.ObjectProvider] by
-// delegating each call to a fresh `claude --print` subprocess.
+// Provider implements [ai.TextProvider] and [ai.ObjectProvider]. Each
+// call goes to a new `claude --print` subprocess.
 type Provider struct {
 	cfg config
 
-	// sendFn spawns the subprocess. Defaults to [spawn]; overridden in tests.
+	// sendFn starts the subprocess. The default is [spawn]. Tests replace it.
 	sendFn func(ctx context.Context, cfg config, args sendArgs) (io.ReadCloser, func() error, error)
 }
 
@@ -71,30 +71,30 @@ func WithWorkDir(dir string) Option {
 	return func(c *config) { c.workDir = dir }
 }
 
-// WithAddDirs adds additional working directories via --add-dir flags.
+// WithAddDirs adds more working directories through --add-dir flags.
 func WithAddDirs(dirs ...string) Option {
 	return func(c *config) { c.addDirs = dirs }
 }
 
-// WithEnv sets additional environment variables for each subprocess.
-// Each entry should be in "KEY=VALUE" format.
+// WithEnv sets more environment variables for each subprocess. Each
+// entry must have the "KEY=VALUE" format.
 func WithEnv(env ...string) Option {
 	return func(c *config) { c.env = env }
 }
 
-// WithAllowedTools sets the tools the subprocess is allowed to use
-// via the --allowedTools flag.
+// WithAllowedTools sets the tools that the subprocess can use. The
+// provider passes them through the --allowedTools flag.
 func WithAllowedTools(tools ...string) Option {
 	return func(c *config) { c.allowedTools = tools }
 }
 
-// WithMaxTurns limits the number of agentic turns via --max-turns.
+// WithMaxTurns limits the number of agentic turns through --max-turns.
 func WithMaxTurns(n int) Option {
 	return func(c *config) { c.maxTurns = n }
 }
 
-// WithMaxBudgetUSD caps the API spend for each print-mode invocation.
-// A value less than or equal to zero leaves Claude Code's default unlimited.
+// WithMaxBudgetUSD limits the API spend of each print-mode run. If the
+// value is zero or less, Claude Code keeps its unlimited default.
 func WithMaxBudgetUSD(limit float64) Option {
 	return func(c *config) { c.maxBudgetUSD = limit }
 }
@@ -105,27 +105,29 @@ func WithPartialMessages() Option {
 	return func(c *config) { c.partialMessages = true }
 }
 
-// WithSessionID continues a previous Claude Code conversation via
-// `--resume`, and keeps the subprocess persisting the session so a later
-// call can resume it in turn. The ID must be one the CLI issued.
+// WithSessionID continues a previous Claude Code conversation through
+// `--resume`. The subprocess also keeps the session, so a later call can
+// resume it again. The ID must be an ID that the CLI issued.
 //
-// This is deliberately separate from [ai.WithSessionID], which is a
-// prompt-cache affinity key that providers are free to invent or reuse —
-// passing one of those here would resume a session that does not exist.
+// This option is deliberately separate from [ai.WithSessionID], which is
+// a prompt-cache affinity key. Providers can invent or reuse that key. If
+// you pass such a key here, the CLI tries to resume a session that does
+// not exist.
 func WithSessionID(id string) Option {
 	return func(c *config) { c.sessionID = id }
 }
 
-// WithModel overrides the default model. Per-call [ai.Model.ID] values
-// take precedence over this setting.
+// WithModel overrides the default model. A per-call [ai.Model.ID] value
+// has precedence over this setting.
 func WithModel(model string) Option {
 	return func(c *config) { c.model = model }
 }
 
 // effortForThinkingLevel maps a per-call [ai.StreamOptions.ThinkingLevel]
-// onto the Claude CLI's --effort scale (low/medium/high/xhigh/max). The
-// CLI has no "off" or "minimal" effort: "off"/unknown return "" (omit the
-// flag) and "minimal" floors to "low". No thinking level maps to "max".
+// onto the --effort scale of the Claude CLI (low/medium/high/xhigh/max).
+// The CLI has no "off" or "minimal" effort. An "off" or unknown level
+// returns "", and the caller omits the flag. A "minimal" level becomes
+// "low". No level maps to "max".
 func effortForThinkingLevel(level ai.ThinkingLevel) string {
 	switch level {
 	case ai.ThinkingMinimal, ai.ThinkingLow:
@@ -153,19 +155,20 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// StreamText runs a one-shot `claude --print` subprocess and streams
-// [ai.Event]s extracted from its NDJSON output.
+// StreamText runs a one-shot `claude --print` subprocess. It streams the
+// [ai.Event] values that it reads from the NDJSON output.
 //
-// The Claude CLI emits whole messages rather than token-level deltas,
-// so each text/thinking/tool_use block produces a single
-// start/delta/end triple where the delta carries the full content.
+// The Claude CLI emits whole messages, not token-level deltas. Each
+// text, thinking, or tool_use block therefore produces one
+// start/delta/end triple, and the delta carries the full content.
 //
-// Only the last user message in [ai.Prompt.Messages] is sent; prior turns
-// are not replayed. A call is stateless by default — to continue an earlier
-// conversation, resume it with [WithSessionID] instead of sending history.
+// The provider sends only the last user message in [ai.Prompt.Messages].
+// It does not replay earlier turns. A call is stateless by default. To
+// continue an earlier conversation, resume it with [WithSessionID].
 // [ai.Prompt.System] maps to `--system-prompt`.
-// [ai.Prompt.Tools], [ai.StreamOptions.Temperature], and
-// [ai.StreamOptions.MaxTokens] are not exposed by the CLI and are ignored.
+// The CLI does not expose [ai.Prompt.Tools],
+// [ai.StreamOptions.Temperature], or [ai.StreamOptions.MaxTokens], so the
+// provider ignores them.
 func (p *Provider) StreamText(
 	ctx context.Context,
 	model ai.Model,
@@ -237,13 +240,13 @@ func (p *Provider) StreamText(
 }
 
 // GenerateObject runs a one-shot `claude --print --json-schema <schema>`
-// subprocess and returns the raw JSON text the model produced. The
-// caller (typically [ai.GenerateObject]) is responsible for unmarshaling
-// the raw text into the target type.
+// subprocess. It returns the raw JSON text that the model produced. The
+// caller unmarshals the raw text into the target type. That caller is
+// usually [ai.GenerateObject].
 //
-// The schema is passed verbatim to the CLI via `--json-schema`, which
-// enforces structured output validation. Only the last user message in
-// [ai.Prompt.Messages] is sent.
+// The provider passes the schema to the CLI without changes through
+// `--json-schema`. The CLI then enforces structured output. The provider
+// sends only the last user message in [ai.Prompt.Messages].
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,
@@ -306,8 +309,8 @@ func (p *Provider) GenerateObject(
 
 const maxLineSize = 10 * 1024 * 1024 // 10MB
 
-// lastUserText returns the text of the last user message in msgs, or
-// the empty string if none exists.
+// lastUserText returns the text of the last user message in msgs. If
+// msgs has no user message, it returns the empty string.
 func lastUserText(msgs []ai.Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == ai.RoleUser {
@@ -317,8 +320,8 @@ func lastUserText(msgs []ai.Message) string {
 	return ""
 }
 
-// pumpAIEvents reads NDJSON lines from stdout, translating Claude CLI
-// output into [ai.Event]s via the push callback.
+// pumpAIEvents reads NDJSON lines from stdout. It translates the Claude
+// CLI output into [ai.Event] values and sends them to the push callback.
 func pumpAIEvents(
 	push func(ai.Event),
 	stdout io.Reader,
@@ -381,9 +384,9 @@ func pumpAIEvents(
 	return lastAssistant, usage, resultErr
 }
 
-// partialBlocks translates Claude Code's embedded Anthropic SSE events into
-// ai.Events and suppresses the equivalent complete blocks that follow on the
-// assistant line.
+// partialBlocks translates the Anthropic SSE events that Claude Code
+// embeds into ai.Event values. It also suppresses the equivalent complete
+// blocks that follow on the assistant line.
 type partialBlocks struct {
 	blocks map[int]*partialBlock
 }
@@ -555,9 +558,9 @@ func (p *partialBlocks) finish(
 	return skipped
 }
 
-// emitContentBlocks pushes ai.Events for each content block in a
-// completed assistant message. Because the Claude CLI doesn't stream
-// token deltas, each block emits a start/delta/end triple where the
+// emitContentBlocks pushes ai.Event values for each content block in a
+// completed assistant message. The Claude CLI does not stream token
+// deltas. Each block therefore emits a start/delta/end triple, and the
 // delta carries the full content.
 func emitContentBlocks(
 	push func(ai.Event),
@@ -606,8 +609,9 @@ func emitContentBlocks(
 }
 
 // collectObjectResult reads NDJSON lines from stdout and returns the
-// final JSON text. It prefers the `result` line's Result field and
-// falls back to the concatenated text of the last assistant message.
+// final JSON text. It prefers the Result field of the `result` line. If
+// that field is empty, it uses the joined text of the last assistant
+// message.
 func collectObjectResult(model ai.Model, stdout io.Reader) (string, ai.Usage, error) {
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)

@@ -2,15 +2,16 @@ package session
 
 import "github.com/sonnes/pi-go/pkg/ai"
 
-// Path returns the root→leaf path ending at the entry with ID leafID,
-// derived by walking ParentID pointers. It returns nil for an empty or
-// unknown leafID. A missing parent stops the walk (the collected suffix
-// is returned); a parent cycle terminates rather than looping.
+// Path returns the root→leaf path that ends at the entry with ID leafID.
+// It walks the ParentID pointers to derive the path. For an empty or
+// unknown leafID, it returns nil. A missing parent stops the walk, and
+// Path returns the collected suffix. A parent cycle also stops the walk
+// instead of looping.
 //
-// Path builds an index over entries on every call. Callers that append
-// incrementally and walk repeatedly (see the durable agent) should keep a
-// live index and use [PathFrom] to avoid the per-call O(len(entries))
-// rebuild.
+// Path builds an index over the entries on every call. [PathFrom] takes a
+// caller-maintained index instead. Callers that append incrementally and
+// walk repeatedly, like the durable agent, use [PathFrom] to avoid the
+// O(len(entries)) rebuild on every call.
 func Path(entries []Entry, leafID string) []Entry {
 	if leafID == "" {
 		return nil
@@ -23,10 +24,10 @@ func Path(entries []Entry, leafID string) []Entry {
 	return PathFrom(byID, leafID)
 }
 
-// PathFrom is [Path] over a caller-maintained index: it walks ParentID
-// pointers through byID rather than rebuilding the index each call. The
-// walk is O(path depth), not O(total entries). Same semantics as [Path]
-// for empty, unknown, orphaned, and cyclic leaves.
+// PathFrom is [Path] over a caller-maintained index. It walks the
+// ParentID pointers through byID and does not rebuild the index on every
+// call. The walk is O(path depth), not O(total entries). For empty,
+// unknown, orphaned, and cyclic leaves, PathFrom behaves like [Path].
 func PathFrom(byID map[string]Entry, leafID string) []Entry {
 	if leafID == "" {
 		return nil
@@ -50,14 +51,14 @@ func PathFrom(byID map[string]Entry, leafID string) []Entry {
 	return rev
 }
 
-// ModelView projects a root→leaf path (see [Path]) into the messages
-// sent to the model: [MessageEntry] values including meta entries;
-// custom entries are skipped.
+// ModelView projects a root→leaf path (see [Path]) into the messages for
+// the model. The result holds the [MessageEntry] values, meta entries
+// included. ModelView skips custom entries.
 //
-// When the path contains [CompactionEntry] values, the latest one wins:
-// its summary is emitted as a user message, entries before its
-// FirstKeptID are elided, and everything from FirstKeptID onward is
-// kept verbatim.
+// If the path contains [CompactionEntry] values, the latest one wins.
+// ModelView emits its summary as a user message. It omits the entries
+// before FirstKeptID. It keeps everything from FirstKeptID onward
+// verbatim.
 func ModelView(path []Entry) []ai.Message {
 	lastComp := -1
 	for i, e := range path {
@@ -88,11 +89,12 @@ func ModelView(path []Entry) []ai.Message {
 	return out
 }
 
-// TranscriptView projects a root→leaf path (see [Path]) for display:
-// injected context is hidden, everything else — including custom
-// entries the model never sees — is kept. Injected means either flavor
-// of [MessageEntry] the model reads and the reader should not: Meta,
-// which persists, and Ephemeral, which does not.
+// TranscriptView projects a root→leaf path (see [Path]) into the entries
+// to show a reader. It hides injected context and keeps everything else,
+// including the custom entries that the model never sees. Injected
+// context is a [MessageEntry] that the model reads and the reader must
+// not. It comes in two flavors: Meta, which persists, and Ephemeral,
+// which does not.
 func TranscriptView(path []Entry) []Entry {
 	var out []Entry
 	for _, e := range path {

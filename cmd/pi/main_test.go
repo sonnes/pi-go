@@ -98,8 +98,8 @@ func TestCreateAPIAgent_CursorCLIPrefix(t *testing.T) {
 	assert.NotNil(t, a)
 }
 
-// TestSelectAPISpec_CLIPrefixes verifies the stateless CLI-provider prefixes
-// resolve to a "<provider>/<model>" catalog spec.
+// TestSelectAPISpec_CLIPrefixes makes sure that the stateless CLI-provider
+// prefixes resolve to a "<provider>/<model>" catalog spec.
 func TestSelectAPISpec_CLIPrefixes(t *testing.T) {
 	cases := []struct {
 		spec     string

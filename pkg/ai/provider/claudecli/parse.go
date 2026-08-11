@@ -18,8 +18,8 @@ type rawLine struct {
 	Usage     *rawUsage       `json:"usage,omitempty"`
 }
 
-// streamEvent is an Anthropic SSE event embedded by Claude Code when
-// --include-partial-messages is enabled.
+// streamEvent is an Anthropic SSE event that Claude Code embeds when the
+// --include-partial-messages flag is set.
 type streamEvent struct {
 	Type         string              `json:"type"`
 	Index        int                 `json:"index"`
@@ -48,8 +48,8 @@ type rawUsage struct {
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 }
 
-// anthropicMessage is the Anthropic API message format embedded in
-// assistant event lines.
+// anthropicMessage is the Anthropic API message format inside assistant
+// event lines.
 type anthropicMessage struct {
 	Role       string             `json:"role"`
 	Content    []anthropicContent `json:"content"`
@@ -80,8 +80,8 @@ func parseLine(data []byte) (rawLine, error) {
 	return line, err
 }
 
-// toAIMessage converts an Anthropic API message to an [ai.Message], pricing
-// its usage against model's rates.
+// toAIMessage converts an Anthropic API message to an [ai.Message]. It
+// prices the usage with the rates of model.
 func toAIMessage(model ai.Model, msg anthropicMessage) ai.Message {
 	m := ai.Message{
 		Role:       ai.Role(msg.Role),
@@ -128,13 +128,14 @@ func mapStopReason(reason string) ai.StopReason {
 	}
 }
 
-// anthropicCost prices an Anthropic-shaped usage block against model's rates.
+// anthropicCost prices an Anthropic-shaped usage block with the rates of
+// model.
 //
-// The CLI relays Anthropic's own usage block, where input_tokens excludes the
-// cached prefix, so the four token kinds are disjoint and each bills exactly
-// once at its own rate. Rates come from the caller's [ai.Model]; the CLI
-// reports only a lump-sum total_cost_usd with no per-category split, so there
-// is nothing to relay instead.
+// The CLI relays the usage block of Anthropic. In that block, input_tokens
+// excludes the cached prefix. The four token kinds are therefore disjoint,
+// and each kind bills once at its own rate. The rates come from the
+// [ai.Model] of the caller. The CLI reports only a total_cost_usd sum with
+// no split by category, so there is no other value to relay.
 func anthropicCost(model ai.Model, u ai.Usage) ai.UsageCost {
 	rates := model.Cost
 	return ai.UsageCost{

@@ -13,9 +13,9 @@ import (
 )
 
 // synthTool is an [ai.Tool] the harness builds itself. It exists
-// instead of [ai.DefineTool] because the skill tool's schema carries an
-// enum of the resolved skill names, which a schema derived from a Go
-// type cannot express.
+// instead of [ai.DefineTool] because the schema of the skill tool
+// carries an enum of the resolved skill names. A schema derived from a
+// Go type cannot express that enum.
 type synthTool struct {
 	info ai.ToolInfo
 	run  func(ctx context.Context, call ai.ToolCallReq) (ai.ToolResult, error)
@@ -40,8 +40,8 @@ func (b *build) compileTools(res *resolution) []ai.Tool {
 	return tools
 }
 
-// listing is one name/description pair from the artifacts, the unit a
-// synthesized tool advertises itself with.
+// listing is one name and description pair from the artifacts. A
+// synthesized tool uses these pairs to advertise itself.
 type listing struct {
 	name string
 	desc string
@@ -55,10 +55,10 @@ func skillListings(skills []def.Skill) []listing {
 	return out
 }
 
-// scoped spells out the directory a scoped artifact governs. Its name
-// already carries the scope, but the description is what the model picks
-// on, and two variants of one artifact are otherwise described
-// identically.
+// scoped spells out the directory a scoped artifact governs. The name
+// of the artifact already carries the scope. The model picks on the
+// description, and two variants of one artifact otherwise carry the
+// same description.
 func scoped(desc, scope string) string {
 	if scope == "" {
 		return desc
@@ -70,9 +70,9 @@ func scoped(desc, scope string) string {
 	return desc + " " + applies
 }
 
-// catalogue renders the listings as markdown bullets. The skill tool
-// puts it in its description so the model can pick without a second
-// lookup.
+// catalogue formats the listings as markdown bullets. The skill tool
+// puts the result in its description, so the model can pick a skill
+// without a second lookup.
 func catalogue(items []listing) string {
 	var b strings.Builder
 	for _, it := range items {
@@ -96,10 +96,10 @@ func enumOf(items []listing) []any {
 }
 
 // skillTool synthesizes the "skill" tool. The system prompt carries
-// only names and descriptions; this tool is how a body reaches the
+// only names and descriptions. This tool is how a body reaches the
 // conversation, so a large library costs prompt tokens only for the
-// skills actually used. The body it serves is the build's snapshot,
-// like every other artifact.
+// skills in use. The body it serves comes from the snapshot of the
+// build, like every other artifact.
 func (b *build) skillTool(skills []def.Skill) ai.Tool {
 	items := skillListings(skills)
 	byName := make(map[string]def.Skill, len(skills))

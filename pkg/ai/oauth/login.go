@@ -28,32 +28,34 @@ type LoginConfig struct {
 	ClientSecret string
 	// RedirectPort is the localhost port for the callback server.
 	RedirectPort int
-	// RedirectPath is the path for the OAuth callback. Defaults to "/callback".
+	// RedirectPath is the path for the OAuth callback. The default is
+	// "/callback".
 	RedirectPath string
 	// Scopes is the list of OAuth scopes to request.
 	Scopes []string
-	// ExtraParams holds additional query parameters for the authorize URL.
+	// ExtraParams holds extra query parameters for the authorize URL.
 	ExtraParams map[string]string
-	// ExtraTokenParams holds additional parameters for the token exchange.
+	// ExtraTokenParams holds extra parameters for the token exchange.
 	ExtraTokenParams map[string]string
 	// UseJSONTokenRequest sends the token exchange as JSON instead of
-	// form-encoded. Some providers (e.g. Anthropic) require this.
+	// form-encoded data. Some providers, for example Anthropic, require
+	// this format.
 	UseJSONTokenRequest bool
-	// IncludeStateInTokenExchange includes the state parameter in the
-	// token exchange request. Some providers (e.g. Anthropic) require it,
-	// others (e.g. OpenAI) reject it.
+	// IncludeStateInTokenExchange adds the state parameter to the token
+	// exchange request. Some providers, for example Anthropic, require it.
+	// Other providers, for example OpenAI, reject it.
 	IncludeStateInTokenExchange bool
-	// DisplayURL is called with the authorization URL that the user must
-	// open in a browser. The application provides this callback to control
-	// how the URL is presented.
+	// DisplayURL receives the authorization URL that the user must open in
+	// a browser. The application supplies this callback and controls how
+	// the URL appears.
 	DisplayURL func(url string) error
-	// ReadCode, if set, enables a manual code-paste fallback for
-	// environments where the localhost callback cannot be reached (headless,
-	// SSH, VPS). It is called to obtain a pasted authorization code or full
-	// redirect URL. It runs concurrently with the localhost callback server;
-	// whichever delivers a valid code first wins. The callback should respect
-	// ctx cancellation. If the callback server cannot bind its port, login
-	// proceeds with the paste path alone.
+	// ReadCode turns on a manual code-paste fallback for hosts where the
+	// localhost callback is not reachable (headless, SSH, VPS). Login calls
+	// ReadCode to get a pasted authorization code or a full redirect URL.
+	// ReadCode runs at the same time as the localhost callback server.
+	// Login uses the first valid code from either path. The callback must
+	// obey cancellation of ctx. If the callback server cannot bind its
+	// port, login uses only the paste path.
 	ReadCode func(ctx context.Context) (string, error)
 }
 
@@ -68,20 +70,20 @@ func (c LoginConfig) redirectURI() string {
 	return fmt.Sprintf("http://localhost:%d%s", c.RedirectPort, c.redirectPath())
 }
 
-// callbackResult carries an authorization code (or error) from either the
-// localhost callback server or the manual paste path.
+// callbackResult carries an authorization code, or an error, from the
+// localhost callback server or from the manual paste path.
 type callbackResult struct {
 	code string
 	err  error
 }
 
-// Login performs an OAuth authorization code flow with PKCE.
+// Login runs an OAuth authorization code flow with PKCE.
 //
-// It starts a local callback server, builds the authorize URL, waits for the
-// authorization code, and exchanges it for tokens. If [LoginConfig.ReadCode]
-// is set, a manual code-paste path runs concurrently for environments where
-// the localhost callback cannot be reached; whichever delivers a valid code
-// first wins.
+// Login starts a local callback server and builds the authorize URL. It then
+// waits for the authorization code and exchanges it for tokens. If
+// [LoginConfig.ReadCode] is set, a manual code-paste path runs at the same
+// time. That path serves hosts where the localhost callback is not reachable.
+// Login uses the first valid code from either path.
 func Login(ctx context.Context, cfg LoginConfig) (Credentials, error) {
 	pkce, err := GeneratePKCE()
 	if err != nil {
@@ -94,12 +96,13 @@ func Login(ctx context.Context, cfg LoginConfig) (Credentials, error) {
 	}
 	state := hex.EncodeToString(stateBytes)
 
-	// Buffered for up to two writers (callback server + paste goroutine).
+	// The channel has room for two writers: the callback server and the
+	// paste goroutine.
 	codeCh := make(chan callbackResult, 2)
 
 	srv, err := startCallbackServer(cfg, state, codeCh)
 	if err != nil {
-		// Without a paste fallback there is no way to receive the code.
+		// If there is no paste fallback, the code cannot arrive.
 		if cfg.ReadCode == nil {
 			return Credentials{}, err
 		}
@@ -122,7 +125,7 @@ func Login(ctx context.Context, cfg LoginConfig) (Credentials, error) {
 		go readPastedCode(ctx, cfg, state, codeCh)
 	}
 
-	// Wait for a code from either path, or context cancellation.
+	// Wait for a code from either path, or for cancellation of the context.
 	select {
 	case result := <-codeCh:
 		if result.err != nil {
@@ -135,8 +138,8 @@ func Login(ctx context.Context, cfg LoginConfig) (Credentials, error) {
 }
 
 // startCallbackServer binds the localhost redirect listener and serves the
-// OAuth callback, forwarding the authorization code to codeCh. The returned
-// server should be closed by the caller.
+// OAuth callback. It sends the authorization code to codeCh. The caller must
+// close the returned server.
 func startCallbackServer(cfg LoginConfig, state string, codeCh chan<- callbackResult) (*http.Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc(cfg.redirectPath(), func(w http.ResponseWriter, r *http.Request) {
@@ -173,8 +176,9 @@ func startCallbackServer(cfg LoginConfig, state string, codeCh chan<- callbackRe
 	return srv, nil
 }
 
-// readPastedCode invokes cfg.ReadCode, parses the pasted value, validates the
-// state (when the paste includes one), and forwards the result to codeCh.
+// readPastedCode calls cfg.ReadCode and parses the pasted value. If the paste
+// includes a state, readPastedCode makes sure that the state matches. It then
+// sends the result to codeCh.
 func readPastedCode(ctx context.Context, cfg LoginConfig, state string, codeCh chan<- callbackResult) {
 	input, err := cfg.ReadCode(ctx)
 	if err != nil {
@@ -194,10 +198,10 @@ func readPastedCode(ctx context.Context, cfg LoginConfig, state string, codeCh c
 	codeCh <- callbackResult{code: code}
 }
 
-// parsePastedCode extracts the authorization code and optional state from a
-// value pasted by the user. It accepts a full redirect URL
-// ("http://localhost:1455/callback?code=abc&state=xyz"), the "code#state"
-// form some providers display inline, or a bare authorization code.
+// parsePastedCode extracts the authorization code and the optional state from
+// a value that the user pasted. It accepts a full redirect URL
+// ("http://localhost:1455/callback?code=abc&state=xyz"), the "code#state" form
+// that some providers show inline, or a bare authorization code.
 func parsePastedCode(input string) (code, state string) {
 	input = strings.TrimSpace(input)
 	if input == "" {

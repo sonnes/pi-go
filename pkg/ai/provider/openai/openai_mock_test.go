@@ -16,7 +16,7 @@ import (
 )
 
 // sseServer creates a test server that returns SSE chunks for the Chat
-// Completions /v1/chat/completions endpoint.
+// Completions endpoint at /v1/chat/completions.
 func sseServer(t *testing.T, chunks []string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,8 +57,8 @@ func TestMock_UsageCost(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
-	// prompt_tokens includes cached_tokens on the wire; Usage.Input reports
-	// only the uncached remainder so the two never bill twice.
+	// On the wire, prompt_tokens includes cached_tokens. Usage.Input reports
+	// only the uncached remainder, so the two never bill twice.
 	assert.Equal(t, 800, msg.Usage.Input)
 	assert.Equal(t, 200, msg.Usage.CacheRead)
 

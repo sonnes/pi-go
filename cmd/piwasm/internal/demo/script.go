@@ -4,11 +4,11 @@ import "github.com/sonnes/pi-go/pkg/ai"
 
 // DefaultScript is what the model "says" in scripted mode.
 //
-// Turns are consumed one per model call, so the first two make a single
-// run: the model asks for the tool, then answers with its result. The
-// later turns cover a second run after a branch, and whatever the
-// compaction summarizer asks for. The last turn repeats once the script
-// runs out, so a visitor cannot click past the end.
+// Each model call consumes one turn, so the first two turns make a single
+// run. The model asks for the tool, then answers with the result. The
+// later turns cover a second run after a branch, and the request from the
+// compaction summarizer. When the script runs out, the last turn repeats.
+// A visitor therefore cannot click past the end.
 func DefaultScript() []Turn {
 	return []Turn{
 		{

@@ -65,11 +65,11 @@ func TestBuildParams_LongCacheRetention(t *testing.T) {
 	)
 }
 
-// TestBuildParams_CodexAlwaysSetsInstructions verifies the Codex backend's
-// hard requirement: the request body MUST carry a non-empty `instructions`
-// field, or chatgpt.com/backend-api/codex/responses returns
-// `{"detail":"Instructions are required"}`. Under DialectCodex this must hold
-// even when the caller did not provide a system prompt.
+// TestBuildParams_CodexAlwaysSetsInstructions makes sure that the request
+// body holds a non-empty `instructions` field. The Codex backend requires
+// it. Without it, chatgpt.com/backend-api/codex/responses returns
+// `{"detail":"Instructions are required"}`. Under DialectCodex this holds
+// even when the caller gives no system prompt.
 func TestBuildParams_CodexAlwaysSetsInstructions(t *testing.T) {
 	prompt := ai.Prompt{
 		Messages: []ai.Message{
@@ -82,9 +82,9 @@ func TestBuildParams_CodexAlwaysSetsInstructions(t *testing.T) {
 	assert.NotEmpty(t, params.Instructions.Value)
 }
 
-// TestBuildParams_CodexPreservesProvidedSystem verifies that a caller-provided
-// system prompt is preserved (not replaced by the Codex fallback) under
-// DialectCodex.
+// TestBuildParams_CodexPreservesProvidedSystem makes sure that DialectCodex
+// keeps a caller-supplied system prompt. The Codex fallback does not replace
+// it.
 func TestBuildParams_CodexPreservesProvidedSystem(t *testing.T) {
 	prompt := ai.Prompt{
 		System: "you are a precise reviewer",
@@ -99,8 +99,8 @@ func TestBuildParams_CodexPreservesProvidedSystem(t *testing.T) {
 }
 
 // TestBuildParams_OpenAIDialectInstructionsOptional documents that the
-// default OpenAI dialect still omits Instructions when no system prompt is
-// given — only DialectCodex forces it.
+// default OpenAI dialect omits Instructions when the caller gives no system
+// prompt. Only DialectCodex sets a value in that case.
 func TestBuildParams_OpenAIDialectInstructionsOptional(t *testing.T) {
 	prompt := ai.Prompt{
 		Messages: []ai.Message{

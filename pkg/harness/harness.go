@@ -15,25 +15,25 @@ import (
 // running agents. Create one with [New] and mint agents from it with
 // [Harness.Agent].
 //
-// It is a factory rather than an agent because two things need one:
-// one configuration serves many sessions, and seeding a fresh session
-// requires knowing at creation time whether it is fresh. A Harness
-// holds configuration only — no session, no conversation — so it is
-// safe to share across sessions and goroutines.
+// Harness is a factory and not an agent, because two things need a
+// factory. One configuration serves many sessions. To seed a fresh
+// session, the harness must know at creation time that the session is
+// fresh. A Harness holds configuration only — no session and no
+// conversation — so it is safe to share across sessions and goroutines.
 //
 // The configuration it holds is a baseline. [Harness.Agent] accepts the
-// same options and overlays them per build, which is what lets one
-// harness serve many working directories.
+// same options and overlays them for each build. One harness can
+// therefore serve many working directories.
 type Harness struct {
 	base     *ext
 	baseline *build
 	opts     []agent.Option
 }
 
-// build is one agent build's merged and compiled configuration: the
-// baseline with that build's overlay applied, with the model resolved
-// and the toolbox indexed. Everything downstream of [Harness.Agent] —
-// resolution, prompt building — reads a build, never the harness.
+// build is the merged and compiled configuration for one agent build:
+// the baseline with the overlay of that build applied. compile resolves
+// the model and indexes the toolbox. Everything after [Harness.Agent] —
+// resolution and prompt building — reads a build, never the harness.
 type build struct {
 	lm      ai.LanguageModel
 	workDir string
@@ -47,17 +47,17 @@ type build struct {
 	seeder  prompt.Seeder
 }
 
-// New validates the harness configuration and returns the factory.
+// New makes sure that the harness configuration is usable, then returns
+// the factory.
 //
-// The option list is flat and mixes all three layers: harness options
-// configure the factory, and everything else — [durable] and [agent]
-// options alike — is remembered and forwarded to each agent this
-// harness mints.
+// The option list is flat and mixes all three layers. Harness options
+// configure the factory. The harness keeps everything else — [durable]
+// and [agent] options alike — and forwards it to each agent it mints.
 //
-// New checks the baseline the way a build would: the catalog must be
-// present, the default model must resolve, and no tool may claim a
-// reserved name. Everything about the artifacts themselves is checked
-// per build, since resolvers run fresh every time.
+// New examines the baseline the way a build does. The catalog must be
+// present, the default model must resolve, and no tool can claim a
+// reserved name. The harness examines the artifacts themselves on each
+// build, because the resolvers run fresh every time.
 func New(opts ...agent.Option) (*Harness, error) {
 	cfg := agent.ApplyOptions(opts...)
 	if cfg.SystemPrompt != "" {
@@ -78,15 +78,16 @@ func New(opts ...agent.Option) (*Harness, error) {
 }
 
 // errCallerSystemPrompt rejects [agent.WithSystemPrompt] from the
-// caller. The harness compiles the system prompt from the artifacts and
-// would silently clobber whatever the caller set, so the collision is
-// an error instead.
+// caller. The harness compiles the system prompt from the artifacts,
+// and the compiled prompt overwrites the prompt of the caller without
+// warning. The harness reports this collision as an error instead.
 var errCallerSystemPrompt = errors.New(
 	"harness: the harness builds the system prompt; use WithPromptBuilder",
 )
 
-// compile turns a merged [ext] into a usable [build]: resolve the model,
-// index the tools, fill in the defaults the caller left out.
+// compile turns a merged [ext] into a usable [build]. It resolves the
+// model, indexes the tools, and fills in the defaults the caller left
+// out.
 func compile(e *ext) (*build, error) {
 	if e.cat == nil {
 		return nil, errors.New("harness: catalog is required; pass WithCatalog")
@@ -109,8 +110,8 @@ func compile(e *ext) (*build, error) {
 		workDir, _ = os.Getwd()
 	}
 
-	// The defaults are wired here, not in the option, so that a caller
-	// who overrides one still gets the other.
+	// compile wires the defaults here, not in the option, so a caller
+	// who overrides one default still gets the other.
 	builder := e.builder
 	if builder == nil {
 		builder = prompt.Default
@@ -132,8 +133,8 @@ func compile(e *ext) (*build, error) {
 	}, nil
 }
 
-// overlay compiles the baseline with the caller's per-build options
-// merged in. A build that overlays nothing reuses the baseline, so the
+// overlay compiles the baseline together with the per-build options of
+// the caller. A build that overlays nothing reuses the baseline, so the
 // common path costs no work.
 func (h *Harness) overlay(opts []agent.Option) (*build, error) {
 	if len(opts) == 0 {

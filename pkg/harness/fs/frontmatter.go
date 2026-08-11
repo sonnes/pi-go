@@ -8,17 +8,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// errNoFrontmatter is returned when a file does not open with a YAML
-// frontmatter block. Callers wrap it with the file path.
+// errNoFrontmatter is the error for a file that does not open with a
+// YAML frontmatter block. Callers wrap it with the file path.
 var errNoFrontmatter = errors.New("missing frontmatter")
 
-// errMalformed marks a file the package could read but not understand —
+// errMalformed marks a file the package can read but cannot understand —
 // no frontmatter block, an unterminated one, or YAML that will not
-// unmarshal. It is the line between a user's authoring mistake, which
-// the tree resolvers skip, and an I/O failure, which they report.
+// unmarshal. It is the line between an authoring mistake, which the tree
+// resolvers skip, and an I/O error, which they report.
 //
-// Unexported: callers classify by behavior (the resolver skipped it),
-// not by inspecting the error.
+// It stays unexported. Callers classify by behavior (the resolver skipped
+// the file), not by an examination of the error.
 var errMalformed = errors.New("malformed")
 
 // fence delimits a frontmatter block.
@@ -26,7 +26,7 @@ const fence = "---"
 
 // splitFrontmatter separates a leading YAML frontmatter block from the
 // document body. A file must open with a fence line and close the block
-// with another one; anything else is [errNoFrontmatter].
+// with another one. Anything else is [errNoFrontmatter].
 func splitFrontmatter(data []byte) (meta, body []byte, err error) {
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	if !strings.HasPrefix(text, fence+"\n") {
@@ -46,7 +46,7 @@ func splitFrontmatter(data []byte) (meta, body []byte, err error) {
 }
 
 // stringList decodes a YAML value that is either a sequence of strings
-// or a single comma-separated string. Both spellings show up in the
+// or a single comma-separated string. Both spellings appear in the
 // agent files people already write, and neither is worth an error.
 type stringList []string
 

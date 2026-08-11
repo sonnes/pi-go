@@ -9,8 +9,8 @@ import (
 )
 
 func TestOptions(t *testing.T) {
-	// A package minting options into the shared currency often has
-	// several to contribute but only one Option to return.
+	// A package that creates options often has several to contribute,
+	// but it can return only one Option.
 	bundled := agent.Options(
 		agent.WithMaxTurns(4),
 		agent.WithSystemPrompt("be brief"),

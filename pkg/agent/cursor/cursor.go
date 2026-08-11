@@ -12,7 +12,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Agent implements [agent.Agent] by delegating each turn to Cursor Agent CLI.
+// Agent implements [agent.Agent]. Each turn goes to the Cursor Agent CLI.
 type Agent struct {
 	cfg config
 
@@ -26,8 +26,8 @@ type Agent struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// New creates a new Cursor CLI [Agent] for model. For spec-based creation,
-// register [Factory] with the catalog under the "cursor" kind.
+// New creates a new Cursor CLI [Agent] for model. To create an agent from
+// a spec, register [Factory] with the catalog under the "cursor" kind.
 func New(model ai.Model, opts ...agent.Option) *Agent {
 	return newFromConfig(model, agent.ApplyOptions(opts...))
 }
@@ -68,14 +68,14 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	}
 }
 
-// Run implements [agent.Agent]. It appends msgs to history, sends the
-// most recent user message to Cursor CLI, and runs one turn. Non-user
-// messages are retained locally but not forwarded; after the first turn
-// the CLI owns context through its session ID.
+// Run implements [agent.Agent]. It appends msgs to the history, sends the
+// most recent user message to the Cursor CLI, and runs one turn. It keeps
+// the non-user messages locally and does not forward them. After the
+// first turn, the CLI owns the context through its session ID.
 //
-// Zero messages is an error: the CLI cannot continue without input.
-// Canceling ctx kills the Cursor child subprocess; the next Run starts
-// a fresh turn resuming the captured chat.
+// Zero messages is an error, because the CLI cannot continue without
+// input. A cancel of ctx kills the Cursor child subprocess. The next Run
+// starts a new turn and resumes the captured chat.
 func (a *Agent) Run(ctx context.Context, msgs ...ai.Message) *agent.Stream {
 	return agent.NewStream(func(push func(agent.Event)) ([]ai.Message, error) {
 		return a.runTurn(ctx, msgs, push)
@@ -94,8 +94,8 @@ func (a *Agent) Messages() []ai.Message {
 	return out
 }
 
-// Close implements [agent.Agent]. The Cursor CLI runs one subprocess
-// per turn, so there is nothing held between runs to release.
+// Close implements [agent.Agent]. The Cursor CLI runs one subprocess for
+// each turn. Nothing stays open between runs, so Close releases nothing.
 func (a *Agent) Close() error { return nil }
 
 // SessionID returns the Cursor chat session ID captured from the subprocess.
@@ -110,9 +110,9 @@ type turnResult struct {
 	err      error
 }
 
-// runTurn validates the input, spawns one Cursor subprocess, and
-// streams its output as events. It is the producer behind
-// [Agent.Run]'s stream.
+// runTurn makes sure that the input is valid. It then starts one Cursor
+// subprocess and streams the output as events. runTurn is the producer
+// behind the stream of [Agent.Run].
 func (a *Agent) runTurn(
 	ctx context.Context,
 	msgs []ai.Message,

@@ -1,12 +1,12 @@
-// Package claude implements [agent.Agent] by delegating the agent loop
-// to a long-lived Claude Code CLI subprocess.
+// Package claude implements [agent.Agent] with a long-lived Claude Code
+// CLI subprocess. The subprocess runs the agent loop.
 //
-// The subprocess is started lazily on first [Agent.Send] with
-// `--input-format stream-json --output-format stream-json` and stays
-// alive across turns: each Send writes one SDKUserMessage NDJSON line
-// to stdin and blocks until the CLI emits the corresponding result
-// line. The subprocess handles tool execution, system prompts, and
-// multi-turn conversation state internally.
+// The package starts the subprocess on the first [Agent.Send] with
+// `--input-format stream-json --output-format stream-json`. The
+// subprocess stays alive across turns. Each Send writes one
+// SDKUserMessage NDJSON line to stdin. Send then blocks until the CLI
+// emits the matching result line. The subprocess runs the tools, holds
+// the system prompts, and keeps the multi-turn conversation state.
 //
 // Basic usage:
 //
@@ -22,16 +22,16 @@
 //	    // handle pe.Payload() events...
 //	}
 //
-// The model is passed as New's first argument; all options — both
-// [agent.Option] (e.g.
-// [agent.WithMaxTurns], [agent.WithHistory], [agent.WithSystemPrompt])
-// and claude-specific options (e.g. [WithCLIPath], [WithAllowedTools],
-// [WithSessionID]) — satisfy the [agent.Option] type and pass through the
-// same slice. [agent.WithSystemPrompt] is rendered to a string and, by
-// default, passed to the subprocess as `--append-system-prompt`,
-// layering onto Claude Code's own base prompt; use
-// [WithAppendPrompt](false) to pass it as `--system-prompt` and replace
-// the base prompt instead.
+// New takes the model as its first argument. All options satisfy the
+// [agent.Option] type and go through the same slice. This includes the
+// agent options, for example [agent.WithMaxTurns], [agent.WithHistory],
+// and [agent.WithSystemPrompt]. It also includes the claude-specific
+// options, for example [WithCLIPath], [WithAllowedTools], and
+// [WithSessionID]. The package converts [agent.WithSystemPrompt] to a
+// string. By default it gives that string to the subprocess as
+// `--append-system-prompt`, which adds to Claude Code's own base prompt.
+// To replace the base prompt instead, use [WithAppendPrompt](false). The
+// package then gives the string as `--system-prompt`.
 //
 // Construction:
 //
@@ -42,9 +42,9 @@
 //
 //	cat.RegisterAgent("claude", claude.Factory())
 //
-// Rich content (images, multi-block messages) is supported by
-// [Agent.SendMessages] — the last user message in the batch is
-// serialized to an SDKUserMessage with an Anthropic content block array.
+// [Agent.SendMessages] accepts rich content, such as images and
+// multi-block messages. It serializes the last user message in the batch
+// to an SDKUserMessage with an array of Anthropic content blocks.
 //
 // Session resume:
 //
@@ -56,31 +56,33 @@
 //	a2 := claude.New(claude.WithSessionID(sid))
 //	a2.Send(ctx, "pick up where we left off")
 //
-// # Limitations vs. the Default agent
+// # Limits compared to the Default agent
 //
-// The Claude CLI subprocess owns the entire agent loop — tool dispatch,
-// system prompts, and multi-turn state are managed internally by the
-// CLI rather than by this package. As a result:
+// The Claude CLI subprocess owns the full agent loop. The CLI, not this
+// package, controls the tool dispatch, the system prompts, and the
+// multi-turn state. As a result:
 //
-//   - Of the lifecycle hooks registered via [agent.WithHook], only
-//     [agent.HookBeforeTool] is invoked: it answers the CLI's
-//     can_use_tool permission requests (the subprocess is launched
-//     with `--permission-prompt-tool stdio` whenever such hooks are
-//     registered; pair with [WithPermissionMode] to control which
-//     calls the CLI asks about). A hook error or Deny blocks the tool
-//     call. [agent.HookBeforeCall], [agent.HookAfterTool],
-//     [agent.HookAfterTurn], and [agent.HookBeforeStop] have no
-//     effect — the CLI owns those lifecycle points. Use the
-//     [agent.Default] agent if you need them.
-//   - [agent.Agent.Continue] is not supported in stream-json mode; pair
-//     [WithSessionID] with [Agent.Send] to resume a prior conversation.
-//   - Tool execution events do not carry [agent.Event.PartialResult] —
-//     the CLI does not surface in-flight tool progress over its stdout
-//     protocol, so [agent.EventToolExecutionUpdate] is never emitted.
-//   - [agent.EventMessageUpdate] carries only the delta
-//     ([agent.Event.AssistantEvent]); the accumulated
-//     [agent.Event.Message] snapshot the Default agent attaches to each
-//     update is not populated. The subprocess streams content-block
-//     deltas (via --include-partial-messages) and the complete message
-//     arrives on the assistant line that ends the block.
+//   - Of the lifecycle hooks registered with [agent.WithHook], the
+//     package runs only [agent.HookBeforeTool]. That hook answers the
+//     can_use_tool permission requests from the CLI. If such hooks are
+//     registered, the package starts the subprocess with
+//     `--permission-prompt-tool stdio`. Use [WithPermissionMode] to
+//     control which calls the CLI asks about. A hook error or a Deny
+//     blocks the tool call. [agent.HookBeforeCall],
+//     [agent.HookAfterTool], [agent.HookAfterTurn], and
+//     [agent.HookBeforeStop] have no effect, because the CLI owns those
+//     lifecycle points. If you need them, use the [agent.Default] agent.
+//   - stream-json mode does not support [agent.Agent.Continue]. To
+//     resume an earlier conversation, pair [WithSessionID] with
+//     [Agent.Send].
+//   - Tool execution events do not carry [agent.Event.PartialResult].
+//     The stdout protocol of the CLI gives no progress for a tool that
+//     still runs. As a result, the package never emits
+//     [agent.EventToolExecutionUpdate].
+//   - [agent.EventMessageUpdate] carries only the delta in
+//     [agent.Event.AssistantEvent]. It does not carry the accumulated
+//     [agent.Event.Message] snapshot that the Default agent attaches to
+//     each update. The subprocess streams content-block deltas with
+//     --include-partial-messages. The complete message arrives on the
+//     assistant line that ends the block.
 package claude

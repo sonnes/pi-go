@@ -24,8 +24,8 @@ func record(order *[]string, name string) durable.Middleware {
 	}
 }
 
-// promptText joins every message in a prompt, so a test can ask what
-// the model saw without caring where in the history it landed.
+// promptText joins every message in a prompt. A test can then ask what
+// the model saw, without concern for where in the history it landed.
 func promptText(p ai.Prompt) string {
 	var b strings.Builder
 	for _, m := range p.Messages {
@@ -90,9 +90,9 @@ func TestMiddlewareRunsOnTheCallersGoroutine(t *testing.T) {
 	require.NoError(t, err)
 	defer da.Close()
 
-	// The chain is synchronous: by the time Run has handed back a
-	// stream, every middleware has already seen the call. Nothing in the
-	// chain executes inside the producer goroutine.
+	// The chain is synchronous. When Run returns a stream, every
+	// middleware has already seen the call. Nothing in the chain runs
+	// inside the producer goroutine.
 	s := da.Run(t.Context(), durable.Text("hi"))
 	assert.True(t, entered, "middleware ran before Run returned")
 
@@ -106,8 +106,8 @@ func TestMiddlewareStateIsPerAgent(t *testing.T) {
 		textStream("b"),
 	}}
 
-	// Closure state created when the middleware is applied — once per
-	// agent instance, so two agents cannot share it.
+	// The middleware creates this closure state when it is applied, once
+	// per agent instance. Two agents therefore cannot share it.
 	once := func(next durable.Runner) durable.Runner {
 		fired := false
 		return func(ctx context.Context, entries ...session.Entry) *durable.Stream {
@@ -157,8 +157,8 @@ func TestMiddlewareCanRefuseARun(t *testing.T) {
 	assert.ErrorIs(t, err, denied)
 	assert.Nil(t, msgs)
 
-	// Refusing means refusing: the model was never called and nothing
-	// was persisted.
+	// A refusal is complete: the agent never called the model, and it
+	// persisted nothing.
 	assert.Equal(t, 0, prov.promptCount())
 	entries, err := da.Entries(t.Context())
 	require.NoError(t, err)
@@ -172,8 +172,9 @@ func TestForkCarriesMiddlewareWithFreshClosures(t *testing.T) {
 		textStream("three"),
 	}}
 
-	// Each instantiation of this middleware counts its own runs, so the
-	// tag the model sees says which instance handled the run.
+	// Each instantiation of this middleware counts its own runs. The tag
+	// that the model sees therefore names the instance that handled the
+	// run.
 	counting := func(next durable.Runner) durable.Runner {
 		n := 0
 		return func(ctx context.Context, entries ...session.Entry) *durable.Stream {
@@ -202,14 +203,15 @@ func TestForkCarriesMiddlewareWithFreshClosures(t *testing.T) {
 	require.NoError(t, err)
 	defer child.Close()
 
-	// The fork runs the parent's middleware — it used to silently lose
-	// it, because only the wrapper's Run was overridden.
+	// The fork runs the middleware of the parent. It used to lose the
+	// middleware with no error, because only the Run of the wrapper was
+	// overridden.
 	_, err = child.Run(t.Context(), durable.Text("hi")).Wait()
 	require.NoError(t, err)
 	assert.Contains(t, promptText(prov.prompt(1)), "COUNT=1",
 		"the child's chain is freshly instantiated, so its counter starts over")
 
-	// And the two counters are genuinely separate.
+	// The two counters are separate.
 	_, err = parent.Run(t.Context(), durable.Text("again")).Wait()
 	require.NoError(t, err)
 	assert.Contains(t, promptText(prov.prompt(2)), "COUNT=2",

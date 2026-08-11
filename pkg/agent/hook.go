@@ -10,29 +10,32 @@ import (
 type HookEvent string
 
 const (
-	// HookBeforeCall fires before each LLM call. Hooks can filter or
-	// replace the [ai.Message] slice sent to the model.
+	// HookBeforeCall fires before each LLM call. A hook can filter or
+	// replace the [ai.Message] slice that goes to the model.
 	HookBeforeCall HookEvent = "before_call"
 
-	// HookBeforeTool fires before a tool executes. Hooks can deny
-	// execution or override the tool call.
+	// HookBeforeTool fires before a tool runs. A hook can deny the run
+	// or override the tool call.
 	HookBeforeTool HookEvent = "before_tool"
 
-	// HookAfterTool fires after a tool executes. Hooks can override
-	// the tool result.
+	// HookAfterTool fires after a tool runs. A hook can override the
+	// tool result.
 	HookAfterTool HookEvent = "after_tool"
 
-	// HookAfterTurn fires after each turn completes. Hooks can replace
-	// the message history (e.g. for compaction or steering).
+	// HookAfterTurn fires after each turn is complete. A hook can
+	// replace the message history. Compaction and steering are two
+	// examples.
 	HookAfterTurn HookEvent = "after_turn"
 
-	// HookBeforeStop fires when the agent would stop (no tool calls).
-	// Hooks can inject follow-up messages to continue the loop.
+	// HookBeforeStop fires when there are no tool calls and the agent
+	// is ready to stop. A hook can inject follow-up messages to
+	// continue the loop.
 	HookBeforeStop HookEvent = "before_stop"
 )
 
-// Hook is a lifecycle callback. The fields populated in [HookInput] and
-// the fields read from [HookOutput] depend on the event.
+// Hook is a lifecycle callback. The event controls which fields
+// [HookInput] carries. The event also controls which fields the agent
+// reads from [HookOutput].
 type Hook func(ctx context.Context, input *HookInput) (*HookOutput, error)
 
 // HookInput carries event-specific data to a [Hook].
@@ -40,53 +43,56 @@ type HookInput struct {
 	// Event identifies which lifecycle point fired this hook.
 	Event HookEvent
 
-	// Messages is the current conversation history. Always present.
+	// Messages is the current conversation history. It is always
+	// present.
 	Messages []ai.Message
 
-	// Turn is set for [HookAfterTurn] only.
+	// Turn has a value for [HookAfterTurn] only.
 	Turn *TurnResult
 
-	// ToolCall is set for [HookBeforeTool] and [HookAfterTool].
+	// ToolCall has a value for [HookBeforeTool] and [HookAfterTool].
 	ToolCall *ai.ToolCall
 
-	// ToolResult is set for [HookAfterTool] only.
+	// ToolResult has a value for [HookAfterTool] only.
 	ToolResult *ai.ToolResult
 }
 
-// HookOutput controls agent behavior. Which fields are read depends
-// on the event — see each field's doc comment.
+// HookOutput controls the behavior of the agent. The event controls which
+// fields the agent reads. For details, read the comment on each field.
 type HookOutput struct {
-	// Messages filters or transforms conversation messages.
+	// Messages filters or transforms the conversation messages.
 	//
-	// [HookBeforeCall]: replaces the messages sent to the model.
-	// Subsequent hooks in the chain see this filtered list.
+	// [HookBeforeCall]: replaces the messages that go to the model.
+	// The next hooks in the chain see this filtered list.
 	//
-	// [HookAfterTurn]: replaces the agent's message history.
-	// nil means no change.
+	// [HookAfterTurn]: replaces the message history of the agent.
+	// A nil value means no change.
 	Messages []ai.Message
 
-	// Deny blocks tool execution. Only read for [HookBeforeTool].
+	// Deny blocks the tool run. The agent reads it for
+	// [HookBeforeTool] only.
 	Deny bool
 
-	// DenyReason explains why execution was denied.
-	// Only read for [HookBeforeTool] when Deny is true.
+	// DenyReason explains why the agent denied the tool run.
+	// The agent reads it for [HookBeforeTool] only, when Deny is true.
 	DenyReason string
 
-	// ToolCall overrides the tool call arguments.
-	// Only read for [HookBeforeTool].
+	// ToolCall overrides the arguments of the tool call.
+	// The agent reads it for [HookBeforeTool] only.
 	ToolCall *ai.ToolCall
 
 	// ToolResult overrides the tool result.
-	// Only read for [HookAfterTool].
+	// The agent reads it for [HookAfterTool] only.
 	ToolResult *ai.ToolResult
 
 	// FollowUp injects messages to continue the loop.
-	// Only read for [HookBeforeStop]. A non-empty slice
-	// prevents the agent from stopping.
+	// The agent reads it for [HookBeforeStop] only. If the slice is
+	// not empty, the agent does not stop.
 	FollowUp []ai.Message
 }
 
-// TurnResult is the public view of a completed turn, passed to hooks.
+// TurnResult is the public view of a completed turn. The agent passes it
+// to the hooks.
 type TurnResult struct {
 	AssistantMsg ai.Message
 	ToolResults  []ai.Message
@@ -96,7 +102,7 @@ type TurnResult struct {
 // hooks is the internal hook registry, keyed by event.
 type hooks map[HookEvent][]Hook
 
-// runBeforeCall executes [HookBeforeCall] hooks and returns the
+// runBeforeCall runs the [HookBeforeCall] hooks. It returns the
 // [ai.Message] slice for the LLM.
 func (h hooks) runBeforeCall(
 	ctx context.Context,
@@ -120,8 +126,8 @@ func (h hooks) runBeforeCall(
 	return current, nil
 }
 
-// runBeforeTool executes [HookBeforeTool] hooks. Returns a non-nil
-// [HookOutput] with Deny=true if any hook blocks execution.
+// runBeforeTool runs the [HookBeforeTool] hooks. If a hook blocks the
+// tool, it returns a non-nil [HookOutput] with Deny=true.
 func (h hooks) runBeforeTool(
 	ctx context.Context,
 	msgs []ai.Message,
@@ -143,8 +149,8 @@ func (h hooks) runBeforeTool(
 	return nil, nil
 }
 
-// runAfterTool executes [HookAfterTool] hooks. Each hook sees the
-// previous hook's modified result. Returns the final tool result.
+// runAfterTool runs the [HookAfterTool] hooks. Each hook sees the result
+// that the previous hook modified. It returns the final tool result.
 func (h hooks) runAfterTool(
 	ctx context.Context,
 	msgs []ai.Message,
@@ -168,8 +174,8 @@ func (h hooks) runAfterTool(
 	return result, nil
 }
 
-// runAfterTurn executes [HookAfterTurn] hooks. Returns replacement
-// messages, or nil if the history should not change.
+// runAfterTurn runs the [HookAfterTurn] hooks. It returns replacement
+// messages, or nil when the history does not change.
 func (h hooks) runAfterTurn(
 	ctx context.Context,
 	msgs []ai.Message,
@@ -193,7 +199,7 @@ func (h hooks) runAfterTurn(
 	return replaced, nil
 }
 
-// runBeforeStop executes [HookBeforeStop] hooks. Returns follow-up
+// runBeforeStop runs the [HookBeforeStop] hooks. It returns follow-up
 // messages to continue the loop, or nil to stop.
 func (h hooks) runBeforeStop(
 	ctx context.Context,

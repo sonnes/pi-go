@@ -109,8 +109,8 @@ func TestToolDef_Run_StringOutput(t *testing.T) {
 
 func TestToolDef_Run_ToolResultOutput(t *testing.T) {
 	// A typed tool whose Out is ai.ToolResult returns rich results
-	// (media/image) directly; the framework stamps CallID and skips
-	// generating a meaningless output schema.
+	// (media, image) directly. The framework stamps CallID. It does not
+	// generate an output schema, because such a schema has no meaning.
 	imgTool := ai.DefineTool[addInput, ai.ToolResult](
 		"img",
 		"returns media",
@@ -185,8 +185,8 @@ func TestNewImageResult(t *testing.T) {
 }
 
 func TestToolInfo_ZeroKindIsNotServer(t *testing.T) {
-	// The zero-value ToolKind ("") is treated as a function tool —
-	// branching logic compares against ToolKindServer, not Function.
+	// The zero-value ToolKind ("") counts as a function tool. Branching
+	// logic compares against ToolKindServer, not Function.
 	info := ai.ToolInfo{Name: "x"}
 	assert.NotEqual(t, ai.ToolKindServer, info.Kind)
 }
@@ -214,8 +214,8 @@ func TestDefineServerTool(t *testing.T) {
 	})
 
 	t.Run("Run always returns an error result", func(t *testing.T) {
-		// Server tools are provider-executed; the agent filters them
-		// before reaching Run, but defense-in-depth still matters.
+		// The provider runs server tools. The agent filters them out
+		// before Run, but defense in depth still matters.
 		tool := ai.DefineServerTool(ai.ToolInfo{
 			ServerType: ai.ServerToolWebSearch,
 		})

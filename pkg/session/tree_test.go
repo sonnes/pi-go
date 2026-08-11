@@ -50,7 +50,8 @@ func TestTreeOrphanBecomesRoot(t *testing.T) {
 
 func TestTreeChildrenSortedByCreatedAt(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	// Appended out of timestamp order; Tree must sort children by CreatedAt.
+	// The entries are appended out of timestamp order. Tree must sort the
+	// children by CreatedAt.
 	entries := []session.Entry{
 		treeMsg("e1", "", base),
 		treeMsg("late", "e1", base.Add(5*time.Second)),

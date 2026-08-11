@@ -14,13 +14,14 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 )
 
-// This file implements the "reuse the Claude Code login" credential tier: pick
-// up an existing Claude Pro/Max subscription login that the official Claude CLI
-// already obtained, with zero configuration.
+// This file implements the "reuse the Claude Code login" credential tier. It
+// uses an existing Claude Pro or Max subscription login that the official
+// Claude CLI already obtained. This tier needs no configuration.
 //
-// We re-read the CLI's own credential store rather than running our own OAuth
-// refresh, so we need no client ID and never rotate (and thus never invalidate)
-// the CLI's refresh token. See claudeReReadRefresher.
+// This file reads the credential store of the CLI again instead of running its
+// own OAuth refresh. As a result, it needs no client ID. It also never rotates
+// the refresh token of the CLI, so it never invalidates that token. See
+// claudeReReadRefresher.
 
 // claudeKeychainService is the macOS Keychain service name under which Claude
 // Code stores its OAuth credentials. The account is the local macOS username,
@@ -28,25 +29,26 @@ import (
 const claudeKeychainService = "Claude Code-credentials"
 
 // DetectClaudeCLI builds a provider from an existing Claude Code login and
-// reports whether one was found. It reads the CLI's own credential store (the
-// macOS login Keychain, then ~/.claude/.credentials.json) and re-reads it on
-// refresh rather than running its own OAuth rotation.
+// reports whether it found one. It reads the credential store of the CLI: the
+// macOS login Keychain first, then ~/.claude/.credentials.json. On refresh, it
+// reads that store again instead of running its own OAuth rotation.
 func DetectClaudeCLI() (*Provider, bool) {
 	src := claudeCLISource{}
 	creds, err := src.load()
 	if err != nil {
 		return nil, false
 	}
-	// Empty clientID is intentional: the re-read refresher replaces the
-	// default HTTP refresher, so no client ID is needed.
+	// The empty clientID is intentional. The re-read refresher replaces the
+	// default HTTP refresher, so the provider needs no client ID.
 	return New(WithOAuth("", creds, oauth.WithRefresher(claudeReReadRefresher(src)))), true
 }
 
-// claudeCLISource reads Claude Code's OAuth credentials. On macOS it tries the
-// login Keychain first, then falls back to ~/.claude/.credentials.json.
+// claudeCLISource reads the OAuth credentials of Claude Code. On macOS it
+// tries the login Keychain first. If that read fails, it uses
+// ~/.claude/.credentials.json.
 type claudeCLISource struct {
-	// path overrides the credentials file (for tests). When set, the
-	// Keychain is skipped.
+	// path overrides the credentials file (for tests). If path is set, the
+	// source does not read the Keychain.
 	path string
 	// readKeychain overrides Keychain access (for tests).
 	readKeychain func() ([]byte, error)
@@ -69,7 +71,7 @@ func (s claudeCLISource) read() ([]byte, error) {
 		if data, err := read(); err == nil {
 			return data, nil
 		}
-		// Fall through to the on-disk file.
+		// Continue to the file on disk.
 	}
 
 	path := s.path
@@ -83,7 +85,7 @@ func (s claudeCLISource) read() ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// readClaudeKeychain reads Claude Code's credential blob from the macOS
+// readClaudeKeychain reads the credential blob of Claude Code from the macOS
 // login Keychain.
 func readClaudeKeychain() ([]byte, error) {
 	out, err := exec.Command(
@@ -98,9 +100,10 @@ func readClaudeKeychain() ([]byte, error) {
 	return bytes.TrimSpace(out), nil
 }
 
-// parseClaudeCreds maps Claude Code's credential JSON to [oauth.Credentials].
-// The schema is {"claudeAiOauth":{"accessToken","refreshToken","expiresAt"}}
-// where expiresAt is Unix milliseconds.
+// parseClaudeCreds maps the credential JSON of Claude Code to
+// [oauth.Credentials]. The schema is
+// {"claudeAiOauth":{"accessToken","refreshToken","expiresAt"}}. The expiresAt
+// field holds Unix milliseconds.
 func parseClaudeCreds(data []byte) (oauth.Credentials, error) {
 	var doc struct {
 		ClaudeAIOAuth struct {
@@ -128,11 +131,11 @@ func parseClaudeCreds(data []byte) (oauth.Credentials, error) {
 	return creds, nil
 }
 
-// claudeReReadRefresher returns a [oauth.TokenRefresher] that re-reads
-// credentials from Claude Code's own store. The CLI refreshes its tokens in the
-// background; we pick up the latest rather than running our own refresh. If the
-// re-read token is also expired, it returns an error directing the user to
-// re-authenticate with the CLI.
+// claudeReReadRefresher returns an [oauth.TokenRefresher] that reads the
+// credentials from the store of Claude Code again. The CLI refreshes its tokens
+// in the background. The refresher takes the latest tokens instead of running
+// its own refresh. If the new token is also expired, the refresher returns an
+// error that tells the user to authenticate again with the CLI.
 func claudeReReadRefresher(src claudeCLISource) oauth.TokenRefresher {
 	return oauth.TokenRefresherFunc(func(_ context.Context, _ oauth.Credentials) (oauth.Credentials, error) {
 		creds, err := src.load()

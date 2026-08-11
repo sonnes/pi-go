@@ -2,17 +2,18 @@ package session
 
 import "sort"
 
-// Node is one node of the derived transcript tree, for navigation
-// and display. Children are sorted by CreatedAt, oldest first.
+// Node is one node of the derived transcript tree. Callers use it to
+// navigate the transcript and to show it. Children are sorted by
+// CreatedAt, oldest first.
 type Node struct {
 	Entry    Entry
 	Children []*Node
 }
 
 // Tree derives the transcript tree from an append-ordered entry log.
-// A well-formed session has exactly one root; entries whose ParentID
-// names no known entry are returned as additional roots. Children are
-// sorted by CreatedAt, oldest first.
+// A well-formed session has exactly one root. If the ParentID of an
+// entry names no known entry, Tree returns that entry as an additional
+// root. Children are sorted by CreatedAt, oldest first.
 func Tree(entries []Entry) []*Node {
 	known := make(map[string]bool, len(entries))
 	for _, e := range entries {

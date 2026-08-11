@@ -16,9 +16,9 @@ import (
 // The page can override it per command.
 const DefaultLiveModel = "inclusionai/ling-3.0-flash:free"
 
-// baseURL is required: NewForOpenRouter selects the dialect but leaves
-// the endpoint to the caller, so without this the SDK's default sends
-// the request to api.openai.com with an OpenRouter key.
+// baseURL is required. NewForOpenRouter selects the dialect, but it
+// leaves the endpoint to the caller. Without baseURL, the default of the
+// SDK sends the request to api.openai.com with an OpenRouter key.
 const baseURL = "https://openrouter.ai/api/v1"
 
 // referer identifies this app to OpenRouter for attribution. It is not
@@ -28,13 +28,13 @@ const (
 	appName = "pi-go demo"
 )
 
-// useKey switches the demo to live mode against OpenRouter using a key
-// the visitor supplied — from the PKCE flow or pasted by hand. The key
-// never leaves the browser: it goes straight into the provider that
-// runs inside this wasm module.
+// useKey switches the demo to live mode against OpenRouter. It uses a key
+// from the visitor, either from the PKCE flow or pasted by hand. The key
+// never leaves the browser. It goes straight into the provider that runs
+// inside this wasm module.
 //
-// Switching starts a fresh session rather than continuing the scripted
-// one, so a transcript is never half canned and half real.
+// The switch starts a fresh session. It does not continue the scripted
+// session, so a transcript is never half canned and half real.
 func (d *Demo) useKey(ctx context.Context, key, model string) error {
 	if key == "" {
 		return errors.New("demo: live mode needs an OpenRouter key")

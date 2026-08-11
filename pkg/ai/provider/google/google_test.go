@@ -316,7 +316,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 		},
 	}
 
-	// First turn: model should call the tool.
+	// First turn: the model calls the tool.
 	firstMsg, err := p.StreamText(
 		context.Background(),
 		model,
@@ -341,7 +341,7 @@ func TestToolCallMultiTurn(t *testing.T) {
 	}
 	require.NotNil(t, toolCall, "first turn should produce a tool call")
 
-	// Second turn: provide tool result and get final text.
+	// Second turn: send the tool result and get the final text.
 	secondMsg, err := p.StreamText(
 		context.Background(),
 		model,
@@ -435,7 +435,7 @@ func TestStreamEventSequence(t *testing.T) {
 
 	require.NotEmpty(t, eventTypes, "should have received events")
 
-	// Verify TextStart comes before any TextDelta.
+	// Make sure that TextStart comes before any TextDelta.
 	var firstStart, firstDelta int
 	for i, et := range eventTypes {
 		if et == ai.EventTextStart {
@@ -451,7 +451,7 @@ func TestStreamEventSequence(t *testing.T) {
 	}
 	assert.Less(t, firstStart, firstDelta, "TextStart should precede TextDelta")
 
-	// Verify the stream completes with a final message.
+	// Make sure that the stream ends with a final message.
 	msg, err := stream.Wait()
 	require.NoError(t, err)
 	require.NotNil(t, msg, "expected final message")

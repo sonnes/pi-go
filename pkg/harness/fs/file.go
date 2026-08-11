@@ -11,22 +11,22 @@ import (
 	"github.com/sonnes/pi-go/pkg/harness/def"
 )
 
-// skillFile is the file a skill directory is defined by.
+// skillFile is the file that defines a skill directory.
 const skillFile = "SKILL.md"
 
 // AgentFile reads one agent definition from a markdown file with YAML
 // frontmatter: name, description, model, and tools in the block, the
-// agent's prompt in the body.
+// prompt of the agent in the body.
 //
 // The name defaults to the file name without its extension, so a file
 // at agents/reviewer.md needs no name key.
 //
-// It takes an [io/fs.FS] rather than a path so definitions can be
-// embedded with [embed.FS] as easily as read from disk.
+// It takes an [io/fs.FS] rather than a path. Definitions in an [embed.FS]
+// then resolve exactly like definitions on disk.
 //
 // A malformed file — no frontmatter block, an unterminated one, YAML
-// that will not unmarshal — is an error here, because a caller naming
-// one file asked about that file. [Agents], which walks a tree the user
+// that will not unmarshal — is an error here. A caller that names one
+// file asked about that file. [Agents], which walks a tree the user
 // authors, skips such a file instead.
 func AgentFile(fsys iofs.FS, filePath string) (def.Agent, error) {
 	data, err := iofs.ReadFile(fsys, filePath)
@@ -62,9 +62,9 @@ func AgentFile(fsys iofs.FS, filePath string) (def.Agent, error) {
 	}, nil
 }
 
-// MustAgentFile is [AgentFile] for definitions embedded at build time,
-// where a malformed file is a programming error rather than something
-// to handle. It panics on failure.
+// MustAgentFile is [AgentFile] for definitions embedded at build time. A
+// malformed file there is a programming error, not something to handle.
+// MustAgentFile panics on an error.
 func MustAgentFile(fsys iofs.FS, filePath string) def.Agent {
 	a, err := AgentFile(fsys, filePath)
 	if err != nil {
@@ -73,22 +73,22 @@ func MustAgentFile(fsys iofs.FS, filePath string) def.Agent {
 	return a
 }
 
-// SkillDir reads one skill from a directory containing a SKILL.md. The
-// whole file is read: frontmatter into the metadata, body into
-// [def.Skill.Body]. The body stays out of the system prompt regardless
-// — it reaches the conversation through the skill tool — so eagerness
-// here costs prompt tokens nothing.
+// SkillDir reads one skill from a directory that holds a SKILL.md. It
+// reads the whole file: frontmatter into the metadata, body into
+// [def.Skill.Body]. The body stays out of the system prompt anyway,
+// because it reaches the conversation through the skill tool. An eager
+// read here therefore costs no prompt tokens.
 //
 // The name defaults to the directory name.
 //
-// [def.Skill.Dir] is left empty: an [io/fs.FS] path is not something
-// an agent can reach in general. [SkillsAt] resolves skills from a
+// SkillDir leaves [def.Skill.Dir] empty, because an agent cannot reach
+// an [io/fs.FS] path in general. [SkillsAt] resolves skills from a
 // directory on disk and fills Dir with the absolute path.
 //
 // A malformed SKILL.md — no frontmatter block, an unterminated one,
-// YAML that will not unmarshal — is an error here, because a caller
-// naming one directory asked about that skill. [Skills], which walks a
-// tree the user authors, skips such a file instead.
+// YAML that will not unmarshal — is an error here. A caller that names
+// one directory asked about that skill. [Skills], which walks a tree the
+// user authors, skips such a file instead.
 func SkillDir(fsys iofs.FS, dir string) (def.Skill, error) {
 	filePath := path.Join(dir, skillFile)
 	data, err := iofs.ReadFile(fsys, filePath)

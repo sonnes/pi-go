@@ -19,11 +19,11 @@ const TokenEndpoint = "https://auth.openai.com/oauth/token"
 
 // Refresher implements [oauth.TokenRefresher] for OpenAI OAuth.
 type Refresher struct {
-	// Client is the HTTP client used for token requests.
-	// If nil, [http.DefaultClient] is used.
+	// Client is the HTTP client for the token requests.
+	// If Client is nil, the Refresher uses [http.DefaultClient].
 	Client *http.Client
-	// TokenURL overrides the default OpenAI token endpoint.
-	// If empty, [TokenEndpoint] is used.
+	// TokenURL replaces the default OpenAI token endpoint.
+	// If TokenURL is empty, the Refresher uses [TokenEndpoint].
 	TokenURL string
 	// ClientID is the OAuth client ID. Required.
 	ClientID string
@@ -88,7 +88,7 @@ func (r *Refresher) RefreshToken(ctx context.Context, creds oauth.Credentials) (
 		return oauth.Credentials{}, fmt.Errorf("oauth: decode refresh response: %w", err)
 	}
 
-	// Preserve the refresh token if the response doesn't include a new one.
+	// If the response holds no new refresh token, keep the old one.
 	refreshToken := tokenResp.RefreshToken
 	if refreshToken == "" {
 		refreshToken = creds.RefreshToken
@@ -102,8 +102,8 @@ func (r *Refresher) RefreshToken(ctx context.Context, creds oauth.Credentials) (
 	}, nil
 }
 
-// NewOAuthTransport creates an [oauth.Transport] configured for OpenAI
-// OAuth with automatic token refresh.
+// NewOAuthTransport creates an [oauth.Transport] for OpenAI OAuth. The
+// transport refreshes the token automatically.
 func NewOAuthTransport(clientID string, creds oauth.Credentials, opts ...oauth.TransportOption) *oauth.Transport {
 	defaults := []oauth.TransportOption{
 		oauth.WithRefresher(&Refresher{ClientID: clientID}),
@@ -111,8 +111,8 @@ func NewOAuthTransport(clientID string, creds oauth.Credentials, opts ...oauth.T
 	return oauth.NewTransport(creds, append(defaults, opts...)...)
 }
 
-// NewWithOAuth creates a new OpenAI provider configured for OAuth Bearer
-// token authentication with automatic token refresh.
+// NewWithOAuth creates an OpenAI provider that authenticates with an OAuth
+// Bearer token. The provider refreshes the token automatically.
 func NewWithOAuth(clientID string, creds oauth.Credentials, oauthOpts ...oauth.TransportOption) *Provider {
 	transport := NewOAuthTransport(clientID, creds, oauthOpts...)
 	return New(option.WithHTTPClient(&http.Client{Transport: transport}))

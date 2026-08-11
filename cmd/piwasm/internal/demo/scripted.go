@@ -9,25 +9,25 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Turn is one scripted model response: the text it streams, and
-// optionally the tool it asks for.
+// Turn is one scripted model response. It holds the text to stream, and
+// the tool to ask for. The tool is optional.
 type Turn struct {
 	Text string
 	Tool *ai.ToolCall
 }
 
 // Scripted is an [ai.TextProvider] that replays a fixed script instead
-// of calling a model. It exists so the browser demo can run the real
-// agent loop — real tool dispatch, real session tree — with no
-// credentials, no network, and the same output every time.
+// of calling a model. The browser demo can therefore run the real agent
+// loop, with real tool dispatch and a real session tree. It needs no
+// credentials and no network, and it gives the same output every time.
 //
-// Turns are consumed in order, one per model call, so a run that ends
-// in a tool call spends two of them. Once the script is exhausted the
-// final turn repeats, which keeps a visitor clicking Run a fourth time
-// from falling off the end.
+// Each model call consumes one turn, in order. A run that ends in a tool
+// call spends two turns. When the script runs out, the final turn
+// repeats. A visitor who clicks Run a fourth time therefore stays inside
+// the script.
 type Scripted struct {
-	// Delay paces the text deltas so streaming is visible. Zero in
-	// tests, a few tens of milliseconds in the browser.
+	// Delay paces the text deltas, so the stream is visible. It is zero
+	// in tests, and a few tens of milliseconds in the browser.
 	Delay time.Duration
 
 	turns []Turn
@@ -43,8 +43,8 @@ func NewScripted(turns []Turn) *Scripted {
 	return &Scripted{turns: turns}
 }
 
-// next returns the turn for this call, repeating the last one once the
-// script runs out.
+// next returns the turn for this call. When the script runs out, it
+// repeats the last turn.
 func (s *Scripted) next() Turn {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -78,8 +78,8 @@ func (s *Scripted) StreamText(
 	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
 		push(ai.Event{Type: ai.EventTextStart})
 
-		// Words carry their trailing space so a consumer that
-		// concatenates every delta reconstructs the text exactly.
+		// Each word carries its trailing space. A consumer that joins
+		// every delta therefore rebuilds the text exactly.
 		for i, word := range strings.SplitAfter(turn.Text, " ") {
 			if err := ctx.Err(); err != nil {
 				return nil, err

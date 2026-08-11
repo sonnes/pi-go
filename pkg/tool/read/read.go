@@ -19,13 +19,13 @@ import (
 )
 
 // Description is the default tool documentation, embedded from
-// description.md. Clients register the tool under any name and may pass
-// this (or their own text) as the description.
+// description.md. A client registers the tool under any name. The client
+// can pass this text, or its own text, as the description.
 //
 //go:embed description.md
 var Description string
 
-// ToolName is the suggested default registry name for this tool.
+// ToolName is the default name for this tool in the registry.
 const ToolName = "read"
 
 const (
@@ -42,31 +42,33 @@ type Input struct {
 	Path   string `json:"path" jsonschema:"Path to the file to read. Absolute, or relative to the working directory."`
 }
 
-// fsys is the filesystem the Read tool reads from: it opens files and
-// resolves user paths against its own root, so no separate working
-// directory is needed.
+// fsys is the filesystem that the Read tool reads from. It opens files and
+// resolves user paths against its own root. The tool needs no separate
+// working directory.
 type fsys interface {
 	fs.FS
 	Resolve(path string) (string, error)
 }
 
-// reader reads files from a confined filesystem. It carries only the
-// tool's real dependency — identity (name, description) belongs to the
-// client that registers it.
+// reader reads files from a confined filesystem. It holds only the
+// tool's real dependency. Identity (name, description) belongs to the
+// client that registers the tool.
 type reader struct{ fsys fsys }
 
 // Option configures a Read tool.
 type Option interface{ apply(*reader) }
 
-// FS sets the filesystem the tool reads from. It resolves and confines
-// paths against its own root (e.g. a sandbox.FS).
+// FS sets the filesystem that the tool reads from, for example a
+// sandbox.FS. The filesystem resolves and confines paths against its own
+// root.
 type FS struct{ FS fsys }
 
 func (f FS) apply(r *reader) { r.fsys = f.FS }
 
-// New returns the Read tool's runner: it reads a file and returns the
-// contents (or a media result for images and PDFs). Pass it to
-// [ai.DefineTool]/[ai.DefineParallelTool] with a name and description.
+// New returns the Read tool's runner. The runner reads a file and returns
+// the contents. For images and PDFs, the runner returns a media result.
+// Pass the runner to [ai.DefineTool]/[ai.DefineParallelTool] with a name
+// and description.
 func New(opts ...Option) func(context.Context, Input) (ai.ToolResult, error) {
 	r := &reader{}
 	for _, o := range opts {
@@ -260,16 +262,18 @@ func unescapePDFLiteral(s string) string {
 	return replacer.Replace(s)
 }
 
-// Format renders the contents of r the same way the Read tool's on-disk
-// path does — six-wide right-justified line numbers, tab, then the line,
-// with [MaxLineLength] per-line truncation and the "(empty file)"
-// sentinel. Callers that already have a buffer in memory (e.g. attachment
-// renderers) can pass `strings.NewReader(content)` to render it as if
-// Read had been called on the path.
+// Format formats the contents of r the same way that the on-disk path of
+// the Read tool does. Each line gets a six-wide right-justified line
+// number, a tab, then the line text. Format truncates each line at
+// [MaxLineLength]. If the result holds no lines, Format returns the
+// "(empty file)" sentinel. A caller that already holds a buffer in memory,
+// for example an attachment renderer, can pass
+// `strings.NewReader(content)`. The result is the same as a Read call on
+// the path.
 //
-// offset is zero-based and skips that many leading lines; limit caps the
-// number of emitted lines. Non-positive offset/limit are normalized to
-// "no skip" / [DefaultLimit].
+// offset is zero-based. Format skips that many leading lines. limit caps
+// the number of emitted lines. A negative offset becomes zero. A limit
+// that is not positive becomes [DefaultLimit].
 func Format(r io.Reader, offset, limit int) (string, error) {
 	if offset < 0 {
 		offset = 0

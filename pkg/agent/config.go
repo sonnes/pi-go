@@ -2,12 +2,14 @@ package agent
 
 import "github.com/sonnes/pi-go/pkg/ai"
 
-// Config is a snapshot of the configuration applied by a set of [Option]
-// values — the exported view of the internal config, for sub-packages
-// that read options without importing unexported types.
+// Config is a snapshot of the configuration that a set of [Option] values
+// applies. It is the exported view of the internal config type. A
+// sub-package uses it to read the options without an import of unexported
+// types.
 //
-// Extensions holds values set by [WithExtension]/[WithExtensionMutator],
-// keyed by the owning sub-package (by convention its package name).
+// Extensions holds the values that [WithExtension] and
+// [WithExtensionMutator] set. The key is the owning sub-package. By
+// convention the key is the name of that package.
 type Config struct {
 	Tools        []ai.Tool
 	History      []ai.Message
@@ -19,7 +21,7 @@ type Config struct {
 }
 
 // ApplyOptions applies opts and returns the resulting [Config] snapshot.
-// The model is passed separately to [New], not via options.
+// The model goes to [New] as a separate argument, not through an option.
 func ApplyOptions(opts ...Option) Config {
 	c := config{}
 	for _, opt := range opts {
@@ -36,9 +38,9 @@ func ApplyOptions(opts ...Option) Config {
 	}
 }
 
-// Options bundles several options into one. A sub-package minting
-// options into the shared currency often has more than one to
-// contribute but only a single [Option] to return:
+// Options bundles several options into one. A sub-package that creates
+// options often has more than one to contribute, but it can return only
+// a single [Option]:
 //
 //	func WithDirs(dirs ...string) agent.Option {
 //	    opts := make([]agent.Option, 0, len(dirs))
@@ -48,8 +50,8 @@ func ApplyOptions(opts ...Option) Config {
 //	    return agent.Options(opts...)
 //	}
 //
-// The bundled options apply in place, in order, so they interleave with
-// their neighbours exactly as if they had been passed inline.
+// The bundled options apply in place and in order. They interleave with
+// their neighbors exactly as if the caller passed each one inline.
 func Options(opts ...Option) Option {
 	return func(c *config) {
 		for _, opt := range opts {
@@ -59,6 +61,7 @@ func Options(opts ...Option) Option {
 }
 
 // Factory builds an [Agent] from a "<kind>/<model>" spec and options. The
-// catalog stores one per custom agent kind (e.g. the subprocess CLIs) and
-// routes to it by the spec's kind prefix.
+// catalog stores one factory for each custom agent kind, for example the
+// subprocess CLIs. It routes to the factory by the kind prefix of the
+// spec.
 type Factory func(spec string, opts ...Option) (Agent, error)

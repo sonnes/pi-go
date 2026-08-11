@@ -23,12 +23,12 @@ import (
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Provider implements ai.TextProvider for OpenAI's chat completions API.
+// Provider implements ai.TextProvider for the OpenAI chat completions API.
 type Provider struct {
 	client *openai.Client
 }
 
-// Verify interface compliance.
+// Compile-time interface checks.
 var (
 	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
@@ -38,14 +38,15 @@ var (
 // ID is the OpenAI chat completions provider identity.
 const ID = "openai-completions"
 
-// New creates a new OpenAI provider.
+// New creates an OpenAI provider.
 func New(opts ...option.RequestOption) *Provider {
 	opts = append([]option.RequestOption{option.WithMaxRetries(0)}, opts...)
 	client := openai.NewClient(opts...)
 	return &Provider{client: &client}
 }
 
-// Detect builds a provider from OPENAI_API_KEY and reports whether it was set.
+// Detect builds a provider from OPENAI_API_KEY and reports whether that
+// variable is set.
 func Detect() (*Provider, bool) {
 	key := os.Getenv("OPENAI_API_KEY")
 	if key == "" {
@@ -319,9 +320,10 @@ func buildParams(
 		}
 	}
 
-	// Forward the session ID as OpenAI's prompt_cache_key for cache affinity.
-	// OpenAI caching is automatic; the key only strengthens prefix matching
-	// across requests. Suppressed when caching is explicitly disabled.
+	// Forward the session ID as the OpenAI prompt_cache_key for cache
+	// affinity. OpenAI caches automatically. The key only improves prefix
+	// matching across requests. If the caller turns caching off, the request
+	// omits the key.
 	cacheRetention := ai.ResolveCacheRetention(opts.CacheRetention)
 	if cacheRetention != ai.CacheRetentionNone && opts.SessionID != "" {
 		params.PromptCacheKey = param.NewOpt(opts.SessionID)
@@ -385,8 +387,9 @@ func buildFinalMessage(
 	}
 }
 
-// extractReasoning pulls reasoning content from a chat completion delta.
-// The OpenAI SDK doesn't have a typed field for this, so we check JSON extras.
+// extractReasoning reads the reasoning content from a chat completion delta.
+// The OpenAI SDK has no typed field for it, so this function reads the JSON
+// extra fields.
 func extractReasoning(delta openai.ChatCompletionChunkChoiceDelta) string {
 	if f, ok := delta.JSON.ExtraFields["reasoning_content"]; ok {
 		raw := f.Raw()
@@ -409,7 +412,7 @@ func extractReasoning(delta openai.ChatCompletionChunkChoiceDelta) string {
 	return ""
 }
 
-// GenerateObject generates a structured object using strict JSON Schema mode.
+// GenerateObject generates a structured object in strict JSON Schema mode.
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,
@@ -475,8 +478,8 @@ func (p *Provider) GenerateObject(
 	}, nil
 }
 
-// schemaToMap converts a jsonschema-go value to the OpenAI SDK's generic
-// JSON-schema representation.
+// schemaToMap converts a jsonschema-go value to the generic JSON schema
+// representation of the OpenAI SDK.
 func schemaToMap(schema *jsonschema.Schema) (map[string]any, error) {
 	data, err := json.Marshal(schema)
 	if err != nil {
@@ -491,7 +494,7 @@ func schemaToMap(schema *jsonschema.Schema) (map[string]any, error) {
 	return result, nil
 }
 
-// GenerateImage generates images using OpenAI's image API.
+// GenerateImage generates images with the OpenAI image API.
 func (p *Provider) GenerateImage(
 	ctx context.Context,
 	model ai.Model,

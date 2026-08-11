@@ -1,7 +1,7 @@
-// Package stream provides a generic single-run event stream connecting
-// one producer goroutine to one consumer, with dual consumption
-// patterns: iterate individual events via [Stream.Events], or block for
-// the final result via [Stream.Wait].
+// Package stream provides a generic single-run event stream. The stream
+// connects one producer goroutine to one consumer. It supports two
+// consumption patterns: iterate individual events with [Stream.Events],
+// or block for the final result with [Stream.Wait].
 package stream
 
 import (
@@ -9,13 +9,13 @@ import (
 	"sync"
 )
 
-// Stream carries events of type T from a producer to a single
-// consumer, ending with a final result of type R.
+// Stream carries events of type T from a producer to a single consumer.
+// It ends with a final result of type R.
 //
-// A Stream is single-consumer: consume it from one goroutine. Breaking
-// out of Events early does not stop the producer — it keeps running to
-// completion with subsequent pushes dropped; use Wait to block until it
-// finishes.
+// A Stream has one consumer. Consume it from one goroutine. An early
+// break out of Events does not stop the producer. The producer runs to
+// completion, and the stream discards the later pushes. Use Wait to
+// block until the producer finishes.
 type Stream[T, R any] struct {
 	ch       chan T
 	stop     chan struct{}
@@ -24,9 +24,9 @@ type Stream[T, R any] struct {
 	err      error
 }
 
-// New runs fn in a goroutine, delivering pushed events to the stream's
-// consumer. The values fn returns become the stream's final result,
-// returned by [Stream.Wait].
+// New runs fn in a goroutine and delivers pushed events to the consumer
+// of the stream. The values that fn returns become the final result of
+// the stream, which [Stream.Wait] returns.
 func New[T, R any](fn func(push func(T)) (R, error)) *Stream[T, R] {
 	s := &Stream[T, R]{
 		ch:   make(chan T, 16),
@@ -44,9 +44,9 @@ func New[T, R any](fn func(push func(T)) (R, error)) *Stream[T, R] {
 	return s
 }
 
-// Events returns an iterator over the stream's events. If the producer
-// fails, the final iteration yields a zero T with the producer's error;
-// otherwise the yielded error is always nil.
+// Events returns an iterator over the events of the stream. If the
+// producer fails, the final iteration yields a zero T with the error of
+// the producer. In every other case, the yielded error is nil.
 func (s *Stream[T, R]) Events() iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		for e := range s.ch {
@@ -62,9 +62,9 @@ func (s *Stream[T, R]) Events() iter.Seq2[T, error] {
 	}
 }
 
-// Wait blocks until the producer completes, discarding any remaining
-// events, and returns the final result. On failure it returns whatever
-// partial result the producer returned along with its error.
+// Wait blocks until the producer completes and discards any remaining
+// events. It returns the final result. If the producer fails, Wait
+// returns the partial result of the producer with its error.
 func (s *Stream[T, R]) Wait() (R, error) {
 	s.abandon()
 	for range s.ch {
@@ -72,8 +72,8 @@ func (s *Stream[T, R]) Wait() (R, error) {
 	return s.result, s.err
 }
 
-// abandon stops event delivery: subsequent pushes from the producer
-// are dropped instead of blocking on an unread channel.
+// abandon stops event delivery. The stream discards later pushes from
+// the producer, and the producer does not block on an unread channel.
 func (s *Stream[T, R]) abandon() {
 	s.stopOnce.Do(func() { close(s.stop) })
 }

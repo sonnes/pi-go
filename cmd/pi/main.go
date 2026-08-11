@@ -4,8 +4,8 @@
 //
 //	pi [flags] [prompt]
 //
-// If no prompt is given, it reads from stdin line by line for
-// interactive multi-turn conversation.
+// If you give no prompt, pi reads stdin line by line. Each line is one
+// turn of an interactive conversation.
 package main
 
 import (
@@ -30,10 +30,11 @@ import (
 	"github.com/sonnes/pi-go/pkg/pi"
 )
 
-// init wires the CLI-subprocess agents so pi.Default routes "claude/…",
-// "codex/…", and "cursor/…" specs to them, and registers the pi-CLI
-// credential detectors (stored `pi login` credentials and reused
-// official-CLI logins) ahead of pkg/pi's built-in environment detectors.
+// init wires the CLI-subprocess agents. pi.Default then routes the
+// "claude/…", "codex/…", and "cursor/…" specs to them. init also registers
+// the pi-CLI credential detectors ahead of the built-in environment
+// detectors of pkg/pi. Those detectors read the credentials that `pi login`
+// stored, and the logins reused from the official CLIs.
 func init() {
 	pi.Default.RegisterAgent("claude", claude.Factory())
 	pi.Default.RegisterAgent("codex", codexagent.Factory())
@@ -100,7 +101,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		}
 	}()
 
-	// Single-shot if prompt provided as args.
+	// If the args hold a prompt, run that one prompt and stop.
 	if args := cmd.Args(); args.Len() > 0 {
 		prompt := strings.Join(args.Slice(), " ")
 		return runPrompt(ctx, a, prompt)
@@ -174,11 +175,11 @@ func createAPIAgent(model string, turns int, serverToolsSpec, providerHint strin
 }
 
 // selectAPISpec resolves an api-mode model to a "<provider>/<model>" catalog
-// spec, registering the provider and the requested model in pi.Default so the
-// spec resolves. A "claude-cli/", "codex-cli/", or "cursor-cli/" prefix picks
-// the matching stateless subprocess provider; anything else auto-detects
-// credentials via pkg/pi (honoring providerHint), with the spec used verbatim
-// as the model ID.
+// spec. It registers the provider and the requested model in pi.Default, so
+// the spec resolves. A "claude-cli/", "codex-cli/", or "cursor-cli/" prefix
+// picks the matching stateless subprocess provider. For any other model,
+// pkg/pi auto-detects the credentials and honors providerHint. The model
+// string is then the model ID itself.
 func selectAPISpec(model, providerHint string) (string, error) {
 	register := func(providerID string, p ai.TextProvider, id string) string {
 		pi.Default.RegisterTextProvider(
@@ -249,8 +250,8 @@ const codexCLIModelPrefix = "codex-cli/"
 const cursorCLIModelPrefix = "cursor-cli/"
 
 // parseServerTools converts a comma-separated list of server-tool names
-// (e.g. "web_search,code_execution") into [ai.Tool] entries built via
-// [ai.DefineServerTool]. Empty input returns nil.
+// (for example, "web_search,code_execution") into [ai.Tool] entries. It
+// builds each entry with [ai.DefineServerTool]. Empty input returns nil.
 func parseServerTools(spec string) ([]ai.Tool, error) {
 	if spec == "" {
 		return nil, nil
@@ -283,7 +284,8 @@ func parseServerTools(spec string) ([]ai.Tool, error) {
 	return tools, nil
 }
 
-// runPrompt sends one prompt and streams the run's events until it ends.
+// runPrompt sends one prompt. It streams the events of the run until the
+// run ends.
 func runPrompt(ctx context.Context, a agent.Agent, prompt string) error {
 	s := a.Run(ctx, ai.UserMessage(prompt))
 	for evt, err := range s.Events() {
@@ -295,9 +297,9 @@ func runPrompt(ctx context.Context, a agent.Agent, prompt string) error {
 	return nil
 }
 
-// ANSI colors for stderr event log. Always emitted — modern terminals
-// handle them, and they remain readable when stderr is redirected to a
-// file or piped through `less -R`.
+// ANSI colors for the stderr event log. The CLI always writes them, because
+// modern terminals handle them. The output stays readable when stderr goes
+// to a file, or through `less -R`.
 const (
 	colorReset  = "\033[0m"
 	colorDim    = "\033[2m"
@@ -309,9 +311,9 @@ const (
 	colorCyan   = "\033[36m"
 )
 
-// logEvent writes one bracketed, colorized event line to stderr. Empty
-// fields are skipped so callers can pass conditional values without
-// pre-filtering.
+// logEvent writes one bracketed, colorized event line to stderr. It skips
+// empty fields. A caller can therefore pass conditional values without a
+// filter step.
 func logEvent(color, label string, fields ...string) {
 	var b strings.Builder
 	b.WriteString(color)
@@ -336,8 +338,8 @@ func optField(key, val string) string {
 	return key + "=" + val
 }
 
-// totalTokens sums every token category [ai.Usage] reports. The categories
-// are disjoint, so this is the grand total for a call.
+// totalTokens returns the sum of every token category that [ai.Usage]
+// reports. The categories do not overlap, so the sum is the total for a call.
 func totalTokens(u ai.Usage) int {
 	return u.Input +
 		u.Output +
@@ -348,7 +350,8 @@ func totalTokens(u ai.Usage) int {
 		u.OutputAudio
 }
 
-// totalCost sums every cost category [ai.UsageCost] reports, in USD.
+// totalCost returns the sum of every cost category that [ai.UsageCost]
+// reports, in USD.
 func totalCost(u ai.Usage) float64 {
 	return u.Cost.Input +
 		u.Cost.Output +
@@ -384,9 +387,9 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-// printServerToolCall renders a provider-executed server-tool call to
-// stderr — name, arguments, and a truncated rendering of its Output
-// (when present).
+// printServerToolCall writes one server-tool call to stderr. The provider
+// runs these calls. The line holds the name, the arguments, and a truncated
+// form of Output. Output is optional.
 func printServerToolCall(tc ai.ToolCall) {
 	name := string(tc.ServerType)
 	if name == "" {
@@ -416,8 +419,8 @@ func handleEvent(evt agent.Event) {
 		logEvent(colorBlue, "agent:start", optField("sid", evt.SessionID))
 
 	case agent.EventAgentEnd:
-		// Insert a blank line so streamed assistant text on stdout
-		// doesn't visually run into the trailing meta block.
+		// Insert a blank line. Without it, streamed assistant text on
+		// stdout merges with the trailing meta block.
 		fmt.Fprintln(os.Stderr)
 		if totalTokens(evt.Usage) > 0 {
 			logEvent(colorGreen, "usage", usageFields(evt.Usage)...)
@@ -428,15 +431,15 @@ func handleEvent(evt agent.Event) {
 		logEvent(colorDim, "turn:start")
 
 	case agent.EventTurnEnd:
-		// Streamed assistant text on stdout doesn't end in \n; insert
-		// one on stderr so the bracketed event lands on its own line.
+		// Streamed assistant text on stdout does not end in \n. Write
+		// one to stderr, so the bracketed event gets its own line.
 		fmt.Fprintln(os.Stderr)
 		logEvent(colorDim, "turn:end")
 
 	case agent.EventMessageStart:
 		if evt.Message != nil && evt.Message.Role == ai.RoleAssistant {
-			// For non-streaming agents (claude subprocess), the full
-			// text arrives at message_start. Print it.
+			// For a non-streaming agent (the claude subprocess), the
+			// full text arrives at message_start. Print it.
 			if text := evt.Message.Text(); text != "" {
 				fmt.Print(text)
 			}
@@ -448,9 +451,9 @@ func handleEvent(evt agent.Event) {
 		}
 
 	case agent.EventMessageEnd:
-		// Surface provider-executed server-tool calls that bypassed
-		// EventToolExecution* (those events fire only for client-side
-		// function tools).
+		// Show the server-tool calls that the provider ran and that
+		// skipped EventToolExecution*. Those events fire only for
+		// client-side function tools.
 		if evt.Message != nil && evt.Message.Role == ai.RoleAssistant {
 			for _, c := range evt.Message.Content {
 				tc, ok := ai.AsContent[ai.ToolCall](c)

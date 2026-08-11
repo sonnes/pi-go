@@ -10,9 +10,9 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Events cross the wire in applications that stream a run to a browser,
-// so their keys are a contract — snake_case, like the rest of the
-// package, not Go field names.
+// Events cross the wire in applications that stream a run to a browser.
+// Their keys are therefore a contract. The keys are snake_case, like the
+// rest of the package, not Go field names.
 func TestEventJSONKeys(t *testing.T) {
 	evt := ai.Event{
 		Type:         ai.EventTextDelta,

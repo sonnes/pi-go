@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-// MemoryStore is an in-memory [Store] for tests and examples.
-// Safe for concurrent use; returned sessions and slices are copies, so
-// callers never share mutable state with the store.
+// MemoryStore is an in-memory [Store] for tests and examples. It is safe
+// for concurrent use. The returned sessions and slices are copies, so a
+// caller never shares mutable state with the store.
 type MemoryStore struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
@@ -41,8 +41,8 @@ func (s *MemoryStore) CreateSession(ctx context.Context, id, parentID string) er
 	return nil
 }
 
-// LoadSession returns a session's record, or [ErrSessionNotFound] if
-// the session does not exist.
+// LoadSession returns a session's record. If the session does not
+// exist, it returns [ErrSessionNotFound].
 func (s *MemoryStore) LoadSession(ctx context.Context, id string) (*Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

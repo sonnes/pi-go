@@ -11,8 +11,8 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/oauth"
 )
 
-// StoredCredential is the JSON-serializable form of [oauth.Credentials]
-// plus the client credentials needed for token refresh.
+// StoredCredential is the JSON-serializable form of [oauth.Credentials].
+// It also holds the client credentials for a token refresh.
 type StoredCredential struct {
 	AccessToken  string         `json:"access_token"`
 	RefreshToken string         `json:"refresh_token"`
@@ -35,8 +35,8 @@ func (s StoredCredential) ToOAuthCredentials() oauth.Credentials {
 	}
 }
 
-// FromOAuthCredentials creates a StoredCredential from [oauth.Credentials]
-// and the client ID/secret used during login.
+// FromOAuthCredentials creates a StoredCredential from [oauth.Credentials].
+// It also takes the client ID and the client secret from the login.
 func FromOAuthCredentials(
 	creds oauth.Credentials,
 	clientID string,
@@ -61,8 +61,8 @@ func authFilePath() (string, error) {
 	return filepath.Join(home, ".pigo", "auth.json"), nil
 }
 
-// LoadAuth reads credentials from the default auth file.
-// Returns an empty map if the file does not exist.
+// LoadAuth reads credentials from the default auth file. If the file does
+// not exist, LoadAuth returns an empty map.
 func LoadAuth() (StoredCredentials, error) {
 	path, err := authFilePath()
 	if err != nil {
@@ -80,8 +80,8 @@ func SaveAuth(creds StoredCredentials) error {
 	return SaveAuthTo(path, creds)
 }
 
-// LoadAuthFrom reads credentials from the given path.
-// Returns an empty map if the file does not exist.
+// LoadAuthFrom reads credentials from the given path. If the file does not
+// exist, LoadAuthFrom returns an empty map.
 func LoadAuthFrom(path string) (StoredCredentials, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -98,8 +98,8 @@ func LoadAuthFrom(path string) (StoredCredentials, error) {
 	return creds, nil
 }
 
-// SaveAuthTo writes credentials to the given path with mode 0600.
-// It creates parent directories as needed and writes atomically.
+// SaveAuthTo writes credentials to the given path with mode 0600. It creates
+// the parent directories if they are absent. The write is atomic.
 func SaveAuthTo(path string, creds StoredCredentials) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -111,7 +111,7 @@ func SaveAuthTo(path string, creds StoredCredentials) error {
 		return fmt.Errorf("auth: encode: %w", err)
 	}
 
-	// Atomic write: temp file then rename.
+	// Atomic write: write a temp file, then rename it.
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return fmt.Errorf("auth: write %s: %w", tmp, err)

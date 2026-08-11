@@ -20,13 +20,13 @@ import (
 )
 
 // Description is the default tool documentation, embedded from
-// description.md. Clients register the tool under any name and may pass
-// this (or their own text) as the description.
+// description.md. A client registers the tool under any name. The client
+// can pass this text, or its own text, as the description.
 //
 //go:embed description.md
 var Description string
 
-// ToolName is the suggested default registry name for this tool.
+// ToolName is the default name for this tool in the registry.
 const ToolName = "grep"
 
 // DefaultLimit is the default maximum number of matching lines returned.
@@ -43,38 +43,39 @@ type Input struct {
 	Literal    bool   `json:"literal,omitempty" jsonschema:"Treat the pattern as a literal string instead of a regular expression."`
 }
 
-// fsys is the filesystem the grep tool searches: it walks files and
+// fsys is the filesystem that the grep tool searches. It walks files and
 // resolves the search base against its own root.
 type fsys interface {
 	fs.FS
 	ResolveDir(path string) (string, error)
 }
 
-// rootFS is optionally implemented by an FS backed by a real OS directory.
-// When the configured FS implements it, grep shells out to ripgrep against
-// that directory for speed; otherwise it falls back to a pure-Go search.
+// rootFS is an optional interface for an FS that a real OS directory
+// backs. If the configured FS implements rootFS, grep runs ripgrep against
+// that directory for speed. If not, grep uses its own pure-Go search.
 type rootFS interface {
 	Root() string
 }
 
-// grepper searches a confined filesystem. It carries only the tool's real
-// dependency — identity (name, description) belongs to the client that
-// registers it.
+// grepper searches a confined filesystem. It holds only the tool's real
+// dependency. Identity (name, description) belongs to the client that
+// registers the tool.
 type grepper struct{ fsys fsys }
 
 // Option configures a grep tool.
 type Option interface{ apply(*grepper) }
 
-// FS sets the filesystem the tool searches. It resolves and confines
-// paths against its own root (e.g. a sandbox.FS).
+// FS sets the filesystem that the tool searches, for example a
+// sandbox.FS. The filesystem resolves and confines paths against its own
+// root.
 type FS struct{ FS fsys }
 
 func (f FS) apply(g *grepper) { g.fsys = f.FS }
 
-// New returns the grep tool's runner: it searches file contents by regexp
-// and returns matching lines as file:line:text (or a message when none
-// match). Pass it to [ai.DefineTool]/[ai.DefineParallelTool] with a name
-// and description.
+// New returns the grep tool's runner. The runner searches file contents by
+// regexp and returns matching lines as file:line:text. If no line matches,
+// the runner returns a message. Pass the runner to
+// [ai.DefineTool]/[ai.DefineParallelTool] with a name and description.
 func New(opts ...Option) func(context.Context, Input) (string, error) {
 	f := &grepper{}
 	for _, o := range opts {
@@ -168,8 +169,8 @@ func runRipgrep(ctx context.Context, rg, root, base string, isDir bool, input In
 	return capLines(stdout.String(), limitOf(input)), nil
 }
 
-// capLines trims trailing newlines and caps the output at limit lines,
-// appending a truncation note when lines were dropped.
+// capLines trims trailing newlines and caps the output at limit lines. If
+// capLines removes lines, it adds a truncation note.
 func capLines(out string, limit int) string {
 	out = strings.TrimRight(out, "\n")
 	if out == "" {
@@ -244,7 +245,7 @@ func runPureGo(fsys fs.FS, base string, isDir bool, input Input) (string, error)
 	return res, nil
 }
 
-// compilePattern builds the search regexp, honoring literal and
+// compilePattern builds the search regexp. It applies the literal and
 // case-insensitive options.
 func compilePattern(input Input) (*regexp.Regexp, error) {
 	pattern := input.Pattern

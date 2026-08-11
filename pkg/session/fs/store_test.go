@@ -49,7 +49,7 @@ func TestFileStoreCreateAndLoad(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, entries)
 
-	// One file per session — no directory, no sidecar.
+	// There is one file per session, with no directory and no sidecar.
 	files, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	require.Len(t, files, 1)
@@ -174,7 +174,7 @@ func TestFileStoreReopen(t *testing.T) {
 		Message:     ai.UserMessage("hi"),
 	}))
 
-	// A fresh store over the same directory (a new process) sees the data.
+	// A new store over the same directory (a new process) sees the data.
 	second, err := fs.New(dir)
 	require.NoError(t, err)
 	sess, err := second.LoadSession(ctx, "s1")

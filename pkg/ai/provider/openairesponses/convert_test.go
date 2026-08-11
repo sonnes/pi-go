@@ -155,7 +155,7 @@ func TestConvertInput_AssistantToolCall(t *testing.T) {
 	items := convertInput(messages)
 	require.Len(t, items, 2, "text and tool call should be separate items")
 
-	// First item: assistant text message
+	// First item: the assistant text message.
 	data, err := json.Marshal(items[0])
 	require.NoError(t, err)
 	var textRaw map[string]any
@@ -163,7 +163,7 @@ func TestConvertInput_AssistantToolCall(t *testing.T) {
 	assert.Equal(t, "assistant", textRaw["role"])
 	assert.Equal(t, "Let me check", textRaw["content"])
 
-	// Second item: function call
+	// Second item: the function call.
 	data, err = json.Marshal(items[1])
 	require.NoError(t, err)
 	var callRaw map[string]any
@@ -187,14 +187,14 @@ func TestConvertInput_AssistantThinking(t *testing.T) {
 	items := convertInput(messages)
 	require.Len(t, items, 2, "reasoning and text should be separate items")
 
-	// First item: text message (prepended)
+	// First item: the text message, which comes first.
 	data, err := json.Marshal(items[0])
 	require.NoError(t, err)
 	var textRaw map[string]any
 	require.NoError(t, json.Unmarshal(data, &textRaw))
 	assert.Equal(t, "assistant", textRaw["role"])
 
-	// Second item: reasoning
+	// Second item: the reasoning.
 	data, err = json.Marshal(items[1])
 	require.NoError(t, err)
 	var reasonRaw map[string]any
@@ -384,7 +384,7 @@ func TestConvertTools_ServerCodeInterpreter(t *testing.T) {
 	require.NoError(t, json.Unmarshal(body, &got))
 
 	assert.Equal(t, "code_interpreter", got["type"])
-	// Default container is the auto sentinel object.
+	// The default container is the auto sentinel object.
 	assert.NotNil(t, got["container"])
 }
 
@@ -429,8 +429,8 @@ func TestConvertOpenRouterTools_FunctionTool(t *testing.T) {
 			Description: "Get the weather",
 		},
 	}
-	// Encode the schema by hand because ToolInfo.InputSchema is a typed
-	// *jsonschema.Schema; the helper is in the broader test scaffolding.
+	// Encode the schema by hand, because ToolInfo.InputSchema is a typed
+	// *jsonschema.Schema. The helper lives in the broader test scaffolding.
 	tools[0].InputSchema = nil
 
 	got := convertOpenRouterTools(tools)
@@ -543,7 +543,7 @@ func TestConvertOpenRouterTools_FunctionAndServerMixed(t *testing.T) {
 
 func TestServerToolNameByType_KeyedByCallerName(t *testing.T) {
 	tools := []ai.ToolInfo{
-		{Name: "get_weather"}, // function tool — ignored
+		{Name: "get_weather"}, // A function tool. The map ignores it.
 		{
 			Name:       "WebSearch",
 			Kind:       ai.ToolKindServer,

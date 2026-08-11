@@ -44,7 +44,7 @@ func TestEntryConstructors(t *testing.T) {
 			assert.False(t, tc.entry.Meta)
 			assert.False(t, tc.entry.Ephemeral)
 
-			// Tree fields are assigned on append, not by the constructor.
+			// The append assigns the tree fields. The constructor does not.
 			assert.Empty(t, tc.entry.Header().ID)
 			assert.Empty(t, tc.entry.Header().ParentID)
 

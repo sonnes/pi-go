@@ -1,9 +1,9 @@
 //go:build !(js && wasm)
 
 // Command piwasm is only meaningful as a WebAssembly module. This stub
-// exists so the module still builds, vets, and tests under the host
-// toolchain — the demo logic in internal/demo is portable and covered
-// by ordinary tests.
+// keeps the module able to build, vet, and test under the host
+// toolchain. The demo logic in internal/demo is portable, and ordinary
+// tests cover it.
 package main
 
 import "fmt"

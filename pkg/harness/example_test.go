@@ -1,6 +1,6 @@
 // These examples document the intended developer experience of the
-// harness package. Example has an Output comment and is verified by
-// go test; the others compile and run without comparing output.
+// harness package. Example has an Output comment, and go test compares
+// that output. The other examples compile and run without a comparison.
 package harness_test
 
 import (
@@ -20,13 +20,13 @@ import (
 )
 
 // Example shows the whole composition: a project directory read by
-// convention, a skill invoked on demand, and the default prompt
-// builders wiring it all into one loop.
+// convention, and a skill loaded on demand. The default prompt builders
+// wire it all into one loop.
 func Example() {
 	ctx := context.Background()
 
 	// A project laid out by convention. In a real program this is the
-	// user's repository, not something the example writes.
+	// repository of the user, and not a directory the example writes.
 	dir := exampleProject()
 	defer os.RemoveAll(dir)
 
@@ -39,8 +39,8 @@ func Example() {
 		harness.WithDefaultModel("mock/small"),
 		harness.WithWorkDir(dir),
 		harness.WithTools(exampleReadTool()),
-		// Sources are listed lowest first, so a skill in the project
-		// overrides one declared here in code.
+		// The list holds the sources lowest first, so a skill in the
+		// project overrides one declared here in code.
 		harness.WithSkills(
 			def.Skills(def.Skill{
 				Name:        "summarize",
@@ -55,9 +55,9 @@ func Example() {
 		panic(err)
 	}
 
-	// The session ID decides what is resumed. A fresh one is seeded
-	// with the environment block on its first run; a resumed one
-	// already has it in history.
+	// The session ID decides which session is resumed. A fresh session
+	// gets the environment block on its first run. A resumed session
+	// already has that block in history.
 	a, err := h.Agent(ctx, durable.WithSessionID("ticket-8472"))
 	if err != nil {
 		panic(err)
@@ -70,8 +70,8 @@ func Example() {
 	}
 	fmt.Println(msgs[len(msgs)-1].Text())
 
-	// The transcript holds what a user should see — the seeded
-	// environment block stays hidden.
+	// The transcript holds what a user sees. The seeded environment
+	// block stays hidden.
 	transcript, err := a.Transcript(ctx)
 	if err != nil {
 		panic(err)
@@ -108,17 +108,17 @@ func ExampleHarness_Agent() {
 	defer a.Close()
 }
 
-// ExampleHarness_Agent_perBuild shows one harness serving many
-// repositories. The baseline holds what the process knows; each session
-// adds its own project on top, overriding by name what it redefines and
-// inheriting the rest.
+// ExampleHarness_Agent_perBuild shows one harness that serves many
+// repositories. The baseline holds what the process knows. Each session
+// adds its own project on top. The session overrides by name what it
+// redefines, and inherits the rest.
 func ExampleHarness_Agent_perBuild() {
 	ctx := context.Background()
 
 	h, err := harness.New(
 		harness.WithCatalog(exampleCatalog()),
 		harness.WithDefaultModel("mock/small"),
-		// The user's own skills, available to every session.
+		// The skills of the user, available to every session.
 		harness.WithSkills(fs.Skills(os.DirFS(userConfigDir()), "skills")),
 	)
 	if err != nil {
@@ -131,7 +131,7 @@ func ExampleHarness_Agent_perBuild() {
 	a, err := h.Agent(ctx,
 		durable.WithSessionID("ticket-8472"),
 		harness.WithWorkDir(repo),
-		// This session's project, layered above the user's.
+		// The project of this session, layered above the skills of the user.
 		harness.WithSkills(fs.Skills(os.DirFS(repo), ".agents/skills")),
 		harness.WithTools(exampleReadTool()),
 	)
@@ -141,12 +141,12 @@ func ExampleHarness_Agent_perBuild() {
 	defer a.Close()
 }
 
-// ExampleWithMiddleware shows per-run context that must not persist: a
-// reminder computed from live state, injected as an ephemeral entry
+// ExampleWithMiddleware shows per-run context that must not persist.
+// The reminder comes from live state. It arrives as an ephemeral entry
 // that the model reads once and the store never sees.
 //
-// Middleware belongs to [durable], and the harness forwards the option
-// down untouched along with everything else in the flat list.
+// Middleware belongs to [durable]. The harness forwards the option down
+// untouched, together with everything else in the flat list.
 func ExampleWithMiddleware() {
 	remind := func(next durable.Runner) durable.Runner {
 		return func(ctx context.Context, entries ...session.Entry) *durable.Stream {
@@ -167,7 +167,7 @@ func ExampleWithMiddleware() {
 
 // --- example fixtures ---
 
-// exampleProject writes a small .agents project: one skill, one
+// exampleProject writes a small .agents project: one skill and one
 // instructions document.
 func exampleProject() string {
 	dir, err := os.MkdirTemp("", "harness-example")
@@ -208,8 +208,8 @@ func exampleReadTool() ai.Tool {
 }
 
 // exampleCatalog registers a scripted provider so the example runs
-// without network access. The script walks the flow: load a skill,
-// then answer.
+// without network access. The script walks the flow: it loads a skill,
+// then it answers.
 func exampleCatalog() *catalog.Catalog {
 	c := catalog.New()
 	c.RegisterTextProvider(
@@ -267,8 +267,9 @@ func exampleToolCall(id, name string, args map[string]any) *ai.EventStream {
 
 var _ = agent.WithMaxTurns // the flat option list mixes all three layers
 
-// userConfigDir returns a directory standing in for the user's own
-// config root, which a real program would read from the home directory.
+// userConfigDir returns a directory that stands in for the
+// configuration root of the user. A real program reads that root from
+// the home directory.
 func userConfigDir() string {
 	dir, err := os.MkdirTemp("", "harness-user")
 	if err != nil {

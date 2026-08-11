@@ -16,7 +16,7 @@ func TestEncodeUserContent_SingleText(t *testing.T) {
 	raw, err := encodeUserContent(msg)
 	require.NoError(t, err)
 
-	// Single text → bare string.
+	// One text block becomes a bare string.
 	var s string
 	require.NoError(t, json.Unmarshal(raw, &s))
 	assert.Equal(t, "hello", s)
@@ -117,7 +117,7 @@ func TestBuildUserLine_ParentToolUseIDIsNull(t *testing.T) {
 	line, err := buildUserLine(ai.UserMessage("ping"))
 	require.NoError(t, err)
 
-	// The JSON must have an explicit null, not an omitted field — the
-	// TypeScript SDK checks for `null` specifically.
+	// The JSON must have an explicit null, not an omitted field. The
+	// TypeScript SDK looks for `null`.
 	assert.Contains(t, string(line), `"parent_tool_use_id":null`)
 }

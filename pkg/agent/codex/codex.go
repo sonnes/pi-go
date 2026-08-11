@@ -12,14 +12,15 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Agent implements [agent.Agent] by delegating each turn to the Codex CLI.
-// The first turn runs `codex exec --json`; subsequent turns run
-// `codex exec resume --json <thread-id>` after the CLI reports a thread ID.
+// Agent implements [agent.Agent]. Each turn goes to the Codex CLI. The
+// first turn runs `codex exec --json`. After the CLI reports a thread ID,
+// each later turn runs `codex exec resume --json <thread-id>`.
 type Agent struct {
 	cfg config
 
-	// model is the caller's [ai.Model], retained for its Cost rates: the
-	// CLI reports token counts but no per-category cost.
+	// model is the [ai.Model] of the caller. The agent keeps it for the
+	// Cost rates, because the CLI reports token counts but no cost per
+	// category.
 	model ai.Model
 
 	runFn func(ctx context.Context, cfg config, args runArgs) (io.ReadCloser, func() error, error)
@@ -32,8 +33,8 @@ type Agent struct {
 
 var _ agent.Agent = (*Agent)(nil)
 
-// New creates a new Codex CLI [Agent] for model. For spec-based creation,
-// register [Factory] with the catalog under the "codex" kind.
+// New creates a new Codex CLI [Agent] for model. To create an agent from
+// a spec, register [Factory] with the catalog under the "codex" kind.
 func New(model ai.Model, opts ...agent.Option) *Agent {
 	return newFromConfig(model, agent.ApplyOptions(opts...))
 }
@@ -79,14 +80,14 @@ func newFromConfig(model ai.Model, ac agent.Config) *Agent {
 	}
 }
 
-// Run implements [agent.Agent]. It appends msgs to history, sends the
-// most recent user message to the Codex CLI, and runs one turn. Non-user
-// messages are retained locally but not forwarded; after the first turn
-// the CLI owns context through its thread ID.
+// Run implements [agent.Agent]. It appends msgs to the history, sends the
+// most recent user message to the Codex CLI, and runs one turn. It keeps
+// the non-user messages locally and does not forward them. After the
+// first turn, the CLI owns the context through its thread ID.
 //
-// Zero messages is an error: the CLI cannot continue without input.
-// Canceling ctx kills the Codex child subprocess; the next Run starts a
-// fresh turn resuming the captured thread.
+// Zero messages is an error, because the CLI cannot continue without
+// input. A cancel of ctx kills the Codex child subprocess. The next Run
+// starts a new turn and resumes the captured thread.
 func (a *Agent) Run(ctx context.Context, msgs ...ai.Message) *agent.Stream {
 	return agent.NewStream(func(push func(agent.Event)) ([]ai.Message, error) {
 		return a.runTurn(ctx, msgs, push)
@@ -105,8 +106,8 @@ func (a *Agent) Messages() []ai.Message {
 	return out
 }
 
-// Close implements [agent.Agent]. The Codex CLI runs one subprocess per
-// turn, so there is nothing held between runs to release.
+// Close implements [agent.Agent]. The Codex CLI runs one subprocess for
+// each turn. Nothing stays open between runs, so Close releases nothing.
 func (a *Agent) Close() error { return nil }
 
 // SessionID returns the Codex thread ID captured from the subprocess.
@@ -122,9 +123,9 @@ type turnResult struct {
 	err      error
 }
 
-// runTurn validates the input, spawns one `codex exec` subprocess, and
-// streams its output as events. It is the producer behind [Agent.Run]'s
-// stream.
+// runTurn makes sure that the input is valid. It then starts one
+// `codex exec` subprocess and streams the output as events. runTurn is
+// the producer behind the stream of [Agent.Run].
 func (a *Agent) runTurn(
 	ctx context.Context,
 	msgs []ai.Message,

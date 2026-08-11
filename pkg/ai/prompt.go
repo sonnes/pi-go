@@ -10,7 +10,7 @@ type Prompt struct {
 }
 
 // Text returns the concatenated text of all messages, separated by newlines.
-// It is used by modalities that take a single text prompt, such as image
+// Modalities that take a single text prompt use it, such as image
 // generation.
 func (p Prompt) Text() string {
 	parts := make([]string, 0, len(p.Messages))

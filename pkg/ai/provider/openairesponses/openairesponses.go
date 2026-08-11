@@ -24,45 +24,46 @@ import (
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Dialect selects between request/response shapes that share the OpenAI
-// Responses API surface but diverge in tool naming and SSE event taxonomy.
+// Dialect selects the request and response shape of a backend. Every
+// backend shares the OpenAI Responses API surface. The backends differ in
+// tool names and in SSE event types.
 type Dialect int
 
 const (
-	// DialectOpenAI is OpenAI's native Responses API. Default.
+	// DialectOpenAI is the native OpenAI Responses API. It is the default.
 	DialectOpenAI Dialect = iota
-	// DialectOpenRouter targets OpenRouter's `/v1/responses` endpoint:
-	// server tools use the `openrouter:*` namespace, and text deltas arrive
-	// on `response.content_part.delta` instead of `response.output_text.delta`.
+	// DialectOpenRouter targets the `/v1/responses` endpoint of OpenRouter.
+	// Server tools use the `openrouter:*` namespace. Text deltas arrive on
+	// `response.content_part.delta` instead of `response.output_text.delta`.
 	// See [docs/plans/2026-04-28-openrouter-responses-dialect.md] for the
-	// observed differences this dialect compensates for.
+	// full list of differences that this dialect compensates for.
 	DialectOpenRouter
-	// DialectCodex targets ChatGPT's Codex backend at
+	// DialectCodex targets the ChatGPT Codex backend at
 	// `chatgpt.com/backend-api/codex/responses`. The endpoint accepts the
-	// same Responses API SSE format as OpenAI but enforces an additional
-	// request-shape requirement: `instructions` must always be set and
-	// non-empty, even when no system prompt was provided. Without it the
-	// backend returns `{"detail":"Instructions are required"}`.
+	// same Responses API SSE format as OpenAI. It adds one request-shape
+	// requirement. The `instructions` field must always be set and must not
+	// be empty, even when the caller gives no system prompt. If the field
+	// is empty, the backend returns `{"detail":"Instructions are required"}`.
 	DialectCodex
 )
 
-// codexDefaultInstructions is the fallback `instructions` value sent under
-// [DialectCodex] when the caller did not provide a system prompt. The Codex
-// backend rejects requests with an empty instructions field; the exact text
-// is not significant beyond being non-empty.
+// codexDefaultInstructions is the fallback `instructions` value that
+// [DialectCodex] sends when the caller gives no system prompt. The Codex
+// backend rejects a request with an empty instructions field. The exact
+// text does not matter. Only a non-empty value matters.
 const codexDefaultInstructions = "You are a helpful coding assistant."
 
-// Provider implements [ai.TextProvider] for OpenAI's Responses API.
+// Provider implements [ai.TextProvider] for the OpenAI Responses API.
 //
-// One instance can target OpenAI while another targets OpenRouter through
-// [DialectOpenRouter]. Applications register those instances under whichever
-// catalog identities they need.
+// One instance can target OpenAI. Another instance can target OpenRouter
+// through [DialectOpenRouter]. An application registers each instance under
+// the catalog identity that it needs.
 type Provider struct {
 	client  *openai.Client
 	dialect Dialect
 }
 
-// Verify interface compliance.
+// Compile-time interface checks.
 var (
 	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
@@ -72,8 +73,8 @@ var (
 // ID is the OpenAI Responses provider identity.
 const ID = "openai-responses"
 
-// New creates a new OpenAI Responses provider targeting OpenAI's native API.
-// For OpenRouter use [NewForOpenRouter].
+// New creates an OpenAI Responses provider for the native OpenAI API.
+// For OpenRouter, use [NewForOpenRouter].
 func New(opts ...option.RequestOption) *Provider {
 	opts = append(
 		[]option.RequestOption{option.WithMaxRetries(0)},
@@ -83,24 +84,25 @@ func New(opts ...option.RequestOption) *Provider {
 	return &Provider{client: &client, dialect: DialectOpenAI}
 }
 
-// NewForOpenRouter creates a Responses-API provider that talks to OpenRouter.
-// Callers should pass [option.WithBaseURL]("https://openrouter.ai/api/v1") and
-// [option.WithAPIKey] for their OpenRouter key.
+// NewForOpenRouter creates a Responses API provider for OpenRouter. The
+// caller must pass [option.WithBaseURL]("https://openrouter.ai/api/v1") and
+// [option.WithAPIKey] with the OpenRouter key.
 //
-// Server tools are translated to the `openrouter:*` namespace; SSE events
-// from `/v1/responses` are mapped onto pi-go's standard event stream. See
-// [Dialect] for the full list of compensated differences.
+// The provider translates server tools to the `openrouter:*` namespace. It
+// maps the SSE events from `/v1/responses` onto the standard pi-go event
+// stream. See [Dialect] for the full list of differences.
 func NewForOpenRouter(opts ...option.RequestOption) *Provider {
 	p := New(opts...)
 	p.dialect = DialectOpenRouter
 	return p
 }
 
-// NewForCodex creates a Responses-API provider that talks to ChatGPT's Codex
-// backend. The caller is expected to set the base URL to
-// "https://chatgpt.com/backend-api/codex" and supply a ChatGPT OAuth token
-// (e.g. via the OAuth transport); only the request-shape adjustments live
-// here. See [DialectCodex] for the differences this dialect compensates for.
+// NewForCodex creates a Responses API provider for the ChatGPT Codex
+// backend. The caller must set the base URL to
+// "https://chatgpt.com/backend-api/codex". The caller must also supply a
+// ChatGPT OAuth token, for example through the OAuth transport. Only the
+// request-shape adjustments live here. See [DialectCodex] for the
+// differences that this dialect compensates for.
 func NewForCodex(opts ...option.RequestOption) *Provider {
 	p := New(opts...)
 	p.dialect = DialectCodex
@@ -108,7 +110,7 @@ func NewForCodex(opts ...option.RequestOption) *Provider {
 }
 
 // DetectOpenRouter builds an OpenRouter-dialect provider from
-// OPENROUTER_API_KEY and reports whether it was set.
+// OPENROUTER_API_KEY and reports whether that variable is set.
 func DetectOpenRouter() (*Provider, bool) {
 	key := os.Getenv("OPENROUTER_API_KEY")
 	if key == "" {
@@ -120,7 +122,7 @@ func DetectOpenRouter() (*Provider, bool) {
 	), true
 }
 
-// StreamText streams a text response using the Responses API.
+// StreamText streams a text response through the Responses API.
 func (p *Provider) StreamText(
 	ctx context.Context,
 	model ai.Model,
@@ -137,9 +139,10 @@ func (p *Provider) StreamText(
 	params := buildParams(model, prompt, opts, p.dialect)
 	reqOpts := mergeHeaders(model.Headers, opts.Headers)
 
-	// For the OpenRouter dialect, override the request body's "tools" field
-	// with the openrouter:* server-tool shapes since the OpenAI SDK's typed
-	// ToolUnionParam can't express them. See convertOpenRouterTools.
+	// For the OpenRouter dialect, replace the "tools" field of the request
+	// body with the openrouter:* server-tool shapes. The typed
+	// ToolUnionParam of the OpenAI SDK cannot express them. See
+	// convertOpenRouterTools.
 	if p.dialect == DialectOpenRouter && len(prompt.Tools) > 0 {
 		orTools := convertOpenRouterTools(prompt.Tools)
 		if len(orTools) > 0 {
@@ -147,11 +150,11 @@ func (p *Provider) StreamText(
 		}
 	}
 
-	// Map ServerToolType to the canonical Name the caller registered
-	// (e.g. ServerToolWebSearch → "WebSearch"). When the provider returns
-	// a server-tool result, we use this to set ToolCall.Name to the same
-	// name function tools use, instead of the raw provider item type
-	// ("web_search_call", "openrouter:web_search").
+	// Map ServerToolType to the canonical Name that the caller registered,
+	// for example ServerToolWebSearch to "WebSearch". When the provider
+	// returns a server-tool result, this map sets ToolCall.Name to the
+	// name that function tools use. Without it, the name is the raw
+	// provider item type ("web_search_call", "openrouter:web_search").
 	serverToolNames := serverToolNameByType(prompt.Tools)
 
 	return ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
@@ -241,14 +244,14 @@ func (p *Provider) StreamText(
 				}
 
 			// OpenRouter dialect: text deltas arrive on content_part events
-			// rather than output_text events. The SDK's typed union doesn't
-			// know about content_part.delta, but the flat fields populate
-			// from the JSON payload regardless.
+			// and not on output_text events. The typed union of the SDK
+			// does not know about content_part.delta. The flat fields
+			// still fill from the JSON payload.
 			case "response.content_part.delta":
 				delta := event.Delta
 				if delta == "" {
 					// Some OpenRouter payloads put the text under part.text
-					// for the initial chunk; fall back to that.
+					// for the first chunk. Use that field instead.
 					delta = event.Part.Text
 				}
 				if delta == "" {
@@ -269,9 +272,9 @@ func (p *Provider) StreamText(
 				})
 
 			case "response.content_part.done":
-				// Idempotent close: OpenAI emits this after output_text.done
-				// (so inText is already false); OpenRouter emits it as the
-				// actual text-block terminator.
+				// Idempotent close. OpenAI sends this event after
+				// output_text.done, so inText is already false. OpenRouter
+				// sends it as the real end of the text block.
 				if inText {
 					inText = false
 					push(ai.Event{
@@ -480,7 +483,7 @@ func (p *Provider) StreamText(
 	})
 }
 
-// GenerateObject generates a structured object using strict JSON Schema mode.
+// GenerateObject generates a structured object in strict JSON Schema mode.
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,
@@ -534,8 +537,9 @@ func (p *Provider) GenerateObject(
 	}, nil
 }
 
-// CountTokens counts the input tokens in prompt before generating a response.
-// OpenAI exposes this endpoint only on its native Responses API.
+// CountTokens counts the input tokens in prompt before the model generates
+// a response. OpenAI provides this endpoint only on the native Responses
+// API.
 func (p *Provider) CountTokens(
 	ctx context.Context,
 	model ai.Model,
@@ -573,8 +577,8 @@ func (p *Provider) CountTokens(
 	return &ai.TokenCount{Total: int(response.InputTokens)}, nil
 }
 
-// schemaToMap converts a jsonschema-go value to the Responses API's generic
-// JSON-schema representation.
+// schemaToMap converts a jsonschema-go value to the generic JSON schema
+// representation of the Responses API.
 func schemaToMap(schema *jsonschema.Schema) (map[string]any, error) {
 	data, err := json.Marshal(schema)
 	if err != nil {
@@ -610,8 +614,8 @@ func buildParams(
 		Store: param.NewOpt(false),
 	}
 
-	// Codex requires a non-empty instructions field. Fall back to a default
-	// when the caller did not supply a system prompt.
+	// Codex requires a non-empty instructions field. If the caller supplies
+	// no system prompt, use a default value.
 	switch {
 	case prompt.System != "":
 		params.Instructions = param.NewOpt(prompt.System)
@@ -638,15 +642,15 @@ func buildParams(
 	}
 
 	if len(prompt.Tools) > 0 {
-		// In the OpenRouter dialect the tools array is injected via
-		// option.WithJSONSet at the StreamText callsite, so leave
-		// params.Tools empty here.
+		// In the OpenRouter dialect, the StreamText callsite adds the
+		// tools array with option.WithJSONSet. Leave params.Tools empty
+		// here.
 		//
-		// In the Codex dialect, server tools (e.g. web_search) are
-		// not supported by the backend and must be stripped before sending.
+		// In the Codex dialect, the backend does not support server tools
+		// such as web_search. Remove them before the request.
 		switch dialect {
 		case DialectOpenRouter:
-			// handled via WithJSONSet below
+			// The callsite adds the tools with WithJSONSet.
 		case DialectCodex:
 			params.Tools = convertTools(filterFunctionTools(prompt.Tools))
 		default:
@@ -658,8 +662,9 @@ func buildParams(
 	}
 
 	// Forward the session ID as the prompt_cache_key for cache affinity.
-	// OpenAI Responses caching is automatic; the key only strengthens prefix
-	// matching across requests. Suppressed when caching is explicitly disabled.
+	// The OpenAI Responses API caches automatically. The key only improves
+	// prefix matching across requests. If the caller turns caching off, the
+	// request omits the key.
 	cacheRetention := ai.ResolveCacheRetention(opts.CacheRetention)
 	if cacheRetention != ai.CacheRetentionNone && opts.SessionID != "" {
 		params.PromptCacheKey = param.NewOpt(opts.SessionID)
@@ -731,11 +736,11 @@ func buildFinalMessage(
 }
 
 // serverToolNameByType extracts the caller-supplied [ai.ToolInfo.Name] for
-// each server tool in the prompt, keyed by [ai.ServerToolType]. The result
-// lets the SSE pipeline rewrite raw provider item types
-// ("web_search_call", "openrouter:web_search") back to the canonical name
-// the caller registered ("WebSearch") so server tools persist with the same
-// shape as function tools.
+// each server tool in the prompt. The key of the map is the
+// [ai.ServerToolType]. The SSE pipeline uses the result to rewrite raw
+// provider item types ("web_search_call", "openrouter:web_search") to the
+// canonical name that the caller registered ("WebSearch"). Server tools
+// then persist with the same shape as function tools.
 func serverToolNameByType(tools []ai.ToolInfo) map[ai.ServerToolType]string {
 	if len(tools) == 0 {
 		return nil
@@ -753,8 +758,9 @@ func serverToolNameByType(tools []ai.ToolInfo) map[ai.ServerToolType]string {
 }
 
 // canonicalServerToolName returns the caller-registered name for a server
-// tool of type st, or fallback when none was registered (rare — only when
-// the model invents a tool the caller never declared).
+// tool of type st. If the caller registered no name, it returns fallback.
+// This is rare. It happens only when the model invents a tool that the
+// caller never declared.
 func canonicalServerToolName(
 	st ai.ServerToolType,
 	names map[ai.ServerToolType]string,
@@ -767,8 +773,8 @@ func canonicalServerToolName(
 }
 
 // serverTypeForOpenRouterItem maps an OpenRouter `openrouter:*` item type
-// in a Responses stream to the canonical pi-go [ai.ServerToolType]. Unknown
-// types yield the empty string.
+// in a Responses stream to the canonical pi-go [ai.ServerToolType]. For an
+// unknown type, it returns the empty string.
 func serverTypeForOpenRouterItem(itemType string) ai.ServerToolType {
 	suffix := strings.TrimPrefix(itemType, "openrouter:")
 	switch suffix {
@@ -784,10 +790,11 @@ func serverTypeForOpenRouterItem(itemType string) ai.ServerToolType {
 }
 
 // buildOpenRouterServerToolCall converts a completed `openrouter:*` output
-// item into an [ai.ToolCall] with Server=true. Best-effort scrapes common
-// argument fields (`query`, `url`, `timezone`) from the raw payload so the
-// call surfaces the same `Arguments` shape function tools have. Output.Raw
-// always carries the verbatim JSON for callers that need richer fields.
+// item into an [ai.ToolCall] with Server=true. It reads the common argument
+// fields (`query`, `url`, `timezone`) from the raw payload when they exist.
+// The call then has the same `Arguments` shape as a function tool.
+// Output.Raw always holds the verbatim JSON for callers that need more
+// fields.
 func buildOpenRouterServerToolCall(item responses.ResponseOutputItemUnion) ai.ToolCall {
 	raw := item.RawJSON()
 	args := extractOpenRouterArgs(raw)
@@ -805,9 +812,9 @@ func buildOpenRouterServerToolCall(item responses.ResponseOutputItemUnion) ai.To
 	}
 }
 
-// extractOpenRouterArgs pulls common server-tool arguments from a raw
-// OpenRouter output item payload. Returns nil when no recognized fields
-// are present so callers can distinguish "no args" from "empty args".
+// extractOpenRouterArgs reads the common server-tool arguments from a raw
+// OpenRouter output item payload. If the payload holds no known field, it
+// returns nil. The caller can then tell "no args" from "empty args".
 func extractOpenRouterArgs(raw string) map[string]any {
 	if raw == "" {
 		return nil
@@ -831,9 +838,9 @@ func extractOpenRouterArgs(raw string) map[string]any {
 	return args
 }
 
-// openRouterOutputSummary renders a one-line description of what a server
-// tool did in this turn. Falls back to the empty string when the payload
-// shape isn't recognized — Output.Raw still carries the full JSON.
+// openRouterOutputSummary returns a one-line description of what a server
+// tool did in this turn. If the shape of the payload is not known, it
+// returns the empty string. Output.Raw still holds the full JSON.
 func openRouterOutputSummary(itemType, raw string) string {
 	if raw == "" {
 		return ""
@@ -862,7 +869,8 @@ func openRouterOutputSummary(itemType, raw string) string {
 }
 
 // serverTypeForItem maps a Responses API item type to the canonical pi-go
-// [ai.ServerToolType]. Unknown item types yield the empty string.
+// [ai.ServerToolType]. For an unknown item type, it returns the empty
+// string.
 func serverTypeForItem(itemType string) ai.ServerToolType {
 	switch itemType {
 	case "web_search_call":
@@ -881,8 +889,8 @@ func serverTypeForItem(itemType string) ai.ServerToolType {
 }
 
 // buildServerToolCall converts a completed [responses.ResponseOutputItemUnion]
-// of a server-tool variant into an [ai.ToolCall] with Server=true and Output
-// populated from the item's status and per-tool fields.
+// of a server-tool variant into an [ai.ToolCall] with Server=true. It fills
+// Output from the status of the item and from the per-tool fields.
 func buildServerToolCall(item responses.ResponseOutputItemUnion) ai.ToolCall {
 	tc := ai.ToolCall{
 		ID:         item.ID,
@@ -893,7 +901,7 @@ func buildServerToolCall(item responses.ResponseOutputItemUnion) ai.ToolCall {
 
 	switch item.Type {
 	case "web_search_call":
-		// Capture the search query in Arguments when available.
+		// If the item holds a search query, put it in Arguments.
 		if q := item.Action.Query; q != "" {
 			tc.Arguments = map[string]any{"query": q}
 		}
@@ -924,8 +932,9 @@ func buildServerToolCall(item responses.ResponseOutputItemUnion) ai.ToolCall {
 	return tc
 }
 
-// webSearchActionDescription renders a one-line summary of what the web search
-// tool did in this turn (search/open_page/find), suitable for display.
+// webSearchActionDescription returns a one-line summary of what the web
+// search tool did in this turn (search, open_page, or find). A caller can
+// show this summary to the user.
 func webSearchActionDescription(item responses.ResponseOutputItemUnion) string {
 	if item.Action.Query != "" {
 		return "search: " + item.Action.Query
@@ -936,8 +945,8 @@ func webSearchActionDescription(item responses.ResponseOutputItemUnion) string {
 	return string(item.Status)
 }
 
-// codeInterpreterOutputs renders the code interpreter's stdout/stderr/log
-// outputs as a concatenated string. The original code lives in Arguments.
+// codeInterpreterOutputs joins the stdout, stderr, and log outputs of the
+// code interpreter into one string. The original code lives in Arguments.
 func codeInterpreterOutputs(item responses.ResponseOutputItemUnion) string {
 	var b strings.Builder
 	for i, out := range item.Outputs {

@@ -99,8 +99,8 @@ func testLM(p ai.TextProvider) ai.LanguageModel {
 	return ai.NewLanguageModel(ai.Model{ID: "test-model"}, p)
 }
 
-// collect drains a durable stream, returning its events, result, and
-// terminal error.
+// collect drains a durable stream. It returns the events, the result,
+// and the terminal error of the stream.
 func collect(t *testing.T, s *durable.Stream) ([]durable.Event, []ai.Message, error) {
 	t.Helper()
 	var events []durable.Event
@@ -114,7 +114,8 @@ func collect(t *testing.T, s *durable.Stream) ([]durable.Event, []ai.Message, er
 	return events, msgs, err
 }
 
-// recordingPublisher captures lifecycle events as they are published.
+// recordingPublisher captures lifecycle events when the agent publishes
+// them.
 type recordingPublisher struct {
 	mu     sync.Mutex
 	events []durable.Event
@@ -189,8 +190,8 @@ func openWithPublisher(
 	return da, publisher
 }
 
-// mustMessage extracts the message entry from e, failing the test if it
-// is not one.
+// mustMessage extracts the message entry from e. If e is not a message
+// entry, mustMessage fails the test.
 func mustMessage(t *testing.T, e session.Entry) session.MessageEntry {
 	t.Helper()
 	me, ok := session.AsMessageEntry(e)
@@ -198,7 +199,8 @@ func mustMessage(t *testing.T, e session.Entry) session.MessageEntry {
 	return me
 }
 
-// run drives one turn to completion, failing the test on error.
+// run drives one turn to completion. If the turn returns an error, run
+// fails the test.
 func run(t *testing.T, da *durable.Agent, text string) {
 	t.Helper()
 	_, err := da.Run(t.Context(), durable.Text(text)).Wait()
@@ -215,11 +217,11 @@ func TestRun_EventsAndPersistence(t *testing.T) {
 	events, msgs, err := collect(t, da.Run(t.Context(), durable.Text("hi")))
 	require.NoError(t, err)
 
-	// Wait returns the run's new messages.
+	// Wait returns the new messages of the run.
 	require.Len(t, msgs, 1)
 	assert.Equal(t, "hello", msgs[0].Text())
 
-	// The stream is turn-scoped: lifted agent events only, starting
+	// The stream is turn-scoped: lifted agent events only, and it starts
 	// with agent_start.
 	require.NotEmpty(t, events)
 	assert.Equal(t, durable.EventAgent, events[0].Type)
@@ -280,8 +282,8 @@ func TestRun_ToolLoopPersistsEveryMessage(t *testing.T) {
 	events, _, err := collect(t, da.Run(t.Context(), durable.Text("go")))
 	require.NoError(t, err)
 
-	// Three message_end receipts: assistant(tool_use), tool result,
-	// final assistant — each carrying exactly one persisted entry.
+	// Three message_end receipts: assistant(tool_use), tool result, and
+	// final assistant. Each carries exactly one persisted entry.
 	ends := liftedOf(events, agent.EventMessageEnd)
 	require.Len(t, ends, 3)
 	for _, e := range ends {
@@ -317,7 +319,7 @@ func TestRun_ProviderErrorKeepsInputOnly(t *testing.T) {
 	_, _, err := collect(t, da.Run(t.Context(), durable.Text("hi")))
 	assert.ErrorIs(t, err, assert.AnError)
 
-	// Input persisted before the run; nothing else landed.
+	// The run persisted the input before it started. Nothing else landed.
 	entries, lerr := store.LoadEntries(t.Context(), "s1")
 	require.NoError(t, lerr)
 	require.Len(t, entries, 1)
@@ -376,7 +378,7 @@ func TestRun_CustomInputPersistsUnseenByModel(t *testing.T) {
 	require.Len(t, starts, 1)
 	assert.Len(t, starts[0].Entries, 2)
 
-	// The custom entry persisted with tree fields assigned.
+	// The custom entry persisted with its tree fields assigned.
 	entries, err := da.Entries(t.Context())
 	require.NoError(t, err)
 	arts := session.Filter[artifactEntry](entries)
@@ -400,8 +402,9 @@ func TestAppend_KeepsEphemeralOutOfTheStore(t *testing.T) {
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 	da := openTestAgent(t, store, "s1", prov)
 
-	// An ephemeral entry is recorded in memory, gets an ID, and leaves
-	// the leaf where it was — it is not on the durable chain.
+	// The agent records an ephemeral entry in memory and gives it an ID.
+	// The entry leaves the leaf where it was, so it is not on the
+	// durable chain.
 	require.NoError(t, da.Append(t.Context(), durable.Ephemeral(durable.Text("nudge"))))
 
 	entries, err := da.Entries(t.Context())
@@ -415,8 +418,9 @@ func TestAppend_KeepsEphemeralOutOfTheStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, stored)
 
-	// Mixed with durable entries, the durable chain closes over the gap
-	// so no stored entry points at a parent the store never received.
+	// With durable entries mixed in, the durable chain closes over the
+	// gap. No stored entry then points at a parent that the store never
+	// received.
 	err = da.Append(
 		t.Context(),
 		durable.Text("first"),
@@ -456,8 +460,8 @@ func TestBranch_RejectsEphemeralEntry(t *testing.T) {
 	ephemeral := entries[2]
 	require.True(t, mustMessage(t, ephemeral).Ephemeral)
 
-	// Branching onto it would chain later durable entries to a parent
-	// the store never received.
+	// A branch onto it would chain later durable entries to a parent
+	// that the store never received.
 	leaf := da.LeafID()
 	err = da.Branch(t.Context(), ephemeral.Header().ID)
 	require.Error(t, err)
@@ -488,7 +492,7 @@ func TestRun_EphemeralInputReachesModelUnpersisted(t *testing.T) {
 	require.Len(t, starts, 1)
 	assert.Len(t, starts[0].Entries, 1)
 
-	// The in-memory log keeps the reminder; the store does not.
+	// The in-memory log keeps the reminder. The store does not.
 	entries, err := da.Entries(t.Context())
 	require.NoError(t, err)
 	require.Len(t, entries, 3)
@@ -516,7 +520,7 @@ func TestRun_EphemeralInputReachesModelUnpersisted(t *testing.T) {
 	assert.Equal(t, "ok", next.Messages[1].Text())
 	assert.Equal(t, "again", next.Messages[2].Text())
 
-	// Reopening from the store sees a clean, contiguous history.
+	// An agent reopened from the store sees a clean, contiguous history.
 	reopened := openTestAgent(t, store, "s1", prov)
 	msgs := reopened.Messages()
 	require.Len(t, msgs, 4)
@@ -542,7 +546,7 @@ func TestRun_EphemeralOnlyInputRunsWithoutPersisting(t *testing.T) {
 	require.Len(t, prompt.Messages, 3)
 	assert.Equal(t, "nudge", prompt.Messages[2].Text())
 
-	// The log holds the nudge; the reply chains past it to the old leaf.
+	// The log holds the nudge. The reply chains past it to the old leaf.
 	entries, err := da.Entries(t.Context())
 	require.NoError(t, err)
 	require.Len(t, entries, 4)
@@ -652,8 +656,8 @@ func TestNew_TwoInstancesGrowSiblingBranches(t *testing.T) {
 	run(t, a, "question a")
 	run(t, b, "question b")
 
-	// Both appended from the same resume leaf: the log holds two
-	// sibling branches, nothing lost, nothing overwritten.
+	// Both instances appended from the same resume leaf. The log holds
+	// two sibling branches. Nothing is lost, and nothing is overwritten.
 	entries, err := store.LoadEntries(t.Context(), "shared")
 	require.NoError(t, err)
 	require.Len(t, entries, 6)
@@ -698,7 +702,7 @@ func TestMessages_RepairsDanglingToolCalls(t *testing.T) {
 	assert.Equal(t, "call-9", msgs[2].ToolCallID)
 	assert.True(t, msgs[2].IsError)
 
-	// The next run's provider call sees the repaired history.
+	// The provider call of the next run sees the repaired history.
 	_, _, err := collect(t, da.Run(t.Context(), durable.Text("continue")))
 	require.NoError(t, err)
 	p := prov.prompt(0)
@@ -730,7 +734,8 @@ func TestBranch(t *testing.T) {
 	_, _, err := collect(t, da.Run(t.Context(), durable.Text("third question")))
 	require.NoError(t, err)
 
-	// Model view: first exchange + third exchange; second is abandoned.
+	// Model view: first exchange and third exchange. The second is
+	// abandoned.
 	msgs := da.Messages()
 	require.Len(t, msgs, 4)
 	assert.Equal(t, "first question", msgs[0].Text())
@@ -791,7 +796,8 @@ func TestFork(t *testing.T) {
 		assert.NotEqual(t, srcEntries[i].Header().ID, altEntries[i].Header().ID)
 	}
 
-	// Fork's history reaches the model; source is untouched by alt runs.
+	// The history of the fork reaches the model. Runs on alt leave the
+	// source untouched.
 	run(t, alt, "what if instead?")
 	p := prov.prompt(1)
 	assert.Equal(t, "question", p.Messages[0].Text())
@@ -800,7 +806,7 @@ func TestFork(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, srcAfter, len(srcEntries))
 
-	// Taken ID fails without changing the source.
+	// A taken ID fails without a change to the source.
 	_, err = da.Fork(t.Context(), "alt")
 	assert.ErrorIs(t, err, session.ErrSessionExists)
 	run(t, da, "back to src")
@@ -826,7 +832,7 @@ func TestAppend_EntriesAndViews(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Full log includes the custom entry with assigned tree fields.
+	// The full log includes the custom entry with assigned tree fields.
 	entries, err := da.Entries(t.Context())
 	require.NoError(t, err)
 	arts := session.Filter[artifactEntry](entries)
@@ -835,7 +841,7 @@ func TestAppend_EntriesAndViews(t *testing.T) {
 	assert.NotEmpty(t, arts[0].Header().ID)
 	assert.Equal(t, arts[0].Header().ID, da.LeafID())
 
-	// Transcript shows it; the model never sees it.
+	// The transcript shows it. The model never sees it.
 	transcript, err := da.Transcript(t.Context())
 	require.NoError(t, err)
 	assert.Len(t, transcript, 3)
@@ -871,7 +877,7 @@ func TestCompact(t *testing.T) {
 	assert.Equal(t, "question one", p.Messages[0].Text())
 	assert.Equal(t, "answer one", p.Messages[1].Text())
 
-	// A CompactionEntry landed; nothing was deleted.
+	// A CompactionEntry landed. Nothing was removed.
 	entries, err := da.Entries(t.Context())
 	require.NoError(t, err)
 	comps := session.Filter[session.CompactionEntry](entries)

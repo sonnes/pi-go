@@ -10,10 +10,10 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Default is the standard [Agent] implementation that manages an
-// agentic conversation loop.
+// Default is the standard [Agent] implementation. It manages an agentic
+// conversation loop.
 //
-// Loop flow, per [Default.Run]:
+// Loop flow of [Default.Run]:
 //
 //	agent_start
 //	  turn_start
@@ -25,8 +25,9 @@ import (
 //	  ... repeat if tool_use and under maxTurns ...
 //	agent_end   ← success only; failures end the stream with an error
 //
-// Caller-supplied input messages are not echoed as message_start/end
-// events — only messages produced by the loop are emitted.
+// The loop does not echo the input messages of the caller as
+// message_start and message_end events. It emits these events only for
+// the messages that it produces.
 type Default struct {
 	config   config
 	toolMap  map[string]ai.Tool
@@ -39,7 +40,7 @@ type Default struct {
 
 var _ Agent = (*Default)(nil)
 
-// New creates a new [Default] agent for lm, configured via options.
+// New creates a new [Default] agent for lm. The opts values configure it.
 func New(lm ai.LanguageModel, opts ...Option) *Default {
 	c := config{lm: lm}
 	for _, opt := range opts {
@@ -51,9 +52,9 @@ func New(lm ai.LanguageModel, opts ...Option) *Default {
 	for i, t := range c.tools {
 		info := t.Info()
 		toolInfo[i] = info
-		// Server tools are advertised to the model but executed by the
-		// provider, so they're omitted from toolMap to keep the
-		// executor focused on function tools only.
+		// The agent advertises server tools to the model, but the
+		// provider runs them. Therefore toolMap does not hold them,
+		// and the executor works on function tools only.
 		if info.Kind == ai.ToolKindServer {
 			continue
 		}
@@ -71,8 +72,8 @@ func New(lm ai.LanguageModel, opts ...Option) *Default {
 	}
 }
 
-// Run implements [Agent]. It appends msgs to the history and executes
-// the loop, streaming events on the returned [Stream].
+// Run implements [Agent]. It appends msgs to the history and runs the
+// loop. It streams the events on the returned [Stream].
 func (a *Default) Run(ctx context.Context, msgs ...ai.Message) *Stream {
 	if a.config.lm == nil {
 		return ErrStream(errors.New("agent: no model configured; pass a LanguageModel to New"))
@@ -83,7 +84,7 @@ func (a *Default) Run(ctx context.Context, msgs ...ai.Message) *Stream {
 }
 
 // run guards against concurrent runs, appends the input messages, and
-// executes the loop. It is the producer behind [Default.Run]'s stream.
+// runs the loop. It is the producer behind the stream of [Default.Run].
 func (a *Default) run(
 	ctx context.Context,
 	newMsgs []ai.Message,
@@ -108,7 +109,7 @@ func (a *Default) run(
 }
 
 // Close implements [Agent]. The in-process loop holds no backend
-// resources, so it is a no-op.
+// resources, so Close does nothing.
 func (a *Default) Close() error { return nil }
 
 // Messages returns a copy of the current conversation history.
@@ -138,26 +139,27 @@ func (a *Default) appendHistory(msgs ...ai.Message) {
 	a.messages = append(a.messages, msgs...)
 }
 
-// replaceHistory swaps the conversation history (AfterTurn hooks).
+// replaceHistory replaces the conversation history. The AfterTurn hooks
+// use it.
 func (a *Default) replaceHistory(msgs []ai.Message) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.messages = msgs
 }
 
-// turnResult holds the output of a single turn, returned by executeTurn
-// so the caller owns all mutation of loop-level state.
+// turnResult holds the output of a single turn. executeTurn returns it,
+// so that the caller owns all changes to loop-level state.
 type turnResult struct {
 	assistantMsg ai.Message
 	toolResults  []ai.Message
 	usage        ai.Usage
-	cont         bool // true = tool calls made, keep looping
+	cont         bool // true when the turn made tool calls, keep looping
 }
 
-// loop is the core agent loop, running inside the stream's producer
-// goroutine. On success it ends with [EventAgentEnd]; on failure it
-// returns the messages produced so far along with the error, and no
-// agent_end is emitted.
+// loop is the core agent loop. It runs inside the producer goroutine of
+// the stream. On success it ends with [EventAgentEnd]. On an error it
+// returns the messages that it produced so far together with the error,
+// and it emits no agent_end.
 func (a *Default) loop(
 	ctx context.Context,
 	push func(Event),
@@ -192,7 +194,7 @@ func (a *Default) loop(
 			newMessages = append(newMessages, trMsg)
 		}
 
-		// AfterTurn: let hooks replace the message history.
+		// AfterTurn: the hooks can replace the message history.
 		hookTR := TurnResult{
 			AssistantMsg: tr.assistantMsg,
 			ToolResults:  tr.toolResults,
@@ -210,8 +212,8 @@ func (a *Default) loop(
 			continue
 		}
 
-		// FollowUp: let hooks inject messages to keep the loop going.
-		// Check that another turn is allowed before injecting.
+		// FollowUp: the hooks can inject messages to continue the loop.
+		// First make sure that another turn is allowed.
 		nextTurn := turn + 1
 		if a.config.maxTurns > 0 && nextTurn >= a.config.maxTurns {
 			break
@@ -237,10 +239,10 @@ func (a *Default) loop(
 	return newMessages, nil
 }
 
-// executeTurn runs a single turn of the agent loop. It emits TurnStart
-// at entry and defers TurnEnd so the pair is always balanced — even on
-// errors or early returns. The returned [turnResult] carries all outputs;
-// the caller is responsible for updating loop-level state.
+// executeTurn runs a single turn of the agent loop. It emits TurnStart at
+// entry and defers TurnEnd, so the pair is always balanced, even on an
+// error or an early return. The returned [turnResult] carries all
+// outputs. The caller updates the loop-level state.
 func (a *Default) executeTurn(
 	ctx context.Context,
 	push func(Event),
@@ -275,7 +277,7 @@ func (a *Default) executeTurn(
 		return tr, nil
 	}
 
-	// Server-tool calls are executed by the provider; the agent only runs
+	// The provider runs the server-tool calls. The agent runs only the
 	// client-side function tools.
 	toolCalls := filterFunctionCalls(assistantMsg.ToolCalls())
 	if len(toolCalls) == 0 {
@@ -288,8 +290,9 @@ func (a *Default) executeTurn(
 	return tr, nil
 }
 
-// filterFunctionCalls returns the subset of tool calls that the agent should
-// execute locally — i.e. function tools, not provider-executed server tools.
+// filterFunctionCalls returns the tool calls that the agent runs locally,
+// that is, the function tools. It removes the server tools, because the
+// provider runs them.
 func filterFunctionCalls(calls []ai.ToolCall) []ai.ToolCall {
 	out := calls[:0:0]
 	for _, tc := range calls {
@@ -320,17 +323,18 @@ func (a *Default) buildPrompt(ctx context.Context) (ai.Prompt, error) {
 	}, nil
 }
 
-// streamTurn consumes an [ai.EventStream] from the provider, emitting
-// agent-level message events with incremental partial message snapshots.
+// streamTurn reads an [ai.EventStream] from the provider. It emits
+// agent-level message events with incremental snapshots of the partial
+// message.
 //
-// The partial message is accumulated from provider deltas so that every
-// [EventMessageUpdate] carries a non-nil Message snapshot. This matches
-// the pi-mono (TypeScript) behavior and lets consumers choose between
-// reading the delta ([Event.AssistantEvent]) or the snapshot ([Event.Message]).
+// streamTurn accumulates the partial message from the provider deltas, so
+// every [EventMessageUpdate] carries a non-nil Message snapshot. This
+// behavior matches pi-mono (TypeScript). A consumer reads either the
+// delta ([Event.AssistantEvent]) or the snapshot ([Event.Message]).
 //
-// [EventMessageStart] fires on the first event (before any content
-// arrives). [EventMessageEnd] carries the provider's final
-// authoritative message, returned by the stream's Wait.
+// [EventMessageStart] fires on the first event, before any content
+// arrives. [EventMessageEnd] carries the final authoritative message of
+// the provider, which the Wait method of the stream returns.
 func streamTurn(
 	push func(Event),
 	aiStream *ai.EventStream,
@@ -342,10 +346,10 @@ func streamTurn(
 
 	for evt, err := range aiStream.Events() {
 		if err != nil {
-			// Keep message_start/message_end paired even when the stream
-			// errors mid-flight: emit message_end with the partial we have
-			// accumulated so consumers tracking message scope don't see a
-			// dangling start.
+			// Keep message_start and message_end paired, even when the
+			// stream fails in mid-flight. Emit message_end with the
+			// accumulated partial message. Then a consumer that tracks
+			// the message scope does not see a dangling start.
 			if started {
 				push(Event{
 					Type:    EventMessageEnd,
@@ -390,8 +394,9 @@ func streamTurn(
 	return finalMsg, nil
 }
 
-// accumulateEvent updates partial with the delta from evt, building up
-// the message's Content slice incrementally as provider events arrive.
+// accumulateEvent updates partial with the delta from evt. It builds the
+// Content slice of the message step by step as the provider events
+// arrive.
 func accumulateEvent(partial *ai.Message, evt *ai.Event) {
 	switch evt.Type {
 	case ai.EventTextStart:
@@ -432,16 +437,17 @@ func accumulateEvent(partial *ai.Message, evt *ai.Event) {
 	}
 }
 
-// ensureContentIndex grows partial.Content so that index i exists,
-// using zero as fill for any gaps.
+// ensureContentIndex grows partial.Content until index i exists. It fills
+// any gaps with zero.
 func ensureContentIndex(m *ai.Message, i int, zero ai.Content) {
 	for len(m.Content) <= i {
 		m.Content = append(m.Content, zero)
 	}
 }
 
-// snapshotMessage returns a shallow copy of m with a copied Content slice,
-// so that later accumulation does not mutate previously published snapshots.
+// snapshotMessage returns a shallow copy of m with a copy of the Content
+// slice. Later accumulation then does not change the snapshots that
+// streamTurn published before.
 func snapshotMessage(m *ai.Message) *ai.Message {
 	cp := *m
 	cp.Content = make([]ai.Content, len(m.Content))
@@ -449,10 +455,10 @@ func snapshotMessage(m *ai.Message) *ai.Message {
 	return &cp
 }
 
-// executeTools runs tool calls, emitting execution events for each.
-// If all tools in the batch are marked parallel-safe, they run concurrently.
-// Otherwise, they run sequentially. Per-tool panics are recovered and
-// converted to error results.
+// executeTools runs the tool calls and emits execution events for each
+// call. If all tools in the batch are parallel-safe, they run
+// concurrently. If not, they run in sequence. executeTools recovers a
+// panic in one tool and returns an error result for that tool.
 func (a *Default) executeTools(
 	ctx context.Context,
 	push func(Event),
@@ -492,9 +498,9 @@ func (a *Default) executeTools(
 	return results
 }
 
-// executeSingleTool runs one tool call with panic recovery, emitting
-// start/update/end events. BeforeTool hooks can deny execution;
-// AfterTool hooks can modify the result.
+// executeSingleTool runs one tool call and recovers from a panic. It
+// emits the start, update, and end events. A BeforeTool hook can deny the
+// run. An AfterTool hook can modify the result.
 func (a *Default) executeSingleTool(
 	ctx context.Context,
 	push func(Event),
@@ -513,7 +519,7 @@ func (a *Default) executeSingleTool(
 		}
 	}()
 
-	// BeforeTool: hooks can deny execution.
+	// BeforeTool: the hooks can deny the run.
 	denied, err := a.config.hooks.runBeforeTool(ctx, a.history(), tc)
 	if err != nil {
 		return finishToolError(push, tc, err.Error())
@@ -531,7 +537,7 @@ func (a *Default) executeSingleTool(
 		return finishToolError(push, tc, err.Error())
 	}
 
-	// AfterTool: hooks can modify the result.
+	// AfterTool: the hooks can modify the result.
 	toolResult, err = a.config.hooks.runAfterTool(ctx, a.history(), tc, toolResult)
 	if err != nil {
 		return finishToolError(push, tc, err.Error())
@@ -552,7 +558,7 @@ func (a *Default) executeSingleTool(
 	return msg
 }
 
-// runTool executes a single tool call and returns the [ai.ToolResult].
+// runTool runs a single tool call and returns the [ai.ToolResult].
 func (a *Default) runTool(
 	ctx context.Context,
 	push func(Event),
@@ -596,9 +602,9 @@ func (a *Default) runTool(
 	return toolResult, nil
 }
 
-// finishToolError creates an error tool result message and emits the
-// [EventToolExecutionEnd] event followed by message_start/message_end
-// for the tool result.
+// finishToolError creates an error tool result message. It then emits the
+// [EventToolExecutionEnd] event. After that it emits message_start and
+// message_end for the tool result.
 func finishToolError(push func(Event), tc ai.ToolCall, errMsg string) ai.Message {
 	msg := ai.ErrorToolResultMessage(tc.ID, tc.Name, errMsg)
 	push(Event{
@@ -612,19 +618,19 @@ func finishToolError(push func(Event), tc ai.ToolCall, errMsg string) ai.Message
 	return msg
 }
 
-// emitToolResult publishes the message_start / message_end pair for a
-// tool result message, immediately after [EventToolExecutionEnd]. The
-// pair is emitted per-tool so the lifecycle order matches the spec
+// emitToolResult publishes the message_start and message_end pair for a
+// tool result message, immediately after [EventToolExecutionEnd]. It
+// emits the pair for each tool, so the lifecycle order matches the spec
 // diagram in docs/concepts/agent/streaming.md.
 func emitToolResult(push func(Event), msg ai.Message) {
 	push(Event{Type: EventMessageStart, Message: &msg})
 	push(Event{Type: EventMessageEnd, Message: &msg})
 }
 
-// emitMessages pushes message_start/message_end events for each
-// message. input marks the events as Input=true on the published
-// [Event], so consumers persisting from the event stream can skip
-// caller-supplied messages they have already stored.
+// emitMessages pushes a message_start and a message_end event for each
+// message. The input argument sets Input=true on the published [Event].
+// A consumer that stores messages from the event stream then skips the
+// caller-supplied messages that it already stored.
 func emitMessages(push func(Event), msgs []ai.Message, input bool) {
 	for i := range msgs {
 		push(Event{

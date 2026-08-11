@@ -8,7 +8,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Entry type tags written to the wire by [MarshalEntry].
+// Entry type tags that [MarshalEntry] writes to the wire.
 const (
 	typeMessage    = "message"
 	typeCompaction = "compaction"
@@ -20,12 +20,14 @@ const (
 var customRegistry = map[string]reflect.Type{}
 
 // RegisterCustom registers an application-defined custom entry type so a
-// [Store] can decode it from a persisted log. prototype is a zero value
-// of the type embedding [CustomEntry] (e.g. ArtifactEntry{}); kind must
-// match its [CustomEntry.Kind]. Registering the same kind twice panics.
+// [Store] can decode it from a persisted log. The prototype is a zero
+// value of the type that embeds [CustomEntry], for example
+// ArtifactEntry{}. The kind must match its [CustomEntry.Kind]. A second
+// registration of the same kind panics.
 //
-// Unregistered kinds decode to a bare [CustomEntry] (header + kind), so
-// registration is only needed to recover the app-defined fields.
+// An unregistered kind decodes to a bare [CustomEntry] that holds the
+// header and the kind. Registration is therefore necessary only to
+// recover the application-defined fields.
 func RegisterCustom(kind string, prototype Entry) {
 	if kind == "" {
 		panic("session: RegisterCustom requires a non-empty kind")
@@ -51,7 +53,8 @@ type compactionWire struct {
 	TokensBefore int    `json:"tokens_before"`
 }
 
-// MarshalEntry encodes an [Entry] to a single JSON object tagged by type.
+// MarshalEntry encodes an [Entry] to a single JSON object. The object
+// carries a type tag.
 func MarshalEntry(e Entry) ([]byte, error) {
 	switch v := e.(type) {
 	case MessageEntry:
@@ -74,8 +77,9 @@ func MarshalEntry(e Entry) ([]byte, error) {
 	}
 }
 
-// marshalCustom encodes an application-defined entry by marshaling its
-// full struct (header + kind + app fields) and tagging it as custom.
+// marshalCustom encodes an application-defined entry. It marshals the
+// full struct — header, kind, and application fields — and then tags the
+// object as custom.
 func marshalCustom(e Entry) ([]byte, error) {
 	raw, err := json.Marshal(e)
 	if err != nil {
@@ -89,9 +93,10 @@ func marshalCustom(e Entry) ([]byte, error) {
 	return json.Marshal(fields)
 }
 
-// UnmarshalEntry decodes a single JSON object produced by [MarshalEntry].
-// Custom entries are reconstructed via the type registered with
-// [RegisterCustom]; unregistered kinds decode to a bare [CustomEntry].
+// UnmarshalEntry decodes a single JSON object that [MarshalEntry]
+// produced. It reconstructs a custom entry from the type registered with
+// [RegisterCustom]. An unregistered kind decodes to a bare
+// [CustomEntry].
 func UnmarshalEntry(data []byte) (Entry, error) {
 	var probe struct {
 		Type string `json:"type"`

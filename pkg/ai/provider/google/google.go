@@ -19,7 +19,7 @@ import (
 	ai "github.com/sonnes/pi-go/pkg/ai"
 )
 
-// Verify interface compliance.
+// Compile-time interface checks.
 var (
 	_ ai.TextProvider   = (*Provider)(nil)
 	_ ai.ObjectProvider = (*Provider)(nil)
@@ -47,11 +47,11 @@ func WithAPIKey(key string) Option {
 	return func(p *Provider) { p.apiKey = key }
 }
 
-// WithBaseURL sends the provider's traffic somewhere other than Google's own
-// endpoint — a gateway, a proxy, a compatible API.
+// WithBaseURL sends the traffic of the provider to an endpoint other than the
+// Google endpoint. The target can be a gateway, a proxy, or a compatible API.
 //
-// It takes a host, not a versioned path: genai appends its own API version
-// ("v1beta"), so a URL carrying one would be doubled.
+// The value is a host, not a versioned path. genai appends its own API version
+// ("v1beta"), so a URL that already has one gets a doubled version.
 func WithBaseURL(url string) Option {
 	return func(p *Provider) { p.baseURL = url }
 }
@@ -61,7 +61,7 @@ func WithHTTPClient(c *http.Client) Option {
 	return func(p *Provider) { p.httpClient = c }
 }
 
-// WithToolCallIDFunc sets a custom function for generating tool call IDs.
+// WithToolCallIDFunc sets a custom function that generates tool call IDs.
 func WithToolCallIDFunc(fn func() string) Option {
 	return func(p *Provider) { p.toolCallIDFunc = fn }
 }
@@ -171,7 +171,7 @@ func (p *Provider) StreamText(
 			finalContent    []ai.Content
 			usage           ai.Usage
 			stopReason      ai.StopReason
-			pendingExecCode *genai.ExecutableCode // most-recent ExecutableCode awaiting its result
+			pendingExecCode *genai.ExecutableCode // the latest ExecutableCode without a result
 			groundingSeen   *genai.GroundingMetadata
 		)
 
@@ -463,12 +463,13 @@ func (p *Provider) StreamText(
 	})
 }
 
-// CountTokens counts the tokens in prompt before generating a response.
+// CountTokens counts the tokens in prompt before the provider generates a
+// response.
 //
-// The Gemini Developer API counts messages only: its countTokens endpoint
-// rejects system instructions and tool definitions, which are Vertex-only.
-// Since a count that silently omitted them would understate the request,
-// such prompts are refused rather than under-counted.
+// The Gemini Developer API counts messages only. Its countTokens endpoint
+// rejects system instructions and tool definitions, because those fields work
+// on Vertex only. A count without them understates the request, so CountTokens
+// returns an error for such a prompt.
 func (p *Provider) CountTokens(
 	ctx context.Context,
 	model ai.Model,
@@ -517,7 +518,7 @@ func (p *Provider) CountTokens(
 	return &ai.TokenCount{Total: int(response.TotalTokens)}, nil
 }
 
-// applyOptions maps StreamOptions to genai config.
+// applyOptions maps StreamOptions to the genai configuration.
 func applyOptions(
 	config *genai.GenerateContentConfig,
 	model ai.Model,
@@ -565,7 +566,7 @@ func usesThinkingLevel(model ai.Model) bool {
 	return strings.HasPrefix(strings.ToLower(model.ID), "gemini-3")
 }
 
-// googleThinkingLevel maps pi-go's level set onto the Gemini 3.x level set.
+// googleThinkingLevel maps the pi-go level set onto the Gemini 3.x level set.
 func googleThinkingLevel(level ai.ThinkingLevel) genai.ThinkingLevel {
 	switch level {
 	case ai.ThinkingMinimal:
@@ -581,12 +582,12 @@ func googleThinkingLevel(level ai.ThinkingLevel) genai.ThinkingLevel {
 	}
 }
 
-// convertTools converts ai.ToolInfo definitions to Google format.
+// convertTools converts ai.ToolInfo definitions to the Google format.
 //
-// Function tools collapse into a single Tool with FunctionDeclarations.
-// Server tools toggle dedicated fields on a separate Tool — Gemini does not
-// allow mixing FunctionDeclarations with google_search or code_execution in
-// the same Tool entry.
+// The function tools collapse into one Tool with FunctionDeclarations. The
+// server tools set dedicated fields on a separate Tool. Gemini does not accept
+// FunctionDeclarations together with google_search or code_execution in the
+// same Tool entry.
 func convertTools(tools []ai.ToolInfo, choice ai.ToolChoice) ([]*genai.Tool, *genai.ToolConfig) {
 	var funcs []*genai.FunctionDeclaration
 	var serverTool genai.Tool
@@ -657,8 +658,8 @@ func convertTools(tools []ai.ToolInfo, choice ai.ToolChoice) ([]*genai.Tool, *ge
 	return googleTools, toolConfig
 }
 
-// applyServerTool toggles the appropriate field on a [genai.Tool] for the
-// given pi-go server-tool ToolInfo. Unsupported types are silently skipped.
+// applyServerTool sets the correct field on a [genai.Tool] for the given pi-go
+// server-tool ToolInfo. It skips an unsupported type without an error.
 func applyServerTool(t *genai.Tool, info ai.ToolInfo) {
 	switch info.ServerType {
 	case ai.ServerToolWebSearch:
@@ -730,9 +731,9 @@ func serverInt32(value any) (int32, bool) {
 }
 
 // buildGroundingOutput converts a [genai.GroundingMetadata] block into an
-// [ai.ServerToolOutput]. Content is a numbered list of grounding-chunk URIs
-// and titles; Raw retains the marshaled JSON for callers that want to extract
-// per-chunk fields like the supporting confidence scores.
+// [ai.ServerToolOutput]. Content is a numbered list of grounding-chunk URIs and
+// titles. Raw keeps the marshaled JSON. A caller can read per-chunk fields from
+// Raw, such as the supporting confidence scores.
 func buildGroundingOutput(gm *genai.GroundingMetadata) *ai.ServerToolOutput {
 	out := &ai.ServerToolOutput{}
 
@@ -758,7 +759,7 @@ func buildGroundingOutput(gm *genai.GroundingMetadata) *ai.ServerToolOutput {
 	return out
 }
 
-// mapToGenaiSchema converts a JSON schema map to Google's genai.Schema.
+// mapToGenaiSchema converts a JSON schema map to the Google genai.Schema.
 func mapToGenaiSchema(m map[string]any) *genai.Schema {
 	if m == nil {
 		return nil
@@ -821,13 +822,13 @@ func mapToGenaiSchema(m map[string]any) *genai.Schema {
 	return schema
 }
 
-// mapUsage converts Google usage metadata to [ai.Usage], priced with model's
-// rates.
+// mapUsage converts Google usage metadata to [ai.Usage] and prices it with the
+// rates of the model.
 //
-// The API reports promptTokenCount inclusive of the cached prefix, so the
-// prefix is subtracted out and billed once at the cache-read rate rather than
-// twice. Explicit caches are billed for storage when created, not per
-// response, so there is no per-response cache-write charge.
+// The API reports promptTokenCount with the cached prefix included. mapUsage
+// subtracts that prefix and bills it once at the cache-read rate. An explicit
+// cache bills for storage at creation time, not for each response. There is
+// therefore no cache-write charge for each response.
 func mapUsage(model ai.Model, meta *genai.GenerateContentResponseUsageMetadata) ai.Usage {
 	if meta == nil {
 		return ai.Usage{}
@@ -856,7 +857,7 @@ func perMillion(tokens int, rate float64) float64 {
 	return float64(tokens) * rate / 1_000_000
 }
 
-// mapStopReason converts Google finish reason to StopReason.
+// mapStopReason converts a Google finish reason to a StopReason.
 func mapStopReason(reason genai.FinishReason) ai.StopReason {
 	switch reason {
 	case genai.FinishReasonStop:
@@ -885,7 +886,8 @@ func depointerSlice[T any](s []*T) []T {
 	return result
 }
 
-// GenerateObject generates a structured object using native JSON schema mode.
+// GenerateObject generates a structured object with the native JSON schema
+// mode.
 func (p *Provider) GenerateObject(
 	ctx context.Context,
 	model ai.Model,
@@ -966,7 +968,7 @@ func (p *Provider) GenerateObject(
 	}, nil
 }
 
-// GenerateImage generates images using Imagen models.
+// GenerateImage generates images with the Imagen models.
 func (p *Provider) GenerateImage(
 	ctx context.Context,
 	model ai.Model,
@@ -1021,7 +1023,8 @@ func (p *Provider) GenerateImage(
 	}, nil
 }
 
-// sizeToAspectRatio converts a size string like "1024x1024" to an aspect ratio.
+// sizeToAspectRatio converts a size string such as "1024x1024" to an aspect
+// ratio.
 func sizeToAspectRatio(size string) string {
 	switch size {
 	case "1024x1024", "512x512", "256x256":
@@ -1037,7 +1040,8 @@ func sizeToAspectRatio(size string) string {
 	}
 }
 
-// schemaToMapAny converts a jsonschema.Schema to map[string]any for the Google API.
+// schemaToMapAny converts a jsonschema.Schema to map[string]any for the Google
+// API.
 func schemaToMapAny(schema *jsonschema.Schema) (map[string]any, error) {
 	if schema == nil {
 		return nil, nil

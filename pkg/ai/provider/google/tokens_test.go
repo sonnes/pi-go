@@ -53,10 +53,10 @@ func TestCountTokens(t *testing.T) {
 	assert.Equal(t, 42, count.Total)
 }
 
-// The Developer API's countTokens endpoint takes contents only — the SDK
-// itself rejects systemInstruction and tools as Vertex-only parameters.
-// Counting them away silently would understate the request, so both are
-// refused up front with an error that names the real constraint.
+// The countTokens endpoint of the Developer API takes contents only. The SDK
+// rejects systemInstruction and tools, because those parameters work on Vertex
+// only. A count without them understates the request. CountTokens therefore
+// returns an error that names the real constraint.
 func TestCountTokens_RejectsPromptFeaturesTheAPICannotCount(t *testing.T) {
 	p, err := google.New(google.WithAPIKey("test-key"))
 	require.NoError(t, err)

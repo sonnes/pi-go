@@ -7,14 +7,15 @@ import (
 	"fmt"
 )
 
-// PKCE holds a PKCE verifier and its corresponding S256 challenge.
+// PKCE holds a PKCE verifier and the S256 challenge for that verifier.
 type PKCE struct {
 	Verifier  string
 	Challenge string
 }
 
-// GeneratePKCE creates a new PKCE verifier (base64url of 32 random bytes)
-// and its SHA-256 challenge for use in OAuth authorization code flows.
+// GeneratePKCE creates a new PKCE verifier and its SHA-256 challenge. The
+// verifier is the base64url form of 32 random bytes. OAuth authorization code
+// flows use both values.
 func GeneratePKCE() (PKCE, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

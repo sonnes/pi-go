@@ -21,8 +21,8 @@ func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
-// newMockProvider returns a provider whose transport answers every request
-// with body, so streaming tests need no cassette.
+// newMockProvider returns a provider with a transport that answers every
+// request with body. Streaming tests therefore need no cassette.
 func newMockProvider(t *testing.T, body string) *google.Provider {
 	t.Helper()
 
@@ -63,8 +63,8 @@ func TestMock_UsageCost(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, msg)
 
-	// promptTokenCount includes cachedContentTokenCount on the wire;
-	// Usage.Input reports only the uncached remainder so the two never bill
+	// On the wire, promptTokenCount includes cachedContentTokenCount.
+	// Usage.Input reports only the uncached remainder, so the two never bill
 	// twice.
 	assert.Equal(t, 800, msg.Usage.Input)
 	assert.Equal(t, 200, msg.Usage.CacheRead)

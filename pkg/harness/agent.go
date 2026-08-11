@@ -11,32 +11,35 @@ import (
 	"github.com/sonnes/pi-go/pkg/session"
 )
 
-// Agent builds an agent: it overlays the caller's options onto the
-// harness baseline, resolves every artifact fresh, compiles them into a
-// system prompt and a tool list, and binds the result to a durable
-// session.
+// Agent builds an agent. It overlays the options of the caller onto the
+// harness baseline. It then resolves every artifact fresh, compiles
+// them into a system prompt and a tool list, and binds the result to a
+// durable session.
 //
-// What comes back is a plain [durable.Agent] — the harness compiles the
-// configuration and steps out of the way. Seeding rides down as
-// [durable.WithMiddleware], so there is nothing left for a wrapper to
-// override, and every durable verb (Fork included) behaves the same
-// whether the agent was minted here or by [durable.New].
+// The result is a plain [durable.Agent]. The harness compiles the
+// configuration and then steps out of the way. Seeding rides down as
+// [durable.WithMiddleware], so a wrapper has nothing left to override.
+// Every durable verb, Fork included, behaves the same for an agent
+// minted here and for one from [durable.New].
 //
-// The artifacts behind it are a snapshot taken when it was built, so
-// its system prompt and tool list are stable for its lifetime. Edits to
-// the underlying definitions show up in the next build.
+// The artifacts behind the agent are a snapshot from build time. The
+// system prompt and the tool list are therefore stable for the lifetime
+// of the agent. An edit to the underlying definitions appears in the
+// next build.
 //
-// Options are the same flat currency [New] takes, and every layer is
-// accepted here: [durable.WithSessionID] names the session to create or
-// resume, [durable.WithMiddleware] wraps its runs, and any harness
-// option overlays the baseline for this build alone. Scalars override,
-// tools append, and a resolver is an additional source layered above
-// the baseline's — it wins the names it claims and leaves the rest
-// standing. Passing a project's resolvers and working directory here is
-// what lets one harness serve many repositories.
+// Options are the same flat currency [New] takes, and Agent accepts
+// every layer. [durable.WithSessionID] names the session to create or
+// resume. [durable.WithMiddleware] wraps the runs of that session. A
+// harness option overlays the baseline for this build alone.
 //
-// A session with no history is seeded from the configured
-// [prompt.Seeder] on its first run.
+// Scalars override and tools append. A resolver is an additional source
+// above the baseline sources. It wins the names it claims and leaves
+// the rest standing. A caller that passes the resolvers and the working
+// directory of a project here makes one harness serve many
+// repositories.
+//
+// On its first run, a session with no history gets the entries from the
+// configured [prompt.Seeder].
 func (h *Harness) Agent(ctx context.Context, opts ...agent.Option) (*durable.Agent, error) {
 	b, err := h.overlay(opts)
 	if err != nil {
@@ -56,13 +59,14 @@ func (h *Harness) Agent(ctx context.Context, opts ...agent.Option) (*durable.Age
 		return nil, err
 	}
 
-	// The seed is built before the session exists, because the
-	// middleware that injects it has to be registered at durable.New.
-	// Whether it is needed is still decided per run, against the leaf
-	// pointer — so a resumed session simply never uses what was built
-	// here. The cost is a seeder call whose result may be discarded;
-	// the gain is that a seeder failure is a build error the caller can
-	// act on, rather than a failed stream mid-run.
+	// Agent builds the seed before the session exists, because
+	// durable.New must register the middleware that injects it. The
+	// middleware still decides per run whether the seed is needed,
+	// against the leaf pointer. A resumed session therefore never uses
+	// what is built here. The cost is one seeder call whose result the
+	// build can discard. The gain is that a seeder error stops the
+	// build, where the caller can act on it. It does not stop the
+	// stream in the middle of a run.
 	seed, err := b.seed(ctx, env)
 	if err != nil {
 		return nil, err
@@ -82,15 +86,16 @@ func (h *Harness) Agent(ctx context.Context, opts ...agent.Option) (*durable.Age
 	return a, nil
 }
 
-// Env compiles a build and returns the [prompt.Env] it would hand its
-// builders — the resolved agent definitions, skills, and instructions,
-// the tool list with synthesized tools included, the model, and the
-// working directory. No session is created and no seeder runs.
+// Env compiles a build and returns the [prompt.Env] that the build
+// hands to its builders. The Env carries the resolved agent
+// definitions, skills, and instructions, the tool list with the
+// synthesized tools included, the model, and the working directory. Env
+// creates no session and runs no seeder.
 //
-// It is the read-only view of a build: a UI listing the skills a
-// session would see, or a debugging session asking what a given overlay
-// resolves to, gets the answer without minting an agent. Options
-// overlay the baseline exactly as they do in [Harness.Agent].
+// Env is the read-only view of a build. A UI that lists the skills of a
+// session gets its answer without an agent. A developer who asks what a
+// given overlay resolves to gets the same answer. Options overlay the
+// baseline exactly as they do in [Harness.Agent].
 func (h *Harness) Env(ctx context.Context, opts ...agent.Option) (*prompt.Env, error) {
 	b, err := h.overlay(opts)
 	if err != nil {
@@ -107,13 +112,14 @@ func (h *Harness) Env(ctx context.Context, opts ...agent.Option) (*prompt.Env, e
 }
 
 // agentOpts assembles the option list for the durable agent: the
-// harness's own options, then the caller's, then the compiled prompt
-// and tools — which go last so the harness's compilation wins over
-// anything the caller set directly.
+// harness options, then the caller options, then the compiled prompt
+// and tools. The compiled values go last, so the compilation of the
+// harness wins over anything the caller set directly.
 //
-// The seed option goes last of all, so the seed middleware is
-// registered after any the caller passed and ends up innermost: every
-// other middleware sees the run before the seed entries are added.
+// The seed option goes last of all. durable.New therefore registers the
+// seed middleware after every middleware the caller passed, and the
+// seed middleware ends up innermost. Every other middleware sees the
+// run before the seed entries arrive.
 func (h *Harness) agentOpts(
 	sys string,
 	tools []ai.Tool,
@@ -131,7 +137,7 @@ func (h *Harness) agentOpts(
 	return out
 }
 
-// env assembles the snapshot handed to the builders.
+// env assembles the snapshot for the builders.
 func (b *build) env(
 	model ai.Model,
 	tools []ai.Tool,
@@ -151,9 +157,9 @@ func (b *build) env(
 	}
 }
 
-// system runs the configured [prompt.Builder]. compile always sets one,
-// so a build reaches the nil branch — and its agent gets no system
-// prompt — only when it was assembled by hand.
+// system runs the configured [prompt.Builder]. compile always sets a
+// builder. A build reaches the nil branch, and its agent gets no system
+// prompt, only when someone assembled the build by hand.
 func (b *build) system(ctx context.Context, env *prompt.Env) (string, error) {
 	if b.builder == nil {
 		return "", nil
@@ -165,10 +171,10 @@ func (b *build) system(ctx context.Context, env *prompt.Env) (string, error) {
 	return sys, nil
 }
 
-// seed runs the configured [prompt.Seeder] and normalizes its entries:
-// message entries that are not ephemeral are marked meta, so seeded
-// context is model-visible, transcript-hidden, and durable whether or
-// not the seeder remembered to say so.
+// seed runs the configured [prompt.Seeder] and normalizes the entries
+// it returns. It marks every message entry that is not ephemeral as
+// meta. Seeded context is therefore visible to the model, hidden from
+// the transcript, and durable, even when the seeder did not say so.
 func (b *build) seed(ctx context.Context, env *prompt.Env) ([]session.Entry, error) {
 	if b.seeder == nil {
 		return nil, nil
@@ -189,26 +195,26 @@ func (b *build) seed(ctx context.Context, env *prompt.Env) ([]session.Entry, err
 	return out, nil
 }
 
-// seedInjector prepends a build's seed entries to a run while the
+// seedInjector prepends the seed entries of a build to a run while the
 // session has no persisted history.
 //
-// The check is the leaf pointer, not a fired-once flag: the durable run
-// persists its input before anything else, so a run that failed before
-// persisting leaves the leaf empty and the next run re-seeds. Once any
-// run persists, the seed is in history and never repeats — which is
+// The signal is the leaf pointer, not a fired-once flag. A durable run
+// persists its input before anything else. A run that dies before it
+// persists leaves the leaf empty, and the next run seeds again. After
+// any run persists, the seed is in history and never repeats. This is
 // also why a resumed session never injects.
 //
 // leafID is wired after [durable.New] returns, because the middleware
-// must be registered before the agent it asks about exists. That is
-// safe: the middleware body runs only from [durable.Agent.Run], which
-// no caller can reach until New has handed the agent back.
+// must be registered before the agent it asks about exists. This is
+// safe. The body of the middleware runs only from [durable.Agent.Run],
+// which no caller can reach until New hands the agent back.
 //
-// Known edge: a fork re-instantiates this middleware but the closure
-// still reads the parent's leaf, so a child forked from a never-run
-// session whose parent then runs first will not inject. Forking a
+// Known edge: a fork re-instantiates this middleware, but the closure
+// still reads the leaf of the parent. If the parent runs first, a child
+// forked from a session that never ran does not inject. A fork of a
 // session with no history is already a degenerate case, and every other
-// ordering is correct; closing it properly needs the middleware to know
-// which agent it is wrapping.
+// order is correct. A full correction needs the middleware to know
+// which agent it wraps.
 type seedInjector struct {
 	entries []session.Entry
 	leafID  func() string

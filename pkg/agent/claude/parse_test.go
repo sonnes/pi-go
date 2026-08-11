@@ -260,8 +260,8 @@ func TestMapper_HandleLine(t *testing.T) {
 				makeAssistantLine(t, "Hello!", "end_turn"),
 				{Type: "result", Subtype: "success", Result: "Hello!"},
 			},
-			// system/init is filtered by readLoop and produces no
-			// parser events — runTurn emits AgentStart explicitly.
+			// readLoop filters system/init, which produces no parser
+			// events. runTurn emits AgentStart itself.
 			events: []agent.EventType{
 				agent.EventTurnStart,
 				agent.EventMessageStart,
@@ -278,12 +278,12 @@ func TestMapper_HandleLine(t *testing.T) {
 				{Type: "result", Subtype: "success", Result: "The file contains Go code."},
 			},
 			events: []agent.EventType{
-				// Turn 1: assistant with tool_use (turn stays open)
+				// Turn 1: an assistant with tool_use. The turn stays open.
 				agent.EventTurnStart,
 				agent.EventMessageStart,
 				agent.EventMessageEnd,
 				agent.EventToolExecutionStart,
-				// Next assistant closes turn 1, opens turn 2
+				// The next assistant closes turn 1 and opens turn 2.
 				agent.EventTurnEnd,
 				agent.EventTurnStart,
 				agent.EventMessageStart,
@@ -332,9 +332,9 @@ func TestMapper_HandleLine(t *testing.T) {
 	}
 }
 
-// system/init is consumed by [Agent.readLoop] (which captures
-// SessionID and skips parser dispatch). The parser itself produces no
-// events for that line — runTurn emits AgentStart explicitly per Send.
+// [Agent.readLoop] reads system/init. It captures the SessionID and
+// skips the parser dispatch. The parser produces no events for that
+// line. runTurn emits AgentStart itself, once for each Send.
 func TestMapper_SystemInitNoEvents(t *testing.T) {
 	m := &parser{}
 	events := m.handleLine(rawLine{Type: "system", Subtype: "init", SessionID: "sess-abc"})
@@ -379,7 +379,8 @@ func TestMapper_ToolExecutionEvents(t *testing.T) {
 	for i, e := range events {
 		types[i] = e.Type
 	}
-	// Turn stays open — no TurnEnd yet (waiting for tool results).
+	// The turn stays open. There is no TurnEnd yet, because the parser
+	// waits for the tool results.
 	assert.Equal(t, []agent.EventType{
 		agent.EventTurnStart,
 		agent.EventMessageStart,
@@ -388,7 +389,7 @@ func TestMapper_ToolExecutionEvents(t *testing.T) {
 	}, types)
 	assert.True(t, m.inTurn, "turn should stay open after tool call")
 
-	// Verify tool execution start has the right fields.
+	// Make sure that the tool execution start has the correct fields.
 	toolEvt := events[3]
 	assert.Equal(t, "t1", toolEvt.ToolCallID)
 	assert.Equal(t, "Read", toolEvt.ToolName)
@@ -397,10 +398,10 @@ func TestMapper_ToolExecutionEvents(t *testing.T) {
 func TestMapper_UserToolResults(t *testing.T) {
 	m := &parser{}
 
-	// First an assistant with tool_use.
+	// First comes an assistant with tool_use.
 	m.handleLine(makeAssistantWithToolLine(t, "Reading.", "Read", "tool_use"))
 
-	// Then a user message with tool_result.
+	// Then comes a user message with tool_result.
 	userLine := makeUserToolResultLine(t, "t1", "file contents here")
 	events := m.handleLine(userLine)
 
@@ -414,11 +415,11 @@ func TestMapper_UserToolResults(t *testing.T) {
 		agent.EventMessageEnd,
 	}, types)
 
-	// Verify tool execution end fields.
+	// Make sure that the tool execution end fields are correct.
 	assert.Equal(t, "t1", events[0].ToolCallID)
 	assert.Equal(t, "file contents here", events[0].Result)
 
-	// Verify tool result message accumulated.
+	// Make sure that the parser accumulated the tool result message.
 	require.Len(t, m.toolResults, 1)
 	assert.Equal(t, ai.RoleToolResult, m.toolResults[0].Role)
 	assert.Equal(t, "t1", m.toolResults[0].ToolCallID)
@@ -428,7 +429,7 @@ func TestMapper_TurnEndCarriesToolResults(t *testing.T) {
 	m := &parser{}
 	var allEvents []agent.Event
 
-	// assistant → tool result → final assistant → result
+	// assistant, then tool result, then final assistant, then result
 	allEvents = append(allEvents,
 		m.handleLine(makeAssistantWithToolLine(t, "Checking.", "Bash", "tool_use"))...)
 	allEvents = append(allEvents,
@@ -442,9 +443,9 @@ func TestMapper_TurnEndCarriesToolResults(t *testing.T) {
 			Result:  "Done.",
 		})...)
 
-	// The first TurnEnd closes the tool-use turn and carries
-	// the tool results. The second TurnEnd is for the final
-	// assistant response (no tools).
+	// The first TurnEnd closes the tool-use turn and carries the tool
+	// results. The second TurnEnd is for the final assistant response,
+	// which uses no tools.
 	var turnEnds []agent.Event
 	for _, e := range allEvents {
 		if e.Type == agent.EventTurnEnd {
@@ -466,7 +467,7 @@ func TestMapper_ResultIsError(t *testing.T) {
 		IsError: true,
 	})
 
-	// Should return no events (error is on parser.err).
+	// The parser returns no events. The error is on parser.err.
 	assert.Empty(t, events)
 	require.Error(t, m.err)
 	assert.Contains(t, m.err.Error(), "Rate limited")
@@ -475,11 +476,12 @@ func TestMapper_ResultIsError(t *testing.T) {
 func TestMapper_ResultDeduplication(t *testing.T) {
 	m := &parser{}
 
-	// Assistant says "Hello!" first.
+	// The assistant says "Hello!" first.
 	m.handleLine(makeAssistantLine(t, "Hello!", "end_turn"))
 	require.Len(t, m.messages, 1)
 
-	// Result also carries "Hello!" — should NOT create another message.
+	// The result also carries "Hello!". It must NOT create a second
+	// message.
 	m.handleLine(rawLine{
 		Type:    "result",
 		Subtype: "success",
@@ -491,18 +493,18 @@ func TestMapper_ResultDeduplication(t *testing.T) {
 func TestMapper_ResultNewText(t *testing.T) {
 	m := &parser{}
 
-	// No prior assistant message.
+	// There is no earlier assistant message.
 	events := m.handleLine(rawLine{
 		Type:    "result",
 		Subtype: "success",
 		Result:  "Quick answer.",
 	})
 
-	// Should create a message from result text.
+	// The parser creates a message from the result text.
 	require.Len(t, m.messages, 1)
 	assert.Equal(t, "Quick answer.", m.messages[0].Text())
 
-	// Should emit message start/end events.
+	// The parser emits message start and message end events.
 	types := make([]agent.EventType, len(events))
 	for i, e := range events {
 		types[i] = e.Type
@@ -535,24 +537,25 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 	}
 
 	assert.Equal(t, []agent.EventType{
-		// system/init is filtered by readLoop, not the parser.
-		// Turn 1: assistant calls tool, turn stays open for results
+		// readLoop filters system/init, not the parser.
+		// Turn 1: the assistant calls a tool. The turn stays open for
+		// the results.
 		agent.EventTurnStart,
 		agent.EventMessageStart,
 		agent.EventMessageEnd,
 		agent.EventToolExecutionStart,
-		// Tool result arrives inside the same turn
+		// The tool result arrives inside the same turn.
 		agent.EventToolExecutionEnd,
 		agent.EventMessageStart,
 		agent.EventMessageEnd,
-		// Turn 1 closes (next assistant triggers close)
+		// Turn 1 closes. The next assistant starts the close.
 		agent.EventTurnEnd,
-		// Turn 2: final assistant
+		// Turn 2: the final assistant.
 		agent.EventTurnStart,
 		agent.EventMessageStart,
 		agent.EventMessageEnd,
 		agent.EventTurnEnd,
-		// Result (deduplicated — no extra message)
+		// The result is a duplicate, so there is no extra message.
 	}, types)
 
 	require.Len(t, m.messages, 3) // assistant + tool_result + assistant
@@ -562,8 +565,8 @@ func TestMapper_FullConversationWithTools(t *testing.T) {
 }
 
 func TestMapper_UserToolResultArrayContent(t *testing.T) {
-	// Real Claude Code emits tool_result.content as an array of
-	// {type:"text", text:"..."} objects, not a plain string.
+	// The real Claude Code emits tool_result.content as an array of
+	// {type:"text", text:"..."} objects, not as a plain string.
 	m := &parser{}
 
 	line, err := parseLine([]byte(`{
@@ -609,15 +612,15 @@ func TestMapper_UserToolResultStringContent(t *testing.T) {
 
 // --- usage-propagation regression tests ---
 
-// TestMapper_StaleAssistantUsageDropped verifies that per-line usage
-// on assistant lines (a streaming snapshot where output_tokens=0 until
-// finalized) does not leak into emitted MessageEnd events. The final
-// usage arrives on the result line and must be attached to the last
-// emitted assistant MessageEnd.
+// TestMapper_StaleAssistantUsageDropped makes sure that the per-line
+// usage on an assistant line does not reach the emitted MessageEnd
+// events. That usage is a streaming snapshot, where output_tokens stays
+// 0 until the turn ends. The final usage arrives on the result line. It
+// must attach to the last assistant MessageEnd that the parser emits.
 func TestMapper_StaleAssistantUsageDropped(t *testing.T) {
 	m := &parser{}
 
-	// Assistant line carries stale streaming usage (output=0).
+	// The assistant line carries stale streaming usage, with output=0.
 	stale := `{
 		"role":"assistant",
 		"content":[{"type":"text","text":"Hi!"}],
@@ -629,8 +632,8 @@ func TestMapper_StaleAssistantUsageDropped(t *testing.T) {
 		Type:    "assistant",
 		Message: json.RawMessage(stale),
 	})
-	// MessageEnd for this assistant must be buffered until the result
-	// line attaches the authoritative usage.
+	// The MessageEnd of this assistant must stay in the buffer until the
+	// result line attaches the final usage.
 	for _, e := range eventsA {
 		assert.NotEqual(t, agent.EventMessageEnd, e.Type,
 			"stop-reason assistant MessageEnd should be deferred to result line")
@@ -638,7 +641,7 @@ func TestMapper_StaleAssistantUsageDropped(t *testing.T) {
 			"TurnEnd should be deferred to result line")
 	}
 
-	// Result line carries the final usage.
+	// The result line carries the final usage.
 	eventsR := m.handleLine(rawLine{
 		Type:    "result",
 		Subtype: "success",
@@ -665,9 +668,9 @@ func TestMapper_StaleAssistantUsageDropped(t *testing.T) {
 }
 
 // TestMapper_UsageOnlyOnLastAssistantLine covers the extended-thinking
-// case where the CLI emits separate assistant lines for thinking and
-// text. Only the last emitted assistant MessageEnd should carry the
-// turn-level usage.
+// case. There the CLI emits separate assistant lines for thinking and
+// for text. Only the last assistant MessageEnd carries the turn-level
+// usage.
 func TestMapper_UsageOnlyOnLastAssistantLine(t *testing.T) {
 	m := &parser{}
 	var all []agent.Event
@@ -714,19 +717,19 @@ func TestMapper_UsageOnlyOnLastAssistantLine(t *testing.T) {
 	}
 	require.Len(t, ends, 2)
 
-	// First (thinking) message — no usage.
+	// The first message holds the thinking. It has no usage.
 	assert.Equal(t, ai.Usage{}, ends[0].Message.Usage,
 		"intermediate assistant message should not carry usage")
 
-	// Last (text) message — turn-level usage.
+	// The last message holds the text. It has the turn-level usage.
 	assert.Equal(t, 3, ends[1].Message.Usage.Input)
 	assert.Equal(t, 25, ends[1].Message.Usage.Output)
 	assert.Equal(t, 5000, ends[1].Message.Usage.CacheWrite)
 }
 
-// TestMapper_UsageOnResultCreatedMessage covers the case where the
-// assistant emitted no text block and the result line synthesizes one.
-// The synthesized message must receive the final usage.
+// TestMapper_UsageOnResultCreatedMessage covers the case in which the
+// assistant emits no text block. The result line then builds one. That
+// new message must receive the final usage.
 func TestMapper_UsageOnResultCreatedMessage(t *testing.T) {
 	m := &parser{}
 	var all []agent.Event
@@ -766,18 +769,18 @@ func TestMapper_UsageOnResultCreatedMessage(t *testing.T) {
 
 // --- stream_event (partial message) tests ---
 
-// makeStreamEventLine builds a type:"stream_event" rawLine whose
-// embedded event is the given Anthropic SSE event JSON.
+// makeStreamEventLine builds a type:"stream_event" rawLine. The embedded
+// event is the given Anthropic SSE event JSON.
 func makeStreamEventLine(t *testing.T, event string) rawLine {
 	t.Helper()
 	return rawLine{Type: "stream_event", Event: json.RawMessage(event)}
 }
 
-// With --include-partial-messages the CLI interleaves stream_event
-// lines with the per-block assistant lines. content_block_start opens
-// the message bracket early (empty message), deltas become
-// message_update events, and the assistant line supplies the final
-// content without re-emitting turn_start/message_start.
+// With --include-partial-messages, the CLI mixes stream_event lines with
+// the per-block assistant lines. A content_block_start opens the message
+// bracket early with an empty message. The deltas become message_update
+// events. The assistant line gives the final content. That line does not
+// emit turn_start or message_start again.
 func TestMapper_StreamEventTextDeltas(t *testing.T) {
 	m := &parser{}
 	var all []agent.Event
@@ -851,9 +854,9 @@ func TestMapper_StreamEventThinkingDeltas(t *testing.T) {
 	assert.Equal(t, "pondering", upd.AssistantEvent.Delta)
 }
 
-// Per-block assistant lines: the CLI emits one assistant line per
-// completed content block. Each content_block_start after an assistant
-// line opens a new message bracket, flushing any buffered end events.
+// The CLI emits one assistant line for each completed content block.
+// Each content_block_start after an assistant line opens a new message
+// bracket. It also flushes any buffered end events.
 func TestMapper_StreamEventToolUseFlow(t *testing.T) {
 	m := &parser{}
 	var all []agent.Event
@@ -872,7 +875,7 @@ func TestMapper_StreamEventToolUseFlow(t *testing.T) {
 	collect(makeStreamEventLine(t, `{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":"}}`))
 	collect(makeAssistantWithToolLine(t, "Let me check.", "Read", "tool_use"))
 
-	// Tool result comes back inside the open turn.
+	// The tool result comes back inside the open turn.
 	collect(makeUserToolResultLine(t, "t1", "package main"))
 
 	// Final text message.
@@ -890,25 +893,26 @@ func TestMapper_StreamEventToolUseFlow(t *testing.T) {
 		agent.EventTurnStart,
 		agent.EventMessageStart,
 		agent.EventMessageUpdate,
-		// Block 1 boundary flushes the buffered text message.
+		// The boundary of block 1 flushes the buffered text message.
 		agent.EventMessageEnd,
 		agent.EventTurnEnd,
 		agent.EventTurnStart,
 		agent.EventMessageStart,
 		agent.EventMessageUpdate, // input_json_delta
-		// Assistant tool_use line: message ends, tool starts, turn stays open.
+		// On the assistant tool_use line, the message ends and the tool
+		// starts. The turn stays open.
 		agent.EventMessageEnd,
 		agent.EventToolExecutionStart,
-		// Tool result inside the open turn.
+		// The tool result is inside the open turn.
 		agent.EventToolExecutionEnd,
 		agent.EventMessageStart,
 		agent.EventMessageEnd,
-		// Final message boundary closes the tool turn.
+		// The final message boundary closes the tool turn.
 		agent.EventTurnEnd,
 		agent.EventTurnStart,
 		agent.EventMessageStart,
 		agent.EventMessageUpdate,
-		// Result flushes the buffered final message.
+		// The result flushes the buffered final message.
 		agent.EventMessageEnd,
 		agent.EventTurnEnd,
 	}, types)
@@ -918,7 +922,7 @@ func TestMapper_StreamEventToolUseFlow(t *testing.T) {
 	assert.Equal(t, ai.EventToolDelta, toolUpd.AssistantEvent.Type)
 	assert.Equal(t, `{"file_path":`, toolUpd.AssistantEvent.Delta)
 
-	// The tool turn's turn_end carries the tool results.
+	// The turn_end of the tool turn carries the tool results.
 	toolTurnEnd := all[13]
 	require.Len(t, toolTurnEnd.ToolResults, 1)
 	assert.Equal(t, "t1", toolTurnEnd.ToolResults[0].ToolCallID)
@@ -941,8 +945,8 @@ func TestMapper_StreamEventIgnoredTypes(t *testing.T) {
 
 // --- helpers ---
 
-// makeAssistantLine builds a type:"assistant" rawLine whose embedded
-// message is the given text wrapped as an Anthropic content block.
+// makeAssistantLine builds a type:"assistant" rawLine. The embedded
+// message is the given text inside an Anthropic content block.
 func makeAssistantLine(t *testing.T, text, stopReason string) rawLine {
 	t.Helper()
 	body := fmt.Sprintf(
@@ -952,8 +956,8 @@ func makeAssistantLine(t *testing.T, text, stopReason string) rawLine {
 	return rawLine{Type: "assistant", Message: json.RawMessage(body)}
 }
 
-// makeAssistantWithToolLine builds an assistant rawLine containing both
-// a text block and a tool_use block.
+// makeAssistantWithToolLine builds an assistant rawLine with a text
+// block and a tool_use block.
 func makeAssistantWithToolLine(t *testing.T, text, toolName, stopReason string) rawLine {
 	t.Helper()
 	body := fmt.Sprintf(
@@ -993,8 +997,8 @@ func TestMapper_UsageCost(t *testing.T) {
 		},
 	})
 
-	// The CLI relays Anthropic's own usage block: four disjoint kinds,
-	// each billed once at its own rate.
+	// The CLI relays the usage block of Anthropic. It has four separate
+	// kinds. Each kind is billed once, at its own rate.
 	cost := m.usage.Cost
 	assert.InDelta(t, 0.0024, cost.Input, 1e-9)
 	assert.InDelta(t, 0.0075, cost.Output, 1e-9)

@@ -90,7 +90,7 @@ func TestEventStream_WaitAfterAbandonedEvents(t *testing.T) {
 	expected := &ai.Message{Role: ai.RoleAssistant}
 
 	stream := ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
-		// Push well past the channel buffer to prove an abandoned
+		// Push well past the channel buffer to prove that an abandoned
 		// consumer cannot block the producer.
 		for range 100 {
 			push(ai.Event{Type: ai.EventTextDelta, Delta: "x"})

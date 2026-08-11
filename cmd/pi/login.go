@@ -18,7 +18,7 @@ import (
 	"github.com/sonnes/pi-go/pkg/ai/provider/openai"
 )
 
-// oauthProvider describes how to build a login config for a provider.
+// oauthProvider describes how to build a login configuration for a provider.
 type oauthProvider struct {
 	name            string
 	envClientID     string
@@ -104,9 +104,10 @@ func runLogin(ctx context.Context, cmd *cli.Command) error {
 		tryOpenBrowser(u)
 		return nil
 	}
-	// Manual-paste fallback for headless / SSH / VPS environments where the
-	// browser cannot reach the localhost callback. Runs concurrently with the
-	// callback server; whichever completes first wins.
+	// Manual-paste fallback for headless, SSH, and VPS environments. In
+	// those environments the browser cannot reach the localhost callback.
+	// The fallback runs beside the callback server. The first of the two
+	// to finish wins.
 	cfg.ReadCode = func(ctx context.Context) (string, error) {
 		return readLine(ctx, os.Stdin)
 	}
@@ -166,9 +167,9 @@ func findOAuthProvider(name string) (oauthProvider, error) {
 	return oauthProvider{}, fmt.Errorf("unknown provider: %s", name)
 }
 
-// readLine reads a single trimmed line from r, returning early if ctx is
-// cancelled. The underlying read may remain blocked on the descriptor after
-// cancellation, which is acceptable for a short-lived CLI command.
+// readLine reads a single trimmed line from r. If ctx is canceled, readLine
+// returns early. The underlying read can stay blocked on the descriptor after
+// the cancellation. This is acceptable for a short-lived CLI command.
 func readLine(ctx context.Context, r io.Reader) (string, error) {
 	type result struct {
 		line string

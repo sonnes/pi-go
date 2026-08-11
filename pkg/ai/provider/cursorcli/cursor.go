@@ -15,12 +15,12 @@ var _ ai.TextProvider = (*Provider)(nil)
 // ID is the Cursor CLI provider identity.
 const ID = "cursor-cli"
 
-// Provider implements [ai.TextProvider] by delegating each call to a fresh
+// Provider implements [ai.TextProvider]. Each call goes to a new
 // `cursor-agent --print` subprocess.
 type Provider struct {
 	cfg config
 
-	// sendFn spawns the subprocess. Defaults to [spawn]; overridden in tests.
+	// sendFn starts the subprocess. The default is [spawn]. Tests replace it.
 	sendFn func(ctx context.Context, cfg config, args sendArgs) (io.ReadCloser, func() error, error)
 }
 
@@ -52,14 +52,14 @@ func WithWorkDir(dir string) Option {
 	return func(c *config) { c.workDir = dir }
 }
 
-// WithEnv sets additional environment variables for each subprocess.
-// Each entry should be in "KEY=VALUE" format.
+// WithEnv sets more environment variables for each subprocess. Each
+// entry must have the "KEY=VALUE" format.
 func WithEnv(env ...string) Option {
 	return func(c *config) { c.env = env }
 }
 
-// WithAPIKey passes a Cursor API key via --api-key. Most callers should prefer
-// CURSOR_API_KEY or `cursor-agent login`.
+// WithAPIKey passes a Cursor API key through --api-key. Most callers use
+// CURSOR_API_KEY or `cursor-agent login` instead.
 func WithAPIKey(key string) Option {
 	return func(c *config) { c.apiKey = key }
 }
@@ -69,20 +69,21 @@ func WithHeaders(headers ...string) Option {
 	return func(c *config) { c.headers = headers }
 }
 
-// WithModel overrides the default model. Per-call [ai.Model.ID] values take
-// precedence over this setting.
+// WithModel overrides the default model. A per-call [ai.Model.ID] value
+// has precedence over this setting.
 func WithModel(model string) Option {
 	return func(c *config) { c.model = model }
 }
 
-// WithMode sets Cursor's execution mode. Defaults to "ask" for read-only
-// provider-style calls. Use an empty mode to let Cursor use its default agent
-// behavior.
+// WithMode sets the execution mode of Cursor. The default is "ask", which
+// keeps provider-style calls read-only. For the default agent behavior of
+// Cursor, set an empty mode.
 func WithMode(mode string) Option {
 	return func(c *config) { c.mode = mode }
 }
 
-// WithSandbox sets Cursor's sandbox mode, such as "enabled" or "disabled".
+// WithSandbox sets the sandbox mode of Cursor, such as "enabled" or
+// "disabled".
 func WithSandbox(mode string) Option {
 	return func(c *config) { c.sandbox = mode }
 }
@@ -98,7 +99,7 @@ func WithApproveMCPs() Option {
 	return func(c *config) { c.approveMCPs = true }
 }
 
-// WithBrowser enables Cursor CLI browser automation support.
+// WithBrowser turns on the browser automation support of the Cursor CLI.
 func WithBrowser() Option {
 	return func(c *config) { c.browser = true }
 }
@@ -118,15 +119,16 @@ func New(opts ...Option) *Provider {
 	}
 }
 
-// StreamText runs a one-shot `cursor-agent --print` subprocess and streams
-// [ai.Event]s extracted from its NDJSON output.
+// StreamText runs a one-shot `cursor-agent --print` subprocess. It streams
+// the [ai.Event] values that it reads from the NDJSON output.
 //
-// The Cursor CLI emits assistant text deltas and provider-executed tool calls.
-// Only the last user message in [ai.Prompt.Messages] is sent; [ai.Prompt.System]
-// is prefixed into the prompt because the CLI has no dedicated system prompt
-// flag. [ai.StreamOptions.ThinkingLevel] is ignored: the Cursor CLI has no
-// reasoning-effort flag and binds reasoning to the model name (for example
-// "sonnet-4.5-thinking") instead.
+// The Cursor CLI emits assistant text deltas and tool calls that the
+// provider runs. StreamText sends only the last user message in
+// [ai.Prompt.Messages]. It adds [ai.Prompt.System] to the front of the
+// prompt, because the CLI has no separate system prompt flag. StreamText
+// ignores [ai.StreamOptions.ThinkingLevel]. The Cursor CLI has no
+// reasoning-effort flag. It binds reasoning to the model name instead (for
+// example "sonnet-4.5-thinking").
 func (p *Provider) StreamText(
 	ctx context.Context,
 	model ai.Model,

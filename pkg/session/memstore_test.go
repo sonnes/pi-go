@@ -65,7 +65,7 @@ func TestMemoryStoreLoadIsolation(t *testing.T) {
 	entries, err := s.LoadEntries(ctx, "s1")
 	require.NoError(t, err)
 
-	// Mutating the returned copies must not affect the store.
+	// A change to the returned copies must not affect the store.
 	sess.ID = "mutated"
 	entries[0] = session.NewMessageEntry(ai.UserMessage("mutated"))
 

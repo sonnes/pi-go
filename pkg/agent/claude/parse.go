@@ -13,10 +13,10 @@ import (
 
 // --- NDJSON wire types ---
 
-// rawLine is a single NDJSON line from Claude CLI stdout.
-// The Type field discriminates the union. The embedded `message` and
-// `usage` fields carry Anthropic-API-shaped payloads and are decoded
-// through the anthropic SDK types.
+// rawLine is one NDJSON line from Claude CLI stdout. The Type field
+// selects the member of the union. The embedded `message` and `usage`
+// fields carry payloads in the shape of the Anthropic API. The anthropic
+// SDK types decode them.
 type rawLine struct {
 	Type      string           `json:"type"`
 	Subtype   string           `json:"subtype,omitempty"`
@@ -27,23 +27,25 @@ type rawLine struct {
 	IsError   bool             `json:"is_error,omitempty"`
 	Usage     *anthropic.Usage `json:"usage,omitempty"`
 
-	// control_request lines (CLI → client, e.g. can_use_tool).
+	// control_request lines from the CLI to the client, for example
+	// can_use_tool.
 	RequestID string          `json:"request_id,omitempty"`
 	Request   json.RawMessage `json:"request,omitempty"`
 }
 
-// userMessage is the wire format for type:"user" lines, which carry
-// tool_result content blocks. The SDK's ToolResultBlockParam is a
-// marshal-side param type and doesn't cleanly round-trip the
-// string-or-array content field, so we keep a minimal hand-rolled
-// decoder here.
+// userMessage is the wire format for type:"user" lines. These lines
+// carry tool_result content blocks. The ToolResultBlockParam type of the
+// SDK is a marshal-side param type. It does not round-trip the content
+// field, which is a string or an array. This package therefore keeps a
+// small decoder of its own here.
 type userMessage struct {
 	Content []userContent `json:"content"`
 }
 
-// userContent is a content block inside a user NDJSON line.
-// The Content field can be a string or an array of {type, text} objects
-// depending on the tool; we use json.RawMessage and extract text from both.
+// userContent is a content block inside a user NDJSON line. The Content
+// field is a string or an array of {type, text} objects. The tool
+// decides which one. This package uses json.RawMessage and extracts the
+// text from both forms.
 type userContent struct {
 	Type      string          `json:"type"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
@@ -51,8 +53,8 @@ type userContent struct {
 	IsError   bool            `json:"is_error,omitempty"`
 }
 
-// textContent extracts the text from a userContent.Content field,
-// handling both string and array-of-{type,text} formats.
+// textContent extracts the text from a userContent.Content field. It
+// accepts the string format and the array-of-{type,text} format.
 func (c userContent) textContent() string {
 	if len(c.Content) == 0 {
 		return ""
@@ -82,15 +84,15 @@ func (c userContent) textContent() string {
 	return string(c.Content)
 }
 
-// parseLine deserializes a single NDJSON line.
+// parseLine deserializes one NDJSON line.
 func parseLine(data []byte) (rawLine, error) {
 	var line rawLine
 	err := json.Unmarshal(data, &line)
 	return line, err
 }
 
-// toAIMessage converts an Anthropic API message (as decoded by the
-// anthropic SDK) to an [ai.Message].
+// toAIMessage converts an Anthropic API message to an [ai.Message]. The
+// anthropic SDK decodes the input message.
 func toAIMessage(model ai.Model, msg anthropic.Message) ai.Message {
 	m := ai.Message{
 		Role:       ai.RoleAssistant,
@@ -124,8 +126,9 @@ func toAIMessage(model ai.Model, msg anthropic.Message) ai.Message {
 	return m
 }
 
-// usageFromAnthropic converts an [anthropic.Usage] into [ai.Usage]. Pass
-// nil to signal "no usage reported" (returns the zero value).
+// usageFromAnthropic converts an [anthropic.Usage] into [ai.Usage]. To
+// signal that there is no reported usage, pass nil. The function then
+// returns the zero value.
 func usageFromAnthropic(model ai.Model, u *anthropic.Usage) ai.Usage {
 	if u == nil {
 		return ai.Usage{}
@@ -162,44 +165,45 @@ func mapStopReason(reason string) ai.StopReason {
 
 // --- event parser ---
 
-// parser is a stateful converter from NDJSON lines to [agent.Event] values.
-// It tracks whether a turn is open so that tool results land inside the
-// same turn as the assistant's tool call, matching the Default agent's
-// event protocol.
+// parser is a stateful converter from NDJSON lines to [agent.Event]
+// values. It records whether a turn is open. As a result, the tool
+// results stay in the same turn as the tool call of the assistant. This
+// matches the event protocol of the Default agent.
 type parser struct {
-	// model is the caller's [ai.Model], retained for its Cost rates: the
-	// CLI reports token counts but no per-category cost.
+	// model is the caller's [ai.Model]. The parser keeps it for the Cost
+	// rates. The CLI reports token counts but no cost per category.
 	model       ai.Model
 	usage       ai.Usage
 	messages    []ai.Message
 	toolResults []ai.Message
 	err         error
-	inTurn      bool        // true when a turn is open (TurnStart emitted, TurnEnd not yet)
+	inTurn      bool        // true after TurnStart and before TurnEnd
 	turnMsg     *ai.Message // the assistant message for the current open turn
 
-	// Per-line usage reported on assistant lines is a streaming snapshot
-	// (typically input_tokens only, output_tokens=0). The authoritative
-	// usage arrives on the final result line, so MessageEnd and TurnEnd
-	// for a stop-reason assistant are buffered here until [handleResult]
-	// attaches the final usage via [lastAssistantMsg].
+	// The usage on an assistant line is a streaming snapshot. It usually
+	// holds input_tokens only, with output_tokens=0. The final usage
+	// arrives on the last result line. The parser therefore buffers
+	// MessageEnd and TurnEnd for a stop-reason assistant here, until
+	// [handleResult] attaches the final usage through [lastAssistantMsg].
 	pending          []agent.Event
 	lastAssistantMsg *ai.Message
 
-	// streamOpen is true when a stream_event content_block_start has
-	// already emitted the turn_start/message_start bracket for the
-	// in-flight message, so the following assistant line must not
-	// re-emit it. Cleared by that assistant line (or the result line).
+	// streamOpen is true after a stream_event content_block_start emits
+	// the turn_start/message_start bracket for the message in progress.
+	// The assistant line that follows must not emit the bracket again.
+	// That assistant line clears the field. The result line also clears
+	// it.
 	streamOpen bool
 }
 
-// handleLine processes a single NDJSON line and returns zero or more
-// agent events. The caller pushes each returned event.
+// handleLine processes one NDJSON line and returns zero or more agent
+// events. The caller pushes each returned event.
 //
-// system/init lines are intercepted by [Agent.readLoop], not the
-// parser: the agent records the session ID from init. Per-run
-// [agent.EventAgentStart] is published by readLoop just before the next
-// batch of parser events (signalled by [Agent.expectAgentStart]);
-// [agent.EventAgentEnd] is emitted by [Agent.awaitTurn] on success.
+// [Agent.readLoop] intercepts the system/init lines, not the parser. The
+// agent records the session ID from init. readLoop publishes the per-run
+// [agent.EventAgentStart] immediately before the next batch of parser
+// events. [Agent.expectAgentStart] signals that publish. On success,
+// [Agent.awaitTurn] emits [agent.EventAgentEnd].
 func (m *parser) handleLine(line rawLine) []agent.Event {
 	switch line.Type {
 	case "assistant":
@@ -221,10 +225,10 @@ func (m *parser) handleLine(line rawLine) []agent.Event {
 
 // --- stream_event handling (--include-partial-messages) ---
 
-// streamEvent is the Anthropic SSE event embedded in a stream_event
-// line. Only content_block_start and content_block_delta drive agent
-// events; everything else (message_start, message_delta, message_stop,
-// content_block_stop, ping) is ignored.
+// streamEvent is the Anthropic SSE event inside a stream_event line.
+// Only content_block_start and content_block_delta produce agent events.
+// The parser ignores message_start, message_delta, message_stop,
+// content_block_stop, and ping.
 type streamEvent struct {
 	Type  string       `json:"type"`
 	Index int          `json:"index"`
@@ -232,7 +236,7 @@ type streamEvent struct {
 }
 
 // streamDelta is a content_block_delta payload. The Type field selects
-// which of the value fields is populated.
+// which value field holds the data.
 type streamDelta struct {
 	Type        string `json:"type"`
 	Text        string `json:"text,omitempty"`
@@ -240,12 +244,12 @@ type streamDelta struct {
 	PartialJSON string `json:"partial_json,omitempty"`
 }
 
-// handleStreamEvent processes a stream_event line. content_block_start
-// opens the message bracket early (empty message) so that the deltas
-// that follow stream as [agent.EventMessageUpdate] between
-// message_start and message_end — matching the Default agent's
-// lifecycle. The assistant line that completes each block carries the
-// authoritative content and closes the bracket via [handleAssistant].
+// handleStreamEvent processes a stream_event line. A content_block_start
+// opens the message bracket early with an empty message. The deltas that
+// follow then stream as [agent.EventMessageUpdate] between message_start
+// and message_end. This matches the lifecycle of the Default agent. The
+// assistant line that completes each block carries the final content.
+// That line closes the bracket through [handleAssistant].
 func (m *parser) handleStreamEvent(line rawLine) []agent.Event {
 	var ev streamEvent
 	if err := json.Unmarshal(line.Event, &ev); err != nil {
@@ -275,11 +279,12 @@ func (m *parser) handleStreamEvent(line rawLine) []agent.Event {
 }
 
 // openStreamMessage emits the turn_start/message_start bracket for a
-// streamed message. The CLI emits one assistant line per completed
-// content block, so each content_block_start after an assistant line
-// begins a new message: any buffered end events flush and any open
-// tool-use turn closes first — the same boundary [handleAssistant]
-// applies on the non-streamed path.
+// streamed message. The CLI emits one assistant line for each completed
+// content block. Each content_block_start after an assistant line
+// therefore starts a new message. Before the new message, the parser
+// flushes any buffered end events and closes any open tool-use turn.
+// [handleAssistant] applies the same boundary on the path without
+// streaming.
 func (m *parser) openStreamMessage() []agent.Event {
 	if m.streamOpen {
 		return nil
@@ -300,9 +305,9 @@ func (m *parser) openStreamMessage() []agent.Event {
 	return events
 }
 
-// mapStreamDelta converts a content_block_delta into the [ai.Event]
-// carried by message_update. signature_delta (and unknown delta types)
-// return nil — they carry nothing renderable.
+// mapStreamDelta converts a content_block_delta into the [ai.Event] that
+// message_update carries. For signature_delta and for unknown delta
+// types, the function returns nil, because they carry nothing to show.
 func mapStreamDelta(index int, d streamDelta) *ai.Event {
 	switch d.Type {
 	case "text_delta":
@@ -328,8 +333,8 @@ func mapStreamDelta(index int, d streamDelta) *ai.Event {
 	}
 }
 
-// closeTurn emits a TurnEnd event for the current open turn, attaching
-// any accumulated tool results. Resets turn state.
+// closeTurn emits a TurnEnd event for the current open turn. It attaches
+// any accumulated tool results. It then resets the turn state.
 func (m *parser) closeTurn() agent.Event {
 	evt := agent.Event{
 		Type:    agent.EventTurnEnd,
@@ -345,15 +350,16 @@ func (m *parser) closeTurn() agent.Event {
 }
 
 // handleAssistant processes an assistant message line. Each assistant
-// line is a complete message (text + any tool_use blocks). Emits
-// [agent.EventToolExecutionStart] for each tool call observed.
+// line is a complete message with text and any tool_use blocks. The
+// function emits [agent.EventToolExecutionStart] for each tool call that
+// it sees.
 //
-// If the assistant calls tools, the turn is left open so that
-// subsequent tool results (type:"user") land inside the same turn.
+// If the assistant calls tools, the turn stays open. The tool results
+// that follow, on type:"user" lines, then land inside the same turn.
 //
-// For stop-reason messages (no tool calls), MessageEnd and TurnEnd are
-// buffered onto the parser and flushed by [handleResult] so the final
-// usage reported on the result line can be attached to the message.
+// For a stop-reason message, which has no tool calls, the parser buffers
+// MessageEnd and TurnEnd. [handleResult] flushes them. The final usage
+// from the result line can then attach to the message.
 func (m *parser) handleAssistant(line rawLine) []agent.Event {
 	var msg anthropic.Message
 	if err := json.Unmarshal(line.Message, &msg); err != nil {
@@ -361,22 +367,24 @@ func (m *parser) handleAssistant(line rawLine) []agent.Event {
 	}
 
 	aiMsg := toAIMessage(m.model, msg)
-	// Per-line usage from the CLI is a streaming snapshot — output_tokens
-	// is typically 0 here. Drop it; the result line carries the final
-	// authoritative usage for the entire turn.
+	// The per-line usage from the CLI is a streaming snapshot.
+	// output_tokens is usually 0 here. Remove it. The result line carries
+	// the final usage for the whole turn.
 	aiMsg.Usage = ai.Usage{}
 
 	var events []agent.Event
 
-	// When stream events already opened this message's bracket, the
-	// boundary (pending flush, turn close, turn_start, message_start)
-	// was emitted at content_block_start — don't repeat it here.
+	// If the stream events already opened the bracket of this message,
+	// content_block_start emitted the boundary. The boundary is the
+	// pending flush, the turn close, turn_start, and message_start. Do
+	// not repeat it here.
 	streamed := m.streamOpen
 	m.streamOpen = false
 
 	if !streamed {
-		// A new assistant line means the previous pending buffer (if any)
-		// won't receive result-line usage — flush it now without attaching.
+		// A new assistant line means that the earlier pending buffer does
+		// not receive the usage from the result line. Flush the buffer now
+		// and attach no usage.
 		events = append(events, m.flushPending()...)
 
 		// Close any prior open turn before starting a new one.
@@ -397,9 +405,10 @@ func (m *parser) handleAssistant(line rawLine) []agent.Event {
 	toolCalls := aiMsg.ToolCalls()
 
 	if len(toolCalls) > 0 {
-		// Tool-use assistants finish immediately; the turn stays open
-		// waiting for tool results. Turn-level usage is attributed to
-		// the final stop-reason message, not this one, so no buffering.
+		// A tool-use assistant finishes at once. The turn stays open and
+		// waits for the tool results. The turn-level usage belongs to the
+		// final stop-reason message, not to this one. No buffer is
+		// necessary.
 		events = append(events, agent.Event{
 			Type:    agent.EventMessageEnd,
 			Message: &aiMsg,
@@ -415,8 +424,8 @@ func (m *parser) handleAssistant(line rawLine) []agent.Event {
 		m.inTurn = true
 		m.turnMsg = &aiMsg
 	} else {
-		// Stop-reason assistant — buffer MessageEnd and TurnEnd until
-		// [handleResult] attaches final usage to aiMsg.
+		// This is a stop-reason assistant. Buffer MessageEnd and TurnEnd
+		// until [handleResult] attaches the final usage to aiMsg.
 		m.pending = []agent.Event{
 			{Type: agent.EventMessageEnd, Message: &aiMsg},
 			{Type: agent.EventTurnEnd, Message: &aiMsg},
@@ -428,8 +437,8 @@ func (m *parser) handleAssistant(line rawLine) []agent.Event {
 }
 
 // flushPending returns any buffered end-of-turn events and clears the
-// buffer. Callers must attach final usage to [lastAssistantMsg] before
-// flushing if the flush is driven by the result line.
+// buffer. If the result line drives the flush, the caller must attach
+// the final usage to [lastAssistantMsg] first.
 func (m *parser) flushPending() []agent.Event {
 	if len(m.pending) == 0 {
 		return nil
@@ -440,17 +449,17 @@ func (m *parser) flushPending() []agent.Event {
 	return out
 }
 
-// handleUser processes a user message line containing tool_result blocks.
-// Each tool result emits [agent.EventToolExecutionEnd] and a tool result
-// message pair.
+// handleUser processes a user message line with tool_result blocks. Each
+// tool result emits [agent.EventToolExecutionEnd] and a pair of tool
+// result messages.
 func (m *parser) handleUser(line rawLine) []agent.Event {
 	var msg userMessage
 	if err := json.Unmarshal(line.Message, &msg); err != nil {
 		return nil
 	}
 
-	// Defensive: tool results should not follow a stop-reason assistant
-	// line, but if they do, flush the pending buffer before proceeding.
+	// Tool results do not normally follow a stop-reason assistant line.
+	// If they do, flush the pending buffer first.
 	events := m.flushPending()
 	for _, block := range msg.Content {
 		if block.Type != "tool_result" {
@@ -490,18 +499,18 @@ func (m *parser) handleUser(line rawLine) []agent.Event {
 	return events
 }
 
-// handleResult processes a result line. It captures usage, handles
-// errors, deduplicates result text, and populates the final turn_end
-// with accumulated tool results.
+// handleResult processes a result line. It captures the usage, handles
+// the errors, removes duplicate result text, and fills the final
+// turn_end with the accumulated tool results.
 //
-// Final usage from the result line is attached to the message that will
-// be the last one emitted for this turn: either the buffered stop-reason
-// assistant message (the common case) or a new message synthesized from
-// line.Result when the assistant emitted only thinking.
+// The final usage from the result line attaches to the last message of
+// the turn. In the common case, that message is the buffered stop-reason
+// assistant message. If the assistant emitted only thinking,
+// handleResult builds a new message from line.Result instead.
 func (m *parser) handleResult(line rawLine) []agent.Event {
-	// An interrupted turn can leave a streamed message bracket open
-	// with no assistant line to close it; the result line ends the
-	// turn regardless.
+	// An interrupted turn can leave a streamed message bracket open, with
+	// no assistant line to close it. The result line ends the turn in
+	// both cases.
 	m.streamOpen = false
 
 	// Capture usage.
@@ -517,20 +526,20 @@ func (m *parser) handleResult(line rawLine) []agent.Event {
 
 	var events []agent.Event
 
-	// Close any dangling open turn (tool-use path without a subsequent
-	// stop-reason assistant).
+	// Close any open turn that still dangles. This is the tool-use path
+	// with no stop-reason assistant after it.
 	if m.inTurn {
 		events = append(events, m.closeTurn())
 	}
 
-	// Decide where final usage lands: on a newly-synthesized message
-	// when the assistant emitted no matching text, otherwise on the
+	// Decide where the final usage lands. If the assistant emitted no
+	// matching text, it lands on a new message. If not, it lands on the
 	// buffered stop-reason assistant message.
 	synthesizing := line.Result != "" && !m.lastMessageHasText(line.Result)
 
 	if synthesizing {
-		// The buffered message (if any) is not the final one; flush it
-		// without attaching usage.
+		// The buffered message, if there is one, is not the final
+		// message. Flush it and attach no usage.
 		events = append(events, m.flushPending()...)
 
 		msg := ai.AssistantMessage(ai.Text{Text: line.Result})
@@ -544,9 +553,10 @@ func (m *parser) handleResult(line rawLine) []agent.Event {
 		return events
 	}
 
-	// No new message — attach final usage to the last emitted assistant
-	// message (reaches buffered MessageEnd via the shared pointer) and to
-	// the stored copy in m.messages (propagated via EventAgentEnd).
+	// There is no new message. Attach the final usage to the last
+	// assistant message that the parser emitted. The shared pointer
+	// carries it to the buffered MessageEnd. Attach it also to the stored
+	// copy in m.messages, which EventAgentEnd carries.
 	if m.lastAssistantMsg != nil {
 		m.lastAssistantMsg.Usage = m.usage
 	}
@@ -559,7 +569,8 @@ func (m *parser) handleResult(line rawLine) []agent.Event {
 }
 
 // lastMessageHasText reports whether the last assistant message already
-// contains the given text. Used to avoid duplicating result text.
+// contains the given text. The parser uses it to prevent duplicate
+// result text.
 func (m *parser) lastMessageHasText(text string) bool {
 	for i := len(m.messages) - 1; i >= 0; i-- {
 		if m.messages[i].Role != ai.RoleAssistant {

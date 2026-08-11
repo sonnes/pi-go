@@ -69,8 +69,8 @@ func stubRunner(
 	}, func() { a.runFn = orig }
 }
 
-// Canceling the Run context terminates the Cursor child; the run ends
-// with context.Canceled and the agent returns to idle.
+// A cancel of the Run context stops the Cursor child. The run ends with
+// context.Canceled, and the agent returns to idle.
 func TestAgent_Run_CancelKillsTurn(t *testing.T) {
 	a := New(ai.Model{ID: "gpt-5", Name: "gpt-5"})
 	reader, writer := io.Pipe()
@@ -335,8 +335,8 @@ func eventTypes(events []agent.Event) []agent.EventType {
 	return types
 }
 
-// collectRun drains a run's stream with a watchdog timeout, returning
-// its events and terminal error.
+// collectRun drains the stream of a run with a watchdog timeout. It
+// returns the events and the terminal error.
 func collectRun(t *testing.T, s *agent.Stream) ([]agent.Event, error) {
 	t.Helper()
 
