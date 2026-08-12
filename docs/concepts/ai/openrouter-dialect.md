@@ -28,20 +28,28 @@ NewForOpenRouter(...)
         │                     overwrites the body's tools array
         │
         └── SSE switch  ──► response.content_part.delta  → EventTextDelta
+                            response.reasoning.delta     → EventThinkDelta
+                            response.reasoning_text.delta
+                                                         → EventThinkDelta
+                            response.reasoning.done      → EventThinkEnd
+                            response.reasoning_text.done → EventThinkEnd
                             response.output_item.added with
                               type "openrouter:*"        → EventToolStart
 ```
 
 ## Why a dialect flag, not a separate package
 
-OpenRouter's two divergences from OpenAI Responses are surgical: server-tool
-naming (the `openrouter:*` namespace) and a smaller SSE event taxonomy that
-emits `response.content_part.delta` instead of `response.output_text.delta`
-for incremental text. Forking the entire adapter to handle these would
-duplicate the ~400 lines of message conversion, parameter building, tool
-choice mapping, and streaming bookkeeping that are identical across the two.
-A flag on the existing `Provider` is the smallest change that captures the
-gap honestly.
+OpenRouter's divergences from OpenAI Responses are surgical: server-tool
+naming (the `openrouter:*` namespace) and a smaller SSE event taxonomy.
+Incremental text uses `response.content_part.delta` instead of
+`response.output_text.delta`. Reasoning uses `response.reasoning.delta` and
+`response.reasoning.done`, while some routed models use
+`response.reasoning_text.delta` and `response.reasoning_text.done`. The
+adapter maps both pairs instead of assuming one upstream event taxonomy.
+Forking the entire adapter to handle these would duplicate the message
+conversion, parameter building, tool choice mapping, and streaming
+bookkeeping that are identical across the two. A flag on the existing
+`Provider` is the smallest change that captures the gap honestly.
 
 ## Tool naming
 

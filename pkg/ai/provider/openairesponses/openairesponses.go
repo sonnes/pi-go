@@ -35,6 +35,8 @@ const (
 	// DialectOpenRouter targets the `/v1/responses` endpoint of OpenRouter.
 	// Server tools use the `openrouter:*` namespace. Text deltas arrive on
 	// `response.content_part.delta` instead of `response.output_text.delta`.
+	// Reasoning can use `response.reasoning.delta` or
+	// `response.reasoning_text.delta` instead of reasoning-summary events.
 	// See [docs/plans/2026-04-28-openrouter-responses-dialect.md] for the
 	// full list of differences that this dialect compensates for.
 	DialectOpenRouter
@@ -180,7 +182,9 @@ func (p *Provider) StreamText(
 			event := stream.Current()
 
 			switch event.Type {
-			case "response.reasoning_summary_text.delta":
+			case "response.reasoning_summary_text.delta",
+				"response.reasoning_text.delta",
+				"response.reasoning.delta":
 				delta := event.Delta
 				if !inThink {
 					inThink = true
@@ -196,7 +200,9 @@ func (p *Provider) StreamText(
 					Delta:        delta,
 				})
 
-			case "response.reasoning_summary_part.done":
+			case "response.reasoning_summary_part.done",
+				"response.reasoning_text.done",
+				"response.reasoning.done":
 				if inThink {
 					inThink = false
 					push(ai.Event{

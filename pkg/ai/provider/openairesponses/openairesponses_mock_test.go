@@ -38,6 +38,16 @@ func newMockProvider(t *testing.T, events []string) (*aior.Provider, func()) {
 	return p, srv.Close
 }
 
+func newMockOpenRouterProvider(t *testing.T, events []string) (*aior.Provider, func()) {
+	t.Helper()
+	srv := sseServer(t, events)
+	p := aior.NewForOpenRouter(
+		option.WithAPIKey("fake-key"),
+		option.WithBaseURL(srv.URL+"/v1"),
+	)
+	return p, srv.Close
+}
+
 func TestMock_TextGeneration(t *testing.T) {
 	events := []string{
 		`{"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}`,
@@ -291,6 +301,80 @@ func TestMock_ReasoningEventSequence(t *testing.T) {
 	assert.GreaterOrEqual(t, thinkStartIdx, 0, "should have ThinkStart")
 	assert.Greater(t, thinkEndIdx, thinkStartIdx, "ThinkEnd after ThinkStart")
 	assert.Greater(t, textStartIdx, thinkEndIdx, "TextStart after ThinkEnd")
+}
+
+func TestMock_OpenRouterReasoningEventSequence(t *testing.T) {
+	events := []string{
+		`{"type":"response.reasoning.delta","output_index":0,"delta":"Let me think"}`,
+		`{"type":"response.reasoning.delta","output_index":0,"delta":" about this..."}`,
+		`{"type":"response.reasoning.done","output_index":0,"text":"Let me think about this..."}`,
+		`{"type":"response.content_part.delta","output_index":1,"content_index":0,"delta":"Answer"}`,
+		`{"type":"response.content_part.done","output_index":1,"content_index":0,"part":{"type":"output_text","text":"Answer"}}`,
+		`{"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":5}}}}`,
+	}
+
+	p, cleanup := newMockOpenRouterProvider(t, events)
+	defer cleanup()
+
+	stream := p.StreamText(context.Background(), testModel(), ai.Prompt{
+		Messages: []ai.Message{ai.UserMessage("think")},
+	}, ai.StreamOptions{
+		ThinkingLevel: ai.ThinkingHigh,
+	})
+
+	var types []ai.EventType
+	for event, err := range stream.Events() {
+		require.NoError(t, err)
+		types = append(types, event.Type)
+	}
+
+	assert.Equal(t, []ai.EventType{
+		ai.EventThinkStart,
+		ai.EventThinkDelta,
+		ai.EventThinkDelta,
+		ai.EventThinkEnd,
+		ai.EventTextStart,
+		ai.EventTextDelta,
+		ai.EventTextEnd,
+	}, types)
+
+	msg, err := stream.Wait()
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	require.Len(t, msg.Content, 2)
+
+	thinking, ok := ai.AsContent[ai.Thinking](msg.Content[0])
+	require.True(t, ok)
+	assert.Equal(t, "Let me think about this...", thinking.Thinking)
+	assert.Equal(t, "Answer", msg.Text())
+}
+
+func TestMock_OpenRouterReasoningTextEvents(t *testing.T) {
+	events := []string{
+		`{"type":"response.reasoning_text.delta","output_index":0,"delta":"Observed reasoning"}`,
+		`{"type":"response.reasoning_text.done","output_index":0,"text":"Observed reasoning"}`,
+		`{"type":"response.output_text.delta","output_index":1,"content_index":0,"delta":"Answer"}`,
+		`{"type":"response.output_text.done","output_index":1,"content_index":0,"text":"Answer"}`,
+		`{"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":5}}}}`,
+	}
+
+	p, cleanup := newMockOpenRouterProvider(t, events)
+	defer cleanup()
+
+	msg, err := p.StreamText(context.Background(), testModel(), ai.Prompt{
+		Messages: []ai.Message{ai.UserMessage("think")},
+	}, ai.StreamOptions{
+		ThinkingLevel: ai.ThinkingHigh,
+	}).Wait()
+
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+	require.Len(t, msg.Content, 2)
+
+	thinking, ok := ai.AsContent[ai.Thinking](msg.Content[0])
+	require.True(t, ok)
+	assert.Equal(t, "Observed reasoning", thinking.Thinking)
+	assert.Equal(t, "Answer", msg.Text())
 }
 
 func TestMock_IncompleteResponse(t *testing.T) {
