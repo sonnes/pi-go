@@ -1,6 +1,7 @@
 package fs_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -183,6 +184,121 @@ func TestFileStoreReopen(t *testing.T) {
 	entries, err := second.LoadEntries(ctx, "s1")
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
+}
+
+// appendRaw writes bytes to the end of a session file without going
+// through the store, standing in for a write the kernel never flushed.
+func appendRaw(t *testing.T, dir, id string, raw []byte) {
+	t.Helper()
+	f, err := os.OpenFile(filepath.Join(dir, id+".jsonl"), os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, err)
+	_, err = f.Write(raw)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+}
+
+// A crash can only damage the end of an append-only log. The store drops
+// that last torn record and returns the entries written before it.
+func TestFileStoreLoadEntriesDropsATornTail(t *testing.T) {
+	tests := []struct {
+		name string
+		tail []byte
+	}{
+		{
+			name: "nul padding from an unclean shutdown",
+			tail: bytes.Repeat([]byte{0}, 905),
+		},
+		{
+			name: "line cut off mid-write",
+			tail: []byte(`{"type":"message","id":"e2","created_at":`),
+		},
+		{
+			name: "line cut off mid-write then nul padded",
+			tail: append([]byte(`{"type":"message","id`), bytes.Repeat([]byte{0}, 64)...),
+		},
+		{
+			name: "final newline missing",
+			tail: []byte("\n\n"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			store, _ := fs.New(dir)
+			ctx := context.Background()
+			require.NoError(t, store.CreateSession(ctx, "s1", ""))
+			require.NoError(t, store.AppendEntries(ctx, "s1", session.MessageEntry{
+				EntryHeader: session.EntryHeader{ID: "e1", CreatedAt: fsTS},
+				Message:     ai.UserMessage("hi"),
+			}))
+
+			appendRaw(t, dir, "s1", tt.tail)
+
+			entries, err := store.LoadEntries(ctx, "s1")
+			require.NoError(t, err, "a torn tail is not a load failure")
+			require.Len(t, entries, 1)
+			m, ok := entries[0].(session.MessageEntry)
+			require.True(t, ok)
+			assert.Equal(t, "hi", m.Text())
+		})
+	}
+}
+
+// Damage in the middle of the log is not a torn write. The store reports
+// it instead of silently returning a truncated transcript.
+func TestFileStoreLoadEntriesRejectsCorruptionBeforeTheTail(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := fs.New(dir)
+	ctx := context.Background()
+	require.NoError(t, store.CreateSession(ctx, "s1", ""))
+
+	appendRaw(t, dir, "s1", []byte("{not json\n"))
+	require.NoError(t, store.AppendEntries(ctx, "s1", session.MessageEntry{
+		EntryHeader: session.EntryHeader{ID: "e1", CreatedAt: fsTS},
+		Message:     ai.UserMessage("hi"),
+	}))
+
+	_, err := store.LoadEntries(ctx, "s1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode entry")
+}
+
+// A header that never finished writing leaves nothing to recover, so it
+// stays an error rather than reading as an empty session.
+func TestFileStoreLoadEntriesRejectsATornHeader(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := fs.New(dir)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "s1.jsonl"),
+		[]byte(`{"type":"session_init","id":"s1`),
+		0o644,
+	))
+
+	_, err := store.LoadEntries(context.Background(), "s1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode session")
+}
+
+// Entry lines can be far larger than a default scanner buffer, so a long
+// tool result must survive a round trip.
+func TestFileStoreLoadEntriesReadsLongLines(t *testing.T) {
+	store, _ := fs.New(t.TempDir())
+	ctx := context.Background()
+	require.NoError(t, store.CreateSession(ctx, "s1", ""))
+
+	big := strings.Repeat("x", 512*1024)
+	require.NoError(t, store.AppendEntries(ctx, "s1", session.MessageEntry{
+		EntryHeader: session.EntryHeader{ID: "e1", CreatedAt: fsTS},
+		Message:     ai.UserMessage(big),
+	}))
+
+	entries, err := store.LoadEntries(ctx, "s1")
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	m, ok := entries[0].(session.MessageEntry)
+	require.True(t, ok)
+	assert.Equal(t, big, m.Text())
 }
 
 func TestFileStoreInvalidID(t *testing.T) {

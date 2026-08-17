@@ -11,6 +11,7 @@
 package fs
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -106,7 +107,7 @@ func (s *FileStore) LoadSession(ctx context.Context, id string) (*session.Sessio
 	}
 	defer f.Close()
 
-	sess, _, err := decodeHeader(f, id)
+	sess, err := decodeHeader(bufio.NewReader(f), id)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +116,12 @@ func (s *FileStore) LoadSession(ctx context.Context, id string) (*session.Sessio
 
 // LoadEntries implements [session.Store]. It skips the session_init
 // line and decodes the rest of the log.
+//
+// The log is append-only, so a crash can only damage the record at the
+// end of the file. If the last line does not decode, LoadEntries treats
+// it as a write the kernel never completed: it drops that line and
+// returns the entries before it. A line that does not decode anywhere
+// else is damage this store cannot explain, and LoadEntries reports it.
 func (s *FileStore) LoadEntries(ctx context.Context, sessionID string) ([]session.Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,26 +132,34 @@ func (s *FileStore) LoadEntries(ctx context.Context, sessionID string) ([]sessio
 	}
 	defer f.Close()
 
-	_, dec, err := decodeHeader(f, sessionID)
-	if err != nil {
+	r := bufio.NewReader(f)
+	if _, err := decodeHeader(r, sessionID); err != nil {
 		return nil, err
 	}
 
 	var entries []session.Entry
 	for {
-		var raw json.RawMessage
-		err := dec.Decode(&raw)
-		if errors.Is(err, io.EOF) {
+		line, err := r.ReadBytes('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("fs: read entry in %q: %w", sessionID, err)
+		}
+		// ReadBytes only stops short of a newline at the end of the file,
+		// so io.EOF marks the one record a torn write can leave behind.
+		torn := errors.Is(err, io.EOF)
+
+		if record := bytes.TrimSpace(line); len(record) > 0 {
+			e, err := session.UnmarshalEntry(record)
+			if err != nil && torn {
+				break
+			}
+			if err != nil {
+				return nil, fmt.Errorf("fs: decode entry in %q: %w", sessionID, err)
+			}
+			entries = append(entries, e)
+		}
+		if torn {
 			break
 		}
-		if err != nil {
-			return nil, fmt.Errorf("fs: decode entry in %q: %w", sessionID, err)
-		}
-		e, err := session.UnmarshalEntry(raw)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, e)
 	}
 	return entries, nil
 }
@@ -201,15 +216,20 @@ func (s *FileStore) open(id string) (*os.File, error) {
 	return f, nil
 }
 
-// decodeHeader reads the session_init line from the front of a log file.
-// It returns a decoder positioned at the first entry.
-func decodeHeader(f *os.File, id string) (*session.Session, *json.Decoder, error) {
-	dec := json.NewDecoder(f)
-	var h header
-	if err := dec.Decode(&h); err != nil {
-		return nil, nil, fmt.Errorf("fs: decode session %q: %w", id, err)
+// decodeHeader reads the session_init line from the front of a log file
+// and leaves the reader positioned at the first entry. A session with no
+// readable header holds no recoverable data, so a torn first line is an
+// error and not an empty session.
+func decodeHeader(r *bufio.Reader, id string) (*session.Session, error) {
+	line, err := r.ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("fs: decode session %q: %w", id, err)
 	}
-	return &h.Session, dec, nil
+	var h header
+	if err := json.Unmarshal(bytes.TrimSpace(line), &h); err != nil {
+		return nil, fmt.Errorf("fs: decode session %q: %w", id, err)
+	}
+	return &h.Session, nil
 }
 
 func (s *FileStore) path(id string) (string, error) {
