@@ -416,6 +416,7 @@ func TestReasoningEffortForThinkingLevel(t *testing.T) {
 		{level: ai.ThinkingMedium, want: "medium"},
 		{level: ai.ThinkingHigh, want: "high"},
 		{level: ai.ThinkingXHigh, want: "xhigh"},
+		{level: ai.ThinkingMax, want: "max"},
 		{level: "bogus", want: ""},
 	}
 

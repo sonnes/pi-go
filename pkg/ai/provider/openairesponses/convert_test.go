@@ -329,6 +329,7 @@ func TestMapThinkingLevel(t *testing.T) {
 		{ai.ThinkingMedium, shared.ReasoningEffortMedium},
 		{ai.ThinkingHigh, shared.ReasoningEffortHigh},
 		{ai.ThinkingXHigh, shared.ReasoningEffortHigh},
+		{ai.ThinkingMax, shared.ReasoningEffortHigh},
 	}
 
 	for _, tt := range tests {

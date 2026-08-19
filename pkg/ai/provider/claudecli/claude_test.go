@@ -752,6 +752,7 @@ func TestEffortForThinkingLevel(t *testing.T) {
 		{level: ai.ThinkingMedium, want: "medium"},
 		{level: ai.ThinkingHigh, want: "high"},
 		{level: ai.ThinkingXHigh, want: "xhigh"},
+		{level: ai.ThinkingMax, want: "max"},
 		{level: "bogus", want: ""},
 	}
 
@@ -804,4 +805,39 @@ func TestStreamText_UsageCost(t *testing.T) {
 	assert.InDelta(t, 0.0075, cost.Output, 1e-9)
 	assert.InDelta(t, 0.00006, cost.CacheRead, 1e-9)
 	assert.InDelta(t, 0.000375, cost.CacheWrite, 1e-9)
+}
+
+func TestStreamText_ThinkingDefaultAndOff(t *testing.T) {
+	model := ai.Model{
+		ID:                   "claude-opus-5",
+		ThinkingLevels:       []ai.ThinkingLevel{ai.ThinkingLow, ai.ThinkingHigh},
+		DefaultThinkingLevel: ai.ThinkingHigh,
+	}
+	prompt := ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}}
+
+	tests := []struct {
+		name      string
+		requested ai.ThinkingLevel
+		want      string
+	}{
+		{name: "unset takes the model default", requested: "", want: "high"},
+		{name: "explicit off sends no effort", requested: ai.ThinkingOff, want: ""},
+		{name: "request above the ceiling maps down", requested: ai.ThinkingMax, want: "high"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := New()
+			lastArgs, _, restore := stubSend(p, simpleTextNDJSON, nil)
+			defer restore()
+
+			_, _ = p.StreamText(
+				context.Background(),
+				model,
+				prompt,
+				ai.StreamOptions{ThinkingLevel: tt.requested},
+			).Wait()
+
+			assert.Equal(t, tt.want, lastArgs().effort)
+		})
+	}
 }

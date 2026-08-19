@@ -81,3 +81,58 @@ func TestBuildObjectParams_AdaptiveThinkingUsesNativeSchema(t *testing.T) {
 	assert.Nil(t, params.ToolChoice.OfTool)
 	assert.Equal(t, schema, params.OutputConfig.Format.Schema)
 }
+
+func TestThinkingEffortMax(t *testing.T) {
+	assert.Equal(t, "max", string(thinkingEffort(ai.ThinkingMax)))
+}
+
+func TestThinkingBudgetMax(t *testing.T) {
+	assert.Equal(t, int64(32768), thinkingBudget(ai.ThinkingMax))
+}
+
+func TestBuildParams_ExplicitOffSendsNoThinking(t *testing.T) {
+	params, _ := buildParams(
+		ai.Model{
+			ID:                   "claude-opus-5",
+			ThinkingLevels:       []ai.ThinkingLevel{ai.ThinkingHigh},
+			DefaultThinkingLevel: ai.ThinkingHigh,
+		},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{ThinkingLevel: ai.ThinkingOff},
+		"",
+	)
+
+	assert.Nil(t, params.Thinking.OfAdaptive)
+	assert.Nil(t, params.Thinking.OfEnabled)
+	assert.Empty(t, string(params.OutputConfig.Effort))
+}
+
+func TestBuildParams_UnsetTakesTheModelDefault(t *testing.T) {
+	params, _ := buildParams(
+		ai.Model{
+			ID:                   "claude-opus-5",
+			ThinkingLevels:       []ai.ThinkingLevel{ai.ThinkingLow, ai.ThinkingHigh},
+			DefaultThinkingLevel: ai.ThinkingHigh,
+		},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{},
+		"",
+	)
+
+	require.NotNil(t, params.Thinking.OfAdaptive)
+	assert.Equal(t, "high", string(params.OutputConfig.Effort))
+}
+
+func TestBuildParams_RequestAboveCeilingMapsDown(t *testing.T) {
+	params, _ := buildParams(
+		ai.Model{
+			ID:             "claude-opus-5",
+			ThinkingLevels: []ai.ThinkingLevel{ai.ThinkingLow, ai.ThinkingMedium},
+		},
+		ai.Prompt{Messages: []ai.Message{ai.UserMessage("hi")}},
+		ai.StreamOptions{ThinkingLevel: ai.ThinkingMax},
+		"",
+	)
+
+	assert.Equal(t, "medium", string(params.OutputConfig.Effort))
+}

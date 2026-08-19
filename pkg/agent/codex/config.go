@@ -88,7 +88,8 @@ func reasoningEffortForThinkingLevel(level ai.ThinkingLevel) string {
 		ai.ThinkingLow,
 		ai.ThinkingMedium,
 		ai.ThinkingHigh,
-		ai.ThinkingXHigh:
+		ai.ThinkingXHigh,
+		ai.ThinkingMax:
 		return string(level)
 	default:
 		return ""

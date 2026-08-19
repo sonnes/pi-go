@@ -120,7 +120,8 @@ func reasoningEffortForThinkingLevel(level ai.ThinkingLevel) string {
 		ai.ThinkingLow,
 		ai.ThinkingMedium,
 		ai.ThinkingHigh,
-		ai.ThinkingXHigh:
+		ai.ThinkingXHigh,
+		ai.ThinkingMax:
 		return string(level)
 	default:
 		return ""
@@ -169,7 +170,7 @@ func (p *Provider) StreamText(
 
 		args := sendArgs{
 			prompt:          promptText(prompt.System, userText),
-			reasoningEffort: reasoningEffortForThinkingLevel(opts.ThinkingLevel),
+			reasoningEffort: reasoningEffortForThinkingLevel(ai.EffectiveThinkingLevel(model, opts.ThinkingLevel)),
 			ephemeral:       true,
 		}
 
@@ -255,7 +256,7 @@ func (p *Provider) GenerateObject(
 
 	args := sendArgs{
 		prompt:           promptText(prompt.System, userText),
-		reasoningEffort:  reasoningEffortForThinkingLevel(opts.ThinkingLevel),
+		reasoningEffort:  reasoningEffortForThinkingLevel(ai.EffectiveThinkingLevel(model, opts.ThinkingLevel)),
 		ephemeral:        true,
 		outputSchemaPath: schemaPath,
 	}

@@ -531,18 +531,17 @@ func applyOptions(
 	if opts.MaxTokens != nil {
 		config.MaxOutputTokens = int32(*opts.MaxTokens)
 	}
-	if opts.ThinkingLevel != "" {
+	level := ai.EffectiveThinkingLevel(model, opts.ThinkingLevel)
+	if level != ai.ThinkingOff {
 		config.ThinkingConfig = &genai.ThinkingConfig{
 			IncludeThoughts: true,
 		}
 		if usesThinkingLevel(model) {
-			config.ThinkingConfig.ThinkingLevel = googleThinkingLevel(
-				opts.ThinkingLevel,
-			)
+			config.ThinkingConfig.ThinkingLevel = googleThinkingLevel(level)
 			return
 		}
 		var budget int32
-		switch opts.ThinkingLevel {
+		switch level {
 		case ai.ThinkingMinimal:
 			budget = 128
 		case ai.ThinkingLow:
@@ -551,7 +550,7 @@ func applyOptions(
 			budget = 8192
 		case ai.ThinkingHigh:
 			budget = 24576
-		case ai.ThinkingXHigh:
+		case ai.ThinkingXHigh, ai.ThinkingMax:
 			budget = 32768
 		}
 		if budget > 0 {
@@ -575,7 +574,7 @@ func googleThinkingLevel(level ai.ThinkingLevel) genai.ThinkingLevel {
 		return genai.ThinkingLevelLow
 	case ai.ThinkingMedium:
 		return genai.ThinkingLevelMedium
-	case ai.ThinkingHigh, ai.ThinkingXHigh:
+	case ai.ThinkingHigh, ai.ThinkingXHigh, ai.ThinkingMax:
 		return genai.ThinkingLevelHigh
 	default:
 		return genai.ThinkingLevelUnspecified

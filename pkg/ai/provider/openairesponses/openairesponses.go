@@ -637,9 +637,9 @@ func buildParams(
 		params.Temperature = param.NewOpt(*opts.Temperature)
 	}
 
-	if opts.ThinkingLevel != "" {
+	if level := ai.EffectiveThinkingLevel(model, opts.ThinkingLevel); level != ai.ThinkingOff {
 		params.Reasoning = shared.ReasoningParam{
-			Effort:  mapThinkingLevel(opts.ThinkingLevel),
+			Effort:  mapThinkingLevel(level),
 			Summary: shared.ReasoningSummaryAuto,
 		}
 		params.Include = []responses.ResponseIncludable{

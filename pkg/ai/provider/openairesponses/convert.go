@@ -522,7 +522,7 @@ func mapThinkingLevel(level ai.ThinkingLevel) shared.ReasoningEffort {
 		return shared.ReasoningEffortLow
 	case ai.ThinkingMedium:
 		return shared.ReasoningEffortMedium
-	case ai.ThinkingHigh, ai.ThinkingXHigh:
+	case ai.ThinkingHigh, ai.ThinkingXHigh, ai.ThinkingMax:
 		return shared.ReasoningEffortHigh
 	default:
 		return shared.ReasoningEffortMedium

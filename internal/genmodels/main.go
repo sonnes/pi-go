@@ -58,6 +58,10 @@ type mdModel struct {
 		Context int `json:"context"`
 		Output  int `json:"output"`
 	} `json:"limit"`
+	ReasoningOptions []struct {
+		Type   string   `json:"type"`
+		Values []string `json:"values"`
+	} `json:"reasoning_options"`
 	Cost struct {
 		Input       float64 `json:"input"`
 		Output      float64 `json:"output"`
@@ -206,6 +210,10 @@ func modelLiteral(m mdModel) string {
 	if m.Reasoning {
 		f = append(f, "Reasoning: true")
 	}
+	if levels := thinkingLevels(m); len(levels) > 0 {
+		f = append(f, "ThinkingLevels: []ai.ThinkingLevel{"+strings.Join(levels, ", ")+"}")
+		f = append(f, "DefaultThinkingLevel: "+defaultThinkingLevel(levels))
+	}
 	if m.ToolCall {
 		f = append(f, "ToolCall: true")
 	}
@@ -262,6 +270,81 @@ func costLiteral(m mdModel) string {
 		return ""
 	}
 	return "ai.Cost{" + strings.Join(f, ", ") + "}"
+}
+
+// thinkingLevelConst maps a models.dev effort value to an ai.ThinkingLevel
+// constant. It returns an empty string for a value that pi-go does not have.
+func thinkingLevelConst(value string) string {
+	switch value {
+	case "none":
+		return "ai.ThinkingOff"
+	case "minimal":
+		return "ai.ThinkingMinimal"
+	case "low":
+		return "ai.ThinkingLow"
+	case "medium":
+		return "ai.ThinkingMedium"
+	case "high":
+		return "ai.ThinkingHigh"
+	case "xhigh":
+		return "ai.ThinkingXHigh"
+	case "max":
+		return "ai.ThinkingMax"
+	default:
+		return ""
+	}
+}
+
+// thinkingLevelRanks orders the constants that thinkingLevelConst returns. It
+// mirrors the rank map in package ai.
+var thinkingLevelRanks = map[string]int{
+	"ai.ThinkingOff":     0,
+	"ai.ThinkingMinimal": 1,
+	"ai.ThinkingLow":     2,
+	"ai.ThinkingMedium":  3,
+	"ai.ThinkingHigh":    4,
+	"ai.ThinkingXHigh":   5,
+	"ai.ThinkingMax":     6,
+}
+
+// thinkingLevels returns the ai.ThinkingLevel constants for a model, in
+// catalog order. Only a reasoning option of type "effort" carries levels. The
+// "budget_tokens" and "toggle" options give none.
+func thinkingLevels(m mdModel) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, o := range m.ReasoningOptions {
+		if o.Type != "effort" {
+			continue
+		}
+		for _, v := range o.Values {
+			c := thinkingLevelConst(v)
+			if c == "" || seen[c] {
+				continue
+			}
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// defaultThinkingLevel picks the level that a request uses when the caller
+// asks for none. It prefers ai.ThinkingHigh. When a model does not offer that
+// level, it returns the deepest level that the model does offer.
+func defaultThinkingLevel(levels []string) string {
+	best := ""
+	bestRank := -1
+	for _, l := range levels {
+		if l == "ai.ThinkingHigh" {
+			return l
+		}
+		if rank := thinkingLevelRanks[l]; rank > bestRank {
+			best = l
+			bestRank = rank
+		}
+	}
+	return best
 }
 
 func modalities(ms []string) string {

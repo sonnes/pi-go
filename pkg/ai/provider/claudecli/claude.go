@@ -127,7 +127,7 @@ func WithModel(model string) Option {
 // onto the --effort scale of the Claude CLI (low/medium/high/xhigh/max).
 // The CLI has no "off" or "minimal" effort. An "off" or unknown level
 // returns "", and the caller omits the flag. A "minimal" level becomes
-// "low". No level maps to "max".
+// "low". The "max" level maps to "max".
 func effortForThinkingLevel(level ai.ThinkingLevel) string {
 	switch level {
 	case ai.ThinkingMinimal, ai.ThinkingLow:
@@ -138,6 +138,8 @@ func effortForThinkingLevel(level ai.ThinkingLevel) string {
 		return string(ai.ThinkingHigh)
 	case ai.ThinkingXHigh:
 		return string(ai.ThinkingXHigh)
+	case ai.ThinkingMax:
+		return string(ai.ThinkingMax)
 	default:
 		return ""
 	}
@@ -189,7 +191,7 @@ func (p *Provider) StreamText(
 		args := sendArgs{
 			prompt:          userText,
 			systemPrompt:    prompt.System,
-			effort:          effortForThinkingLevel(opts.ThinkingLevel),
+			effort:          effortForThinkingLevel(ai.EffectiveThinkingLevel(model, opts.ThinkingLevel)),
 			noPersistence:   cfg.sessionID == "",
 			resumeSession:   cfg.sessionID,
 			partialMessages: cfg.partialMessages,

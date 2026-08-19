@@ -329,14 +329,15 @@ func buildParams(
 		params.Temperature = param.NewOpt(*opts.Temperature)
 	}
 
-	if opts.ThinkingLevel != "" {
+	level := ai.EffectiveThinkingLevel(model, opts.ThinkingLevel)
+	if level != ai.ThinkingOff {
 		if usesAdaptiveThinking(model) {
 			params.Thinking = anthropic.ThinkingConfigParamUnion{
 				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
 			}
-			params.OutputConfig.Effort = thinkingEffort(opts.ThinkingLevel)
+			params.OutputConfig.Effort = thinkingEffort(level)
 		} else {
-			budget := thinkingBudget(opts.ThinkingLevel)
+			budget := thinkingBudget(level)
 			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
 			params.MaxTokens = maxTokens + budget
 		}
@@ -382,15 +383,15 @@ func buildCountTokensParams(
 		}
 	}
 
-	if opts.ThinkingLevel != "" {
+	if level := ai.EffectiveThinkingLevel(model, opts.ThinkingLevel); level != ai.ThinkingOff {
 		if usesAdaptiveThinking(model) {
 			params.Thinking = anthropic.ThinkingConfigParamUnion{
 				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
 			}
-			params.OutputConfig.Effort = thinkingEffort(opts.ThinkingLevel)
+			params.OutputConfig.Effort = thinkingEffort(level)
 		} else {
 			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(
-				thinkingBudget(opts.ThinkingLevel),
+				thinkingBudget(level),
 			)
 		}
 	}
@@ -424,6 +425,8 @@ func thinkingBudget(level ai.ThinkingLevel) int64 {
 		return 8192
 	case ai.ThinkingXHigh:
 		return 16384
+	case ai.ThinkingMax:
+		return 32768
 	default:
 		return 4096
 	}
@@ -453,6 +456,8 @@ func thinkingEffort(level ai.ThinkingLevel) anthropic.OutputConfigEffort {
 		return anthropic.OutputConfigEffortHigh
 	case ai.ThinkingXHigh:
 		return anthropic.OutputConfigEffortXhigh
+	case ai.ThinkingMax:
+		return anthropic.OutputConfigEffortMax
 	default:
 		return anthropic.OutputConfigEffortMedium
 	}

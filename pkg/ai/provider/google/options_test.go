@@ -54,3 +54,41 @@ func TestApplyOptions_Gemini3UsesThinkingLevel(t *testing.T) {
 	assert.Nil(t, config.ThinkingConfig.ThinkingBudget)
 	assert.Nil(t, config.Temperature)
 }
+
+func TestApplyOptions_MaxLevel(t *testing.T) {
+	config := &genai.GenerateContentConfig{}
+	applyOptions(
+		config,
+		ai.Model{ID: "gemini-3.5-flash"},
+		ai.StreamOptions{ThinkingLevel: ai.ThinkingMax},
+	)
+	require.NotNil(t, config.ThinkingConfig)
+	assert.Equal(t, genai.ThinkingLevelHigh, config.ThinkingConfig.ThinkingLevel)
+
+	budgeted := &genai.GenerateContentConfig{}
+	applyOptions(
+		budgeted,
+		ai.Model{ID: "gemini-2.5-flash"},
+		ai.StreamOptions{ThinkingLevel: ai.ThinkingMax},
+	)
+	require.NotNil(t, budgeted.ThinkingConfig)
+	require.NotNil(t, budgeted.ThinkingConfig.ThinkingBudget)
+	assert.Equal(t, int32(32768), *budgeted.ThinkingConfig.ThinkingBudget)
+}
+
+func TestApplyOptions_ThinkingDefaultAndOff(t *testing.T) {
+	model := ai.Model{
+		ID:                   "gemini-3.5-flash",
+		ThinkingLevels:       []ai.ThinkingLevel{ai.ThinkingLow, ai.ThinkingHigh},
+		DefaultThinkingLevel: ai.ThinkingHigh,
+	}
+
+	unset := &genai.GenerateContentConfig{}
+	applyOptions(unset, model, ai.StreamOptions{})
+	require.NotNil(t, unset.ThinkingConfig)
+	assert.Equal(t, genai.ThinkingLevelHigh, unset.ThinkingConfig.ThinkingLevel)
+
+	off := &genai.GenerateContentConfig{}
+	applyOptions(off, model, ai.StreamOptions{ThinkingLevel: ai.ThinkingOff})
+	assert.Nil(t, off.ThinkingConfig)
+}

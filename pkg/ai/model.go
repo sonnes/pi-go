@@ -16,27 +16,31 @@ const (
 // you can bind the same value to any provider that serves it. See
 // [NewLanguageModel].
 type Model struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name"`
-	Aliases          []string          `json:"aliases,omitempty"`
-	BaseURL          string            `json:"base_url,omitempty"`
-	Reasoning        bool              `json:"reasoning,omitempty"`
-	ThinkingLevels   []ThinkingLevel   `json:"thinking_levels,omitempty"`
-	ToolCall         bool              `json:"tool_call,omitempty"`
-	StructuredOutput bool              `json:"structured_output,omitempty"`
-	Temperature      bool              `json:"temperature,omitempty"`
-	Input            []Modality        `json:"input,omitempty"`
-	Output           []Modality        `json:"output,omitempty"`
-	Cost             Cost              `json:"cost,omitzero"`
-	ContextWindow    int               `json:"context_window,omitempty"`
-	MaxTokens        int               `json:"max_tokens,omitempty"`
-	Knowledge        string            `json:"knowledge,omitempty"`
-	ReleaseDate      string            `json:"release_date,omitempty"`
-	LastUpdated      string            `json:"last_updated,omitempty"`
-	OpenWeights      bool              `json:"open_weights,omitempty"`
-	Status           string            `json:"status,omitempty"`
-	Headers          map[string]string `json:"headers,omitempty"`
-	Compat           ProviderCompat    `json:"-"`
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Aliases        []string        `json:"aliases,omitempty"`
+	BaseURL        string          `json:"base_url,omitempty"`
+	Reasoning      bool            `json:"reasoning,omitempty"`
+	ThinkingLevels []ThinkingLevel `json:"thinking_levels,omitempty"`
+	// DefaultThinkingLevel is the level that a request uses when the caller
+	// asks for none. It is always a member of ThinkingLevels. An empty value
+	// means that the model declares no levels.
+	DefaultThinkingLevel ThinkingLevel     `json:"default_thinking_level,omitempty"`
+	ToolCall             bool              `json:"tool_call,omitempty"`
+	StructuredOutput     bool              `json:"structured_output,omitempty"`
+	Temperature          bool              `json:"temperature,omitempty"`
+	Input                []Modality        `json:"input,omitempty"`
+	Output               []Modality        `json:"output,omitempty"`
+	Cost                 Cost              `json:"cost,omitzero"`
+	ContextWindow        int               `json:"context_window,omitempty"`
+	MaxTokens            int               `json:"max_tokens,omitempty"`
+	Knowledge            string            `json:"knowledge,omitempty"`
+	ReleaseDate          string            `json:"release_date,omitempty"`
+	LastUpdated          string            `json:"last_updated,omitempty"`
+	OpenWeights          bool              `json:"open_weights,omitempty"`
+	Status               string            `json:"status,omitempty"`
+	Headers              map[string]string `json:"headers,omitempty"`
+	Compat               ProviderCompat    `json:"-"`
 }
 
 // ProviderCompat is the interface that provider-specific compat structs

@@ -87,6 +87,8 @@ func effortForThinkingLevel(level ai.ThinkingLevel) string {
 		return string(ai.ThinkingHigh)
 	case ai.ThinkingXHigh:
 		return string(ai.ThinkingXHigh)
+	case ai.ThinkingMax:
+		return string(ai.ThinkingMax)
 	default:
 		return ""
 	}

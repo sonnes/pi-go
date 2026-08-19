@@ -11,6 +11,7 @@ const (
 	ThinkingMedium  ThinkingLevel = "medium"
 	ThinkingHigh    ThinkingLevel = "high"
 	ThinkingXHigh   ThinkingLevel = "xhigh"
+	ThinkingMax     ThinkingLevel = "max"
 )
 
 var thinkingRanks = map[ThinkingLevel]int{
@@ -20,6 +21,7 @@ var thinkingRanks = map[ThinkingLevel]int{
 	ThinkingMedium:  3,
 	ThinkingHigh:    4,
 	ThinkingXHigh:   5,
+	ThinkingMax:     6,
 }
 
 // NormalizeThinkingLevel maps the empty level to [ThinkingOff].
@@ -65,6 +67,31 @@ func ResolveThinkingLevel(model Model, requested ThinkingLevel) (ThinkingLevel, 
 	}
 
 	return best, best != normalized
+}
+
+// EffectiveThinkingLevel returns the level that a request uses. It is the one
+// place that decides the level, so every provider gets the same answer.
+//
+// An explicit [ThinkingOff] stays off. An empty level takes
+// [Model.DefaultThinkingLevel], which is empty for a model that declares no
+// levels. A model that declares no levels does not clamp the request, because
+// the catalog knows nothing about it. Every other level goes through
+// [ResolveThinkingLevel].
+func EffectiveThinkingLevel(model Model, requested ThinkingLevel) ThinkingLevel {
+	if requested == "" {
+		return NormalizeThinkingLevel(model.DefaultThinkingLevel)
+	}
+
+	if requested == ThinkingOff {
+		return ThinkingOff
+	}
+
+	if len(model.ThinkingLevels) == 0 {
+		return requested
+	}
+
+	level, _ := ResolveThinkingLevel(model, requested)
+	return level
 }
 
 // CacheRetention controls prompt-cache breakpoint placement and TTL across
