@@ -107,7 +107,18 @@
 // Every harness option is an [agent.Option] that writes an extension
 // slot. [durable] uses the same currency. One flat list configures all
 // three layers: the harness reads its own slot and forwards the rest
-// down through [durable.New] to [agent.New].
+// down through [durable.New] to the loop.
+//
+// The kind of the default model decides which loop that is. The harness
+// gives [durable.New] a factory that calls [catalog.Catalog.Agent], and
+// that method routes the spec. A registered agent kind, for example a
+// Claude Code subprocess, wins its prefix. Every other spec becomes the
+// default in-process loop over its language model.
+//
+// The harness compiles the same prompt and the same tool list for both.
+// What the loop does with them is the business of the loop. A
+// subprocess CLI owns its own tool dispatch, so it can accept the
+// prompt and ignore the tools.
 //
 // Two sites accept the same options. [New] sets a baseline, and
 // [Harness.Agent] overlays that baseline for one build. A working

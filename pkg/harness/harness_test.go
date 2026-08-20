@@ -89,7 +89,7 @@ func TestCallerSystemPromptIsRejected(t *testing.T) {
 
 func TestNewSucceedsWithMinimalConfig(t *testing.T) {
 	h := newTestHarness(t, &mockProvider{})
-	assert.Equal(t, "small", h.baseline.lm.Model().ID)
+	assert.Equal(t, "small", h.baseline.model.ID)
 }
 
 func TestNewFallsBackToPromptDefaults(t *testing.T) {

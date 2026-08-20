@@ -162,6 +162,32 @@ func (c *Catalog) resolveBareLocked(id string) (ai.Model, string, error) {
 	}
 }
 
+// Model returns the metadata for a spec, without binding a provider to
+// it. A caller that needs the model of a spec but not a call — to show
+// the context window, or to check a spec before it builds anything —
+// asks here.
+//
+// A spec whose kind has a registered agent factory has no entry in the
+// model index, because that agent owns its own catalog. Model
+// synthesizes the metadata from the spec instead of failing, so a
+// subprocess CLI resolves like any other spec. The synthesized value
+// carries the ID and the name and nothing else: the catalog knows
+// nothing more about a model it does not serve.
+func (c *Catalog) Model(spec string) (ai.Model, error) {
+	kind, id, _ := strings.Cut(spec, "/")
+
+	c.mu.RLock()
+	_, custom := c.agents[kind]
+	c.mu.RUnlock()
+
+	if custom {
+		return ai.Model{ID: id, Name: id}, nil
+	}
+
+	m, _, err := c.resolve(spec)
+	return m, err
+}
+
 // LanguageModel resolves a spec to a bound [ai.LanguageModel]. If the spec
 // is unknown, or the provider does not support text generation, it returns
 // an error.

@@ -52,7 +52,7 @@ func (h *Harness) Agent(ctx context.Context, opts ...agent.Option) (*durable.Age
 	}
 
 	tools := b.compileTools(res)
-	env := b.env(b.lm.Model(), tools, res)
+	env := b.env(b.model, tools, res)
 
 	sys, err := b.system(ctx, env)
 	if err != nil {
@@ -75,7 +75,7 @@ func (h *Harness) Agent(ctx context.Context, opts ...agent.Option) (*durable.Age
 
 	a, err := durable.New(
 		ctx,
-		b.lm,
+		b.factory,
 		h.agentOpts(sys, tools, opts, durable.WithMiddleware(inject.middleware))...,
 	)
 	if err != nil {
@@ -108,7 +108,7 @@ func (h *Harness) Env(ctx context.Context, opts ...agent.Option) (*prompt.Env, e
 	}
 
 	tools := b.compileTools(res)
-	return b.env(b.lm.Model(), tools, res), nil
+	return b.env(b.model, tools, res), nil
 }
 
 // agentOpts assembles the option list for the durable agent: the

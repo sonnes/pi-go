@@ -7,6 +7,7 @@ import (
 
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
+	"github.com/sonnes/pi-go/pkg/durable"
 	"github.com/sonnes/pi-go/pkg/harness/def"
 	"github.com/sonnes/pi-go/pkg/harness/prompt"
 )
@@ -35,7 +36,14 @@ type Harness struct {
 // the model and indexes the toolbox. Everything after [Harness.Agent] —
 // resolution and prompt building — reads a build, never the harness.
 type build struct {
-	lm      ai.LanguageModel
+	// factory builds the inner loop of each run. It closes over the
+	// catalog and the spec, so the kind of the spec — an API model or a
+	// subprocess CLI — stops mattering above this line.
+	factory durable.Factory
+	// model is the metadata the prompt builders see. For an agent kind it
+	// is synthesized from the spec, because the catalog serves no model
+	// for an agent that owns its own.
+	model   ai.Model
 	workDir string
 
 	agents       []def.AgentResolver
@@ -95,9 +103,19 @@ func compile(e *ext) (*build, error) {
 	if e.defaultModel == "" {
 		return nil, errors.New("harness: default model is required; pass WithDefaultModel")
 	}
-	lm, err := e.cat.LanguageModel(e.defaultModel)
+
+	// Resolve the metadata now, so a spec nobody serves stops the build
+	// rather than the first run. The factory itself resolves per run,
+	// through the one routing the catalog already owns: a registered
+	// agent kind wins, and everything else becomes the default loop over
+	// its language model.
+	model, err := e.cat.Model(e.defaultModel)
 	if err != nil {
 		return nil, fmt.Errorf("harness: default model: %w", err)
+	}
+	spec := e.defaultModel
+	factory := func(opts ...agent.Option) (agent.Agent, error) {
+		return e.cat.Agent(spec, opts...)
 	}
 
 	box, err := newToolbox(e.tools)
@@ -122,7 +140,8 @@ func compile(e *ext) (*build, error) {
 	}
 
 	return &build{
-		lm:           lm,
+		factory:      factory,
+		model:        model,
 		workDir:      workDir,
 		agents:       e.agents,
 		skills:       e.skills,

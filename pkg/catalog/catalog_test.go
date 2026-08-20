@@ -96,6 +96,40 @@ func TestGenerateText_Errors(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown model")
 }
 
+func TestModel_RegisteredAndAgentKind(t *testing.T) {
+	c := catalog.New()
+	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
+	c.RegisterAgent("cli", func(_ string, _ ...agent.Option) (agent.Agent, error) {
+		return nil, nil
+	})
+
+	// A registered spec returns its indexed metadata.
+	m, err := c.Model("fake/m1")
+	require.NoError(t, err)
+	assert.Equal(t, "m1", m.ID)
+
+	// An alias resolves to the same model.
+	m, err = c.Model("fake/latest")
+	require.NoError(t, err)
+	assert.Equal(t, "m1", m.ID)
+
+	// A bare model ID resolves when one provider serves it.
+	m, err = c.Model("m1")
+	require.NoError(t, err)
+	assert.Equal(t, "m1", m.ID)
+
+	// An agent kind owns its own catalog, so the model index has no
+	// entry. Model synthesizes the metadata instead of failing.
+	m, err = c.Model("cli/opus")
+	require.NoError(t, err)
+	assert.Equal(t, "opus", m.ID)
+	assert.Equal(t, "opus", m.Name)
+
+	// An unknown spec still fails, so a caller can validate eagerly.
+	_, err = c.Model("nope/m1")
+	assert.ErrorContains(t, err, "unknown model")
+}
+
 func TestAgent_DefaultAndCustom(t *testing.T) {
 	c := catalog.New()
 	c.RegisterTextProvider("fake", &fakeProvider{}, textModels...)
