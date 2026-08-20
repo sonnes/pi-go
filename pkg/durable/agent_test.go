@@ -94,9 +94,15 @@ func errorStream(err error) *ai.EventStream {
 	})
 }
 
-// testLM binds a text provider to a fixed test model.
-func testLM(p ai.TextProvider) ai.LanguageModel {
+// testModel binds a text provider to a fixed test model.
+func testModel(p ai.TextProvider) ai.LanguageModel {
 	return ai.NewLanguageModel(ai.Model{ID: "test-model"}, p)
+}
+
+// testFactory is the [durable.Factory] for the default loop over a test
+// provider. It is what an ordinary API-backed session uses.
+func testFactory(p ai.TextProvider) durable.Factory {
+	return durable.Model(testModel(p))
 }
 
 // collect drains a durable stream. It returns the events, the result,
@@ -163,7 +169,7 @@ func openTestAgent(
 		[]agent.Option{durable.WithStore(store), durable.WithSessionID(id)},
 		extra...,
 	)
-	da, err := durable.New(t.Context(), testLM(prov), opts...)
+	da, err := durable.New(t.Context(), testFactory(prov), opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = da.Close() })
 	return da
@@ -180,7 +186,7 @@ func openWithPublisher(
 	publisher := &recordingPublisher{}
 	da, err := durable.New(
 		t.Context(),
-		testLM(prov),
+		testFactory(prov),
 		durable.WithStore(store),
 		durable.WithSessionID(id),
 		durable.WithPublisher(publisher),
@@ -569,14 +575,14 @@ func TestNew_ResumeHydratesHistory(t *testing.T) {
 		textStream("your name is Ravi"),
 	}}
 
-	da, err := durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"))
+	da, err := durable.New(t.Context(), testFactory(prov), durable.WithStore(store), durable.WithSessionID("u42"))
 	require.NoError(t, err)
 	run(t, da, "My name is Ravi.")
 	leafBefore := da.LeafID()
 	require.NoError(t, da.Close())
 
 	// Process B: same ID resumes the same conversation at the stored leaf.
-	da, err = durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u42"))
+	da, err = durable.New(t.Context(), testFactory(prov), durable.WithStore(store), durable.WithSessionID("u42"))
 	require.NoError(t, err)
 	defer da.Close()
 	assert.Equal(t, leafBefore, da.LeafID())
@@ -596,7 +602,7 @@ func TestNew_Defaults(t *testing.T) {
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("ok")}}
 
 	// No store, no session ID: in-memory store, generated ID.
-	da, err := durable.New(t.Context(), testLM(prov))
+	da, err := durable.New(t.Context(), testFactory(prov))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -637,19 +643,19 @@ func TestNew_TwoInstancesGrowSiblingBranches(t *testing.T) {
 
 	// Seed one turn so both instances share a common leaf.
 	prov := &mockProvider{responses: []*ai.EventStream{textStream("root answer")}}
-	seed, err := durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("shared"))
+	seed, err := durable.New(t.Context(), testFactory(prov), durable.WithStore(store), durable.WithSessionID("shared"))
 	require.NoError(t, err)
 	run(t, seed, "root question")
 	require.NoError(t, seed.Close())
 
 	// Two independent instances of the same session.
 	provA := &mockProvider{responses: []*ai.EventStream{textStream("answer a")}}
-	a, err := durable.New(t.Context(), testLM(provA), durable.WithStore(store), durable.WithSessionID("shared"))
+	a, err := durable.New(t.Context(), testFactory(provA), durable.WithStore(store), durable.WithSessionID("shared"))
 	require.NoError(t, err)
 	defer a.Close()
 
 	provB := &mockProvider{responses: []*ai.EventStream{textStream("answer b")}}
-	b, err := durable.New(t.Context(), testLM(provB), durable.WithStore(store), durable.WithSessionID("shared"))
+	b, err := durable.New(t.Context(), testFactory(provB), durable.WithStore(store), durable.WithSessionID("shared"))
 	require.NoError(t, err)
 	defer b.Close()
 
@@ -941,13 +947,13 @@ func TestNew_ResumeFromFileStore(t *testing.T) {
 		textStream("Ravi"),
 	}}
 
-	da, err := durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
+	da, err := durable.New(t.Context(), testFactory(prov), durable.WithStore(store), durable.WithSessionID("u1"))
 	require.NoError(t, err)
 	run(t, da, "I'm Ravi.")
 	require.NoError(t, da.Close())
 
 	// Reopen: the session record and entries survive the restart.
-	da, err = durable.New(t.Context(), testLM(prov), durable.WithStore(store), durable.WithSessionID("u1"))
+	da, err = durable.New(t.Context(), testFactory(prov), durable.WithStore(store), durable.WithSessionID("u1"))
 	require.NoError(t, err)
 	defer da.Close()
 

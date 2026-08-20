@@ -19,11 +19,17 @@ The SDK never invents meaning for a session ID. It is a string the application c
 Opening an agent with an ID that exists resumes it. Opening one with an unknown ID creates it. `New` makes that decision by calling `LoadEntries`: `ErrSessionNotFound` leads to `CreateSession`, and existing entries hydrate the transcript tree. There is no separate resume verb because both paths produce the same ready agent.
 
 ```go
-da, err := durable.New(ctx, model,
+da, err := durable.New(ctx, durable.Model(lm),
     durable.WithStore(store),
     durable.WithSessionID("user-42"),
 )
 ```
+
+## The first argument is a factory, not a model
+
+`New` takes a `Factory`, which builds the inner loop of one run. `durable.Model` wraps an `ai.LanguageModel` for the ordinary case. A subprocess CLI supplies its own factory. Durability therefore does not know which loop it wraps.
+
+A nil factory is valid. The agent then records but never runs: `Append`, `Branch`, and the read verbs work, and `Run` reports the missing loop. A caller that repairs an interrupted transcript needs exactly that.
 
 Instances are not tracked. Two live agents on the same session each append from the leaf they loaded, so concurrent instances grow sibling branches rather than overwriting history.
 

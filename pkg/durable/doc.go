@@ -7,6 +7,9 @@
 //
 //   - [New] binds a session ID to an inner agent loop. New creates the
 //     session, or it loads the history of the session from the store.
+//     New takes a [Factory], not a model. [Model] is the factory for an
+//     API-backed session, and a subprocess CLI supplies its own. As a
+//     result, durability does not know which loop it wraps.
 //   - The transcript is an append-only tree. A leaf pointer marks the
 //     active position. [Agent.Branch] moves the leaf to an earlier
 //     entry, so the next turn grows a sibling. The package never
@@ -28,6 +31,15 @@
 // transcript each see. The choices are an ordinary user entry from
 // [Text], a custom entry that persists without reaching the model, or
 // injected context that the model reads and the transcript hides.
+//
+// The input of a turn and the history of the session are two channels,
+// not one. History is the conversation before the turn, and the package
+// gives it to the loop with [agent.WithHistory]. The entries of the turn
+// go to [agent.Agent.Run] as its messages, in the order the caller wrote
+// them. An in-process loop appends the messages to its history and
+// cannot tell the two apart. A loop that keeps its own conversation, for
+// example a subprocess CLI that resumes a transcript of its own, reads
+// only the turn.
 //
 // Injected context comes in a durable form and a non-durable form. The
 // package writes a meta entry, and that entry returns on resume. An

@@ -56,8 +56,11 @@ func mutate(f func(*ext)) agent.Option {
 // last completed message. Resume repairs a dangling tool call (see
 // [Agent.Messages]).
 type Agent struct {
-	store     session.Store
-	lm        ai.LanguageModel
+	store session.Store
+	// factory builds the inner loop for each run. It is nil for an agent
+	// that only records: [Agent.Append] and the read verbs work without a
+	// loop, and [Agent.Run] reports the absence.
+	factory   Factory
 	baseOpts  []agent.Option
 	publisher Publisher
 
@@ -75,14 +78,22 @@ type Agent struct {
 	closed    bool
 }
 
-// newInner builds a fresh inner agent loop over the bound model. It
+// newInner builds a fresh inner agent loop from the bound [Factory]. It
 // uses the base options plus any extra options (for example, loaded
 // history).
-func (a *Agent) newInner(extra ...agent.Option) agent.Agent {
+//
+// An agent with no factory reports it here rather than at construction.
+// A caller that only repairs or reads a transcript needs a session, not
+// a loop, so the absence is an error for the verbs that run and for no
+// other verb.
+func (a *Agent) newInner(extra ...agent.Option) (agent.Agent, error) {
+	if a.factory == nil {
+		return nil, errors.New("durable: agent has no factory and cannot run")
+	}
 	opts := make([]agent.Option, 0, len(a.baseOpts)+len(extra))
 	opts = append(opts, a.baseOpts...)
 	opts = append(opts, extra...)
-	return agent.New(a.lm, opts...)
+	return a.factory(opts...)
 }
 
 // WithStore sets the backing store. Without this option, [New] uses a
@@ -118,9 +129,15 @@ func (a *Agent) publish(evt Event) {
 // store. The resume point is the last appended entry. New publishes
 // [EventSessionInit] after the session is ready.
 //
-// Everything except the factory is optional. Without [WithStore], the
-// session lives in a fresh in-memory store. Without [WithSessionID],
-// New generates a session ID.
+// f builds the inner loop of each run. [Model] wraps an
+// [ai.LanguageModel] for the ordinary case. A nil f is valid and gives
+// an agent that records but never runs: [Agent.Append], [Agent.Branch],
+// and the read verbs work, and [Agent.Run] reports the missing loop. A
+// caller that repairs an interrupted transcript needs exactly that.
+//
+// Everything else is optional. Without [WithStore], the session lives
+// in a fresh in-memory store. Without [WithSessionID], New generates a
+// session ID.
 //
 // New does not track instances. Each call returns a fresh instance, and
 // the caller owns instance discipline. Two live instances of the same
@@ -128,7 +145,7 @@ func (a *Agent) publish(evt Event) {
 // so concurrent instances grow sibling branches in the tree.
 func New(
 	ctx context.Context,
-	lm ai.LanguageModel,
+	f Factory,
 	opts ...agent.Option,
 ) (*Agent, error) {
 	dcfg := slot.From(agent.ApplyOptions(opts...))
@@ -166,7 +183,7 @@ func New(
 
 	a := &Agent{
 		store:     store,
-		lm:        lm,
+		factory:   f,
 		baseOpts:  opts,
 		publisher: dcfg.publisher,
 		sessionID: sessionID,
@@ -241,30 +258,46 @@ func (a *Agent) runBase(ctx context.Context, entries ...session.Entry) *Stream {
 			a.mu.Unlock()
 		}()
 
-		// The history before the input of this turn. The code below
-		// appends the input messages in the order the caller wrote them,
-		// which keeps an ephemeral entry in position.
+		// History is the conversation before this turn, and nothing else.
+		// The input of the turn is not part of it. A dangling tool call
+		// is therefore repaired here, where it belongs: it is the
+		// footprint of a run that crashed, never of the input the caller
+		// just wrote.
 		a.mu.Lock()
-		history := session.ModelView(session.PathFrom(a.index, a.leafID))
+		history := repairToolCalls(session.ModelView(session.PathFrom(a.index, a.leafID)))
 		a.mu.Unlock()
 
+		// The entries of this turn reach the loop as the messages of the
+		// run, in the order the caller wrote them, which keeps an
+		// ephemeral entry in position. Splitting them from history is
+		// what lets a loop treat the two differently. An in-process loop
+		// appends the messages to its history and cannot tell them
+		// apart; a subprocess CLI resumes its own transcript and needs
+		// the turn on its own.
+		input := inputMessages(entries)
+
+		// Build the loop before anything reaches the store. A factory
+		// that cannot start — a missing CLI, an unresolvable model — then
+		// leaves the transcript exactly as it was, and the next run
+		// starts from the same leaf. A run that cannot happen must not
+		// record an input that never got an answer.
+		inner, err := a.newInner(agent.WithHistory(history...))
+		if err != nil {
+			return nil, err
+		}
+		defer inner.Close()
+
 		// Persist input before the run starts. Ephemeral entries do not
-		// go to the store. They reach the model through history only.
+		// go to the store. They reach the model as run messages only.
 		var inputEntries []session.Entry
 		if len(entries) > 0 {
-			var err error
 			inputEntries, err = a.persist(ctx, entries...)
 			if err != nil {
 				return nil, fmt.Errorf("durable: persist input: %w", err)
 			}
 		}
 
-		history = repairToolCalls(append(history, inputMessages(entries)...))
-
-		inner := a.newInner(agent.WithHistory(history...))
-		defer inner.Close()
-
-		s := inner.Run(ctx)
+		s := inner.Run(ctx, input...)
 		for evt, err := range s.Events() {
 			if err != nil {
 				return nil, err
@@ -430,7 +463,7 @@ func (a *Agent) Fork(ctx context.Context, newID string) (*Agent, error) {
 
 	child := &Agent{
 		store:     a.store,
-		lm:        a.lm,
+		factory:   a.factory,
 		baseOpts:  a.baseOpts,
 		publisher: a.publisher,
 		sessionID: newID,
@@ -519,7 +552,10 @@ func (a *Agent) Compact(ctx context.Context, opts ...CompactOption) error {
 	toSummarize := session.ModelView(compactPath)
 	a.mu.Unlock()
 
-	summarizer := a.newInner(agent.WithHistory(repairToolCalls(toSummarize)...))
+	summarizer, err := a.newInner(agent.WithHistory(repairToolCalls(toSummarize)...))
+	if err != nil {
+		return fmt.Errorf("durable: compact: %w", err)
+	}
 	defer summarizer.Close()
 	reply, err := agent.Prompt(
 		ctx,

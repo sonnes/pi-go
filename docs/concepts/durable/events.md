@@ -49,7 +49,7 @@ publisher := durable.PublisherFunc(func(event durable.Event) {
     }
 })
 
-da, err := durable.New(ctx, model,
+da, err := durable.New(ctx, durable.Model(lm),
     durable.WithStore(store),
     durable.WithSessionID("user-42"),
     durable.WithPublisher(publisher),

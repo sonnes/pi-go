@@ -41,7 +41,7 @@ func TestMiddlewareOrder(t *testing.T) {
 
 	da, err := durable.New(
 		t.Context(),
-		testLM(prov),
+		testFactory(prov),
 		durable.WithMiddleware(record(&order, "first")),
 		durable.WithMiddleware(record(&order, "second"), record(&order, "third")),
 	)
@@ -65,7 +65,7 @@ func TestMiddlewareWrapsRun(t *testing.T) {
 		}
 	}
 
-	da, err := durable.New(t.Context(), testLM(prov), durable.WithMiddleware(inject))
+	da, err := durable.New(t.Context(), testFactory(prov), durable.WithMiddleware(inject))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -86,7 +86,7 @@ func TestMiddlewareRunsOnTheCallersGoroutine(t *testing.T) {
 		}
 	}
 
-	da, err := durable.New(t.Context(), testLM(prov), durable.WithMiddleware(mark))
+	da, err := durable.New(t.Context(), testFactory(prov), durable.WithMiddleware(mark))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -122,13 +122,13 @@ func TestMiddlewareStateIsPerAgent(t *testing.T) {
 
 	opts := []agent.Option{durable.WithMiddleware(once)}
 
-	a1, err := durable.New(t.Context(), testLM(prov), opts...)
+	a1, err := durable.New(t.Context(), testFactory(prov), opts...)
 	require.NoError(t, err)
 	defer a1.Close()
 	_, err = a1.Run(t.Context(), durable.Text("hi")).Wait()
 	require.NoError(t, err)
 
-	a2, err := durable.New(t.Context(), testLM(prov), opts...)
+	a2, err := durable.New(t.Context(), testFactory(prov), opts...)
 	require.NoError(t, err)
 	defer a2.Close()
 	_, err = a2.Run(t.Context(), durable.Text("hi")).Wait()
@@ -148,7 +148,7 @@ func TestMiddlewareCanRefuseARun(t *testing.T) {
 		}
 	}
 
-	da, err := durable.New(t.Context(), testLM(prov), durable.WithMiddleware(deny))
+	da, err := durable.New(t.Context(), testFactory(prov), durable.WithMiddleware(deny))
 	require.NoError(t, err)
 	defer da.Close()
 
@@ -187,7 +187,7 @@ func TestForkCarriesMiddlewareWithFreshClosures(t *testing.T) {
 	store := session.NewMemoryStore()
 	parent, err := durable.New(
 		t.Context(),
-		testLM(prov),
+		testFactory(prov),
 		durable.WithStore(store),
 		durable.WithSessionID("p1"),
 		durable.WithMiddleware(counting),

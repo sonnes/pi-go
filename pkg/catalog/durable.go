@@ -23,5 +23,5 @@ func (c *Catalog) DurableAgent(
 	if err != nil {
 		return nil, err
 	}
-	return durable.New(ctx, lm, opts...)
+	return durable.New(ctx, durable.Model(lm), opts...)
 }

@@ -59,7 +59,7 @@ func Example() {
 	// as tools and the system prompt ride alongside the durable options.
 	da, err := durable.New(
 		ctx,
-		newAssistant(),
+		durable.Model(newAssistant()),
 		durable.WithStore(store),
 		durable.WithSessionID("ticket-8472"),
 		agent.WithSystemPrompt("Help customers check order status."),
@@ -84,12 +84,12 @@ func ExampleNew() {
 	ctx := context.Background()
 
 	// Monday, process A.
-	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
+	da, _ := durable.New(ctx, durable.Model(newAssistant()), durable.WithStore(store), durable.WithSessionID("user-42"))
 	_, _ = da.Run(ctx, durable.Text("My name is Ravi. Remember it.")).Wait()
 	da.Close()
 
 	// Thursday, process B. The same ID gives the same conversation.
-	da, _ = durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
+	da, _ = durable.New(ctx, durable.Model(newAssistant()), durable.WithStore(store), durable.WithSessionID("user-42"))
 	defer da.Close()
 
 	msgs, _ := da.Run(ctx, durable.Text("What's my name?")).Wait()
@@ -110,7 +110,7 @@ func ExampleAgent_Append() {
 	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("doc-7"))
+	da, _ := durable.New(ctx, durable.Model(newAssistant()), durable.WithStore(store), durable.WithSessionID("doc-7"))
 	defer da.Close()
 
 	err := da.Append(ctx, ArtifactEntry{
@@ -134,7 +134,7 @@ func ExampleAgent_Branch() {
 	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
+	da, _ := durable.New(ctx, durable.Model(newAssistant()), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
 	defer da.Close()
 
 	// A checkpoint is a remembered leaf.
@@ -160,7 +160,7 @@ func ExampleAgent_Fork() {
 	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
+	da, _ := durable.New(ctx, durable.Model(newAssistant()), durable.WithStore(store), durable.WithSessionID("ticket-8472"))
 	defer da.Close()
 
 	alt, err := da.Fork(ctx, "ticket-8472-refund")
@@ -181,7 +181,7 @@ func ExampleAgent_Compact() {
 	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("user-42"))
+	da, _ := durable.New(ctx, durable.Model(newAssistant()), durable.WithStore(store), durable.WithSessionID("user-42"))
 	defer da.Close()
 
 	// For a months-old session, summarize everything except the recent
@@ -199,7 +199,7 @@ func ExampleAgent_Run() {
 	store := session.NewMemoryStore()
 	ctx := context.Background()
 
-	da, _ := durable.New(ctx, newAssistant(), durable.WithStore(store), durable.WithSessionID("chat-1"))
+	da, _ := durable.New(ctx, durable.Model(newAssistant()), durable.WithStore(store), durable.WithSessionID("chat-1"))
 	defer da.Close()
 
 	s := da.Run(ctx, durable.Text("Tell me a joke."))
@@ -239,7 +239,7 @@ func ExampleWithPublisher() {
 
 	da, err := durable.New(
 		ctx,
-		newAssistant(),
+		durable.Model(newAssistant()),
 		durable.WithStore(store),
 		durable.WithSessionID("chat-2"),
 		durable.WithPublisher(publisher),

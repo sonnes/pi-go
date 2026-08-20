@@ -161,7 +161,7 @@ func (d *Demo) open(ctx context.Context) error {
 
 	a, err := durable.New(
 		ctx,
-		d.lm,
+		durable.Model(d.lm),
 		agent.WithTools(weatherTool),
 		agent.WithMaxTurns(6),
 		durable.WithStore(d.store),
