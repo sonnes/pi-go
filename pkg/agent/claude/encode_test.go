@@ -13,7 +13,7 @@ import (
 func TestEncodeUserContent_SingleText(t *testing.T) {
 	msg := ai.UserMessage("hello")
 
-	raw, err := encodeUserContent(msg)
+	raw, err := encodeUserContent([]ai.Message{msg})
 	require.NoError(t, err)
 
 	// One text block becomes a bare string.
@@ -27,7 +27,7 @@ func TestEncodeUserContent_TextAndImage(t *testing.T) {
 		ai.Image{Data: "AAA=", MimeType: "image/jpeg"},
 	)
 
-	raw, err := encodeUserContent(msg)
+	raw, err := encodeUserContent([]ai.Message{msg})
 	require.NoError(t, err)
 
 	var blocks []map[string]any
@@ -51,7 +51,7 @@ func TestEncodeUserContent_ImageDefaultMime(t *testing.T) {
 		Content: []ai.Content{ai.Text{Text: "x"}, ai.Image{Data: "AAA="}},
 	}
 
-	raw, err := encodeUserContent(msg)
+	raw, err := encodeUserContent([]ai.Message{msg})
 	require.NoError(t, err)
 
 	var blocks []map[string]any
@@ -70,17 +70,19 @@ func TestEncodeUserContent_SkipsNonUserBlocks(t *testing.T) {
 		},
 	}
 
-	raw, err := encodeUserContent(msg)
+	raw, err := encodeUserContent([]ai.Message{msg})
 	require.NoError(t, err)
 
-	var blocks []map[string]any
-	require.NoError(t, json.Unmarshal(raw, &blocks))
-	require.Len(t, blocks, 1)
-	assert.Equal(t, "text", blocks[0]["type"])
+	// Thinking and the tool call drop out, which leaves one text block.
+	// The compact wire shape follows the blocks that survive, not the
+	// count the caller started with.
+	var s string
+	require.NoError(t, json.Unmarshal(raw, &s))
+	assert.Equal(t, "hi", s)
 }
 
 func TestEncodeUserContent_EmptyContentErrors(t *testing.T) {
-	_, err := encodeUserContent(ai.Message{Role: ai.RoleUser})
+	_, err := encodeUserContent([]ai.Message{{Role: ai.RoleUser}})
 	require.Error(t, err)
 }
 
@@ -89,12 +91,12 @@ func TestEncodeUserContent_OnlyNonUserBlocksErrors(t *testing.T) {
 		Role:    ai.RoleUser,
 		Content: []ai.Content{ai.Thinking{Thinking: "x"}},
 	}
-	_, err := encodeUserContent(msg)
+	_, err := encodeUserContent([]ai.Message{msg})
 	require.Error(t, err)
 }
 
 func TestBuildUserLine_Shape(t *testing.T) {
-	line, err := buildUserLine(ai.UserMessage("ping"))
+	line, err := buildUserLine([]ai.Message{ai.UserMessage("ping")})
 	require.NoError(t, err)
 
 	assert.True(t, strings.HasSuffix(string(line), "\n"),
@@ -114,7 +116,7 @@ func TestBuildUserLine_Shape(t *testing.T) {
 }
 
 func TestBuildUserLine_ParentToolUseIDIsNull(t *testing.T) {
-	line, err := buildUserLine(ai.UserMessage("ping"))
+	line, err := buildUserLine([]ai.Message{ai.UserMessage("ping")})
 	require.NoError(t, err)
 
 	// The JSON must have an explicit null, not an omitted field. The

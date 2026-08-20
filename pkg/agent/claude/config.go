@@ -1,6 +1,9 @@
 package claude
 
 import (
+	"fmt"
+	"regexp"
+
 	"github.com/sonnes/pi-go/pkg/agent"
 	"github.com/sonnes/pi-go/pkg/ai"
 )
@@ -16,6 +19,7 @@ type config struct {
 	addDirs         []string
 	env             []string
 	sessionID       string
+	newSession      bool
 	allowedTools    []string
 	tools           []string
 	toolsSet        bool
@@ -28,6 +32,7 @@ type config struct {
 	systemPrompt    string
 	replacePrompt   bool
 	mcpConfig       string
+	strictMCP       bool
 	permissionMode  string
 	history         []ai.Message
 
@@ -105,10 +110,54 @@ func WithEnv(env ...string) agent.Option {
 	return mutate(func(c *config) { c.env = env })
 }
 
-// WithSessionID sets an explicit session ID. The subprocess uses it with
-// --resume to continue an earlier conversation.
+// WithSessionID resumes the CLI conversation with this ID. The
+// subprocess starts with --resume, and the CLI replays its own
+// transcript for that session.
+//
+// The ID must be a UUID. The CLI accepts no other shape, and a caller
+// whose session IDs look different needs a UUID of its own for this
+// side. Use [WithNewSession] for a session the CLI has not seen yet:
+// --resume on an unknown ID fails the run.
 func WithSessionID(id string) agent.Option {
-	return mutate(func(c *config) { c.sessionID = id })
+	return mutate(func(c *config) {
+		c.sessionID = id
+		c.newSession = false
+	})
+}
+
+// WithNewSession creates the CLI conversation under this ID. The
+// subprocess starts with --session-id, which names the session instead
+// of letting the CLI generate one. A caller that already has a session
+// identity — a durable session, a ticket, a thread — keeps one ID for
+// both sides.
+//
+// Use it for the first run of a session and [WithSessionID] for every
+// run after it. The CLI rejects --session-id for an ID it already
+// holds, so the two are not interchangeable.
+func WithNewSession(id string) agent.Option {
+	return mutate(func(c *config) {
+		c.sessionID = id
+		c.newSession = true
+	})
+}
+
+// sessionIDPattern is the UUID shape the Claude CLI requires. The
+// package checks it here so a caller learns before a subprocess starts,
+// rather than from its exit code.
+var sessionIDPattern = regexp.MustCompile(
+	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
+)
+
+// validateSessionID makes sure that the CLI can use the session ID. An
+// empty ID is valid: it means the CLI generates its own.
+func validateSessionID(id string) error {
+	if id == "" || sessionIDPattern.MatchString(id) {
+		return nil
+	}
+	return fmt.Errorf(
+		"claude: session ID %q is not a UUID; the CLI accepts no other shape",
+		id,
+	)
 }
 
 // WithAllowedTools sets the tools that the subprocess can use, with the
@@ -167,6 +216,18 @@ func WithAppendPrompt(append bool) agent.Option {
 // MCP servers to connect to. An empty string disables the flag.
 func WithMCPConfig(spec string) agent.Option {
 	return mutate(func(c *config) { c.mcpConfig = spec })
+}
+
+// WithStrictMCPConfig sets --strict-mcp-config. The CLI then uses only the
+// servers of [WithMCPConfig], and ignores the ones its own settings files
+// declare.
+//
+// Use it whenever the caller owns the server list. Without it the
+// subprocess also connects whatever the person who operates the machine
+// configured for themselves, which the caller did not choose and cannot
+// see. The flag has no effect without [WithMCPConfig].
+func WithStrictMCPConfig(strict bool) agent.Option {
+	return mutate(func(c *config) { c.strictMCP = strict })
 }
 
 // WithPermissionMode sets --permission-mode for the session. Examples

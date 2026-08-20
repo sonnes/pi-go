@@ -24,55 +24,66 @@ type sdkUserMessageInner struct {
 	Content json.RawMessage `json:"content"`
 }
 
-// encodeUserContent serializes the content blocks of a user message into
-// the `content` field of an SDKUserMessage.
+// encodeUserContent serializes the content blocks of the user messages
+// of one turn into the `content` field of a single SDKUserMessage.
 //
-// One [ai.Text] block becomes a bare JSON string. Richer content becomes
-// an array of Anthropic content blocks built from
-// [anthropic.ContentBlockParamUnion]. Richer content is multiple text
+// Every user line on stdin starts a turn of its own in the CLI, so the
+// whole turn has to arrive as one line. encodeUserContent therefore
+// concatenates the blocks of every user message in the order given.
+// Injected context that the caller wrote before the message of the user
+// keeps its position ahead of it.
+//
+// One [ai.Text] block becomes a bare JSON string. Anything richer
+// becomes an array of Anthropic content blocks built from
+// [anthropic.ContentBlockParamUnion]. Richer content is several text
 // blocks, images, or a mix of both. Non-user block types, such as
-// [ai.Thinking] and [ai.ToolCall], are not valid on a user turn. The
-// function removes them.
-func encodeUserContent(msg ai.Message) (json.RawMessage, error) {
-	if len(msg.Content) == 0 {
-		return nil, errors.New("claude: user message has no content")
-	}
-
-	if len(msg.Content) == 1 {
-		if t, ok := ai.AsContent[ai.Text](msg.Content[0]); ok {
-			return json.Marshal(t.Text)
+// [ai.Thinking] and [ai.ToolCall], are not valid on a user turn, and the
+// function removes them. It also skips a message that is not from the
+// user: the CLI keeps its own transcript, so replaying an assistant
+// message here is not this package's business.
+func encodeUserContent(msgs []ai.Message) (json.RawMessage, error) {
+	var blocks []anthropic.ContentBlockParamUnion
+	for _, msg := range msgs {
+		if msg.Role != ai.RoleUser {
+			continue
 		}
-	}
-
-	blocks := make([]anthropic.ContentBlockParamUnion, 0, len(msg.Content))
-	for _, c := range msg.Content {
-		switch v := c.(type) {
-		case ai.Text:
-			blocks = append(blocks, anthropic.ContentBlockParamUnion{
-				OfText: &anthropic.TextBlockParam{Text: v.Text},
-			})
-		case ai.Image:
-			mime := v.MimeType
-			if mime == "" {
-				mime = "image/png"
+		for _, c := range msg.Content {
+			switch v := c.(type) {
+			case ai.Text:
+				blocks = append(blocks, anthropic.ContentBlockParamUnion{
+					OfText: &anthropic.TextBlockParam{Text: v.Text},
+				})
+			case ai.Image:
+				mime := v.MimeType
+				if mime == "" {
+					mime = "image/png"
+				}
+				blocks = append(blocks, anthropic.NewImageBlockBase64(mime, v.Data))
+			default:
+				// Skip Thinking, ToolCall, and any future types.
 			}
-			blocks = append(blocks, anthropic.NewImageBlockBase64(mime, v.Data))
-		default:
-			// Skip Thinking, ToolCall, and any future types.
 		}
 	}
 
 	if len(blocks) == 0 {
-		return nil, errors.New("claude: user message has no text or image content")
+		return nil, errors.New(
+			"claude: turn has no user text or image content to send",
+		)
+	}
+
+	// The common turn is one line of text. Keep the compact wire shape
+	// for it.
+	if len(blocks) == 1 && blocks[0].OfText != nil {
+		return json.Marshal(blocks[0].OfText.Text)
 	}
 
 	return json.Marshal(blocks)
 }
 
 // buildUserLine returns one NDJSON byte slice with a trailing newline.
-// The slice is the SDKUserMessage for the given user message.
-func buildUserLine(msg ai.Message) ([]byte, error) {
-	content, err := encodeUserContent(msg)
+// The slice is the single SDKUserMessage that carries the whole turn.
+func buildUserLine(msgs []ai.Message) ([]byte, error) {
+	content, err := encodeUserContent(msgs)
 	if err != nil {
 		return nil, err
 	}

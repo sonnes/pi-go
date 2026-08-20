@@ -1,12 +1,20 @@
 // Package claude implements [agent.Agent] with a long-lived Claude Code
 // CLI subprocess. The subprocess runs the agent loop.
 //
-// The package starts the subprocess on the first [Agent.Send] with
+// The package starts the subprocess on the first [Agent.Run] with
 // `--input-format stream-json --output-format stream-json`. The
-// subprocess stays alive across turns. Each Send writes one
-// SDKUserMessage NDJSON line to stdin. Send then blocks until the CLI
+// subprocess stays alive across turns. Each Run writes one
+// SDKUserMessage NDJSON line to stdin. Run then blocks until the CLI
 // emits the matching result line. The subprocess runs the tools, holds
 // the system prompts, and keeps the multi-turn conversation state.
+//
+// One Run is one line, whatever the number of messages it receives.
+// The CLI starts a turn for every user line it reads, so a turn that
+// carries injected context ahead of the message of the user must arrive
+// as one line. Run concatenates the content blocks of the user messages
+// in the order given. It skips a message that is not from the user: the
+// CLI keeps its own transcript, and replaying an assistant message is
+// not the business of this package.
 //
 // Basic usage:
 //
@@ -17,7 +25,7 @@
 //	defer a.Close()
 //
 //	ch := a.Subscribe(ctx)
-//	a.Send(ctx, "Fix the bug in main.go")
+//	a.Run(ctx, ai.UserMessage("Fix the bug in main.go"))
 //	for pe := range ch {
 //	    // handle pe.Payload() events...
 //	}
@@ -42,19 +50,32 @@
 //
 //	cat.RegisterAgent("claude", claude.Factory())
 //
-// [Agent.SendMessages] accepts rich content, such as images and
-// multi-block messages. It serializes the last user message in the batch
-// to an SDKUserMessage with an array of Anthropic content blocks.
+// [Agent.Run] accepts rich content, such as images and multi-block
+// messages. It serializes the turn to an SDKUserMessage with an array of
+// Anthropic content blocks.
 //
-// Session resume:
+// # Session identity
 //
-//	// After a Send, the session ID is captured automatically.
-//	sid := a.SessionID()
+// The CLI names a session once and resumes it after that. The two are
+// different flags, and passing the create flag for a session the CLI
+// already holds is an error. [WithNewSession] creates, and
+// [WithSessionID] resumes:
 //
-//	// Later, resume by seeding a new Agent with the session ID and
-//	// calling Send. Continue is not supported in stream-json mode.
-//	a2 := claude.New(claude.WithSessionID(sid))
-//	a2.Send(ctx, "pick up where we left off")
+//	// First run of the session.
+//	a := claude.New(model, claude.WithNewSession(id))
+//
+//	// Every run after it.
+//	a := claude.New(model, claude.WithSessionID(id))
+//
+// The ID must be a UUID, which is the only shape the CLI accepts. The
+// package reports a different shape before it starts a subprocess. A
+// caller with session IDs of another shape needs a UUID of its own for
+// this side.
+//
+// Naming the session lets one ID serve both sides. A caller that already
+// has a session identity — a durable session, a ticket, a thread — does
+// not have to store a second one. To read back the ID the CLI generated
+// when the caller named none, use [Agent.SessionID] after the first run.
 //
 // # Limits compared to the Default agent
 //
@@ -72,9 +93,10 @@
 //     [agent.HookAfterTool], [agent.HookAfterTurn], and
 //     [agent.HookBeforeStop] have no effect, because the CLI owns those
 //     lifecycle points. If you need them, use the [agent.Default] agent.
-//   - stream-json mode does not support [agent.Agent.Continue]. To
-//     resume an earlier conversation, pair [WithSessionID] with
-//     [Agent.Send].
+//   - History given with [agent.WithHistory] does not reach the model.
+//     The CLI keeps the conversation itself and replays it from
+//     [WithSessionID]. Only the messages of the Run go to the
+//     subprocess.
 //   - Tool execution events do not carry [agent.Event.PartialResult].
 //     The stdout protocol of the CLI gives no progress for a tool that
 //     still runs. As a result, the package never emits

@@ -120,6 +120,23 @@ func TestBuildArgs(t *testing.T) {
 			want: append(append([]string{}, base...), "--mcp-config", `{"mcpServers":{"lw":{"type":"http","url":"http://127.0.0.1:1/mcp"}}}`),
 		},
 		{
+			name: "with strict mcp config",
+			cfg: config{
+				cliPath:   "claude",
+				mcpConfig: "/tmp/mcp.json",
+				strictMCP: true,
+			},
+			want: append(append([]string{}, base...),
+				"--mcp-config", "/tmp/mcp.json",
+				"--strict-mcp-config",
+			),
+		},
+		{
+			name: "strict mcp config alone does nothing",
+			cfg:  config{cliPath: "claude", strictMCP: true},
+			want: append([]string{}, base...),
+		},
+		{
 			name: "with max turns",
 			cfg:  config{cliPath: "claude", maxTurns: 5},
 			want: append(append([]string{}, base...), "--max-turns", "5"),

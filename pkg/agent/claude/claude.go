@@ -192,24 +192,17 @@ func (a *Agent) runTurn(
 	if len(msgs) == 0 {
 		return nil, errors.New(
 			"claude: Run without messages is not supported in stream-json mode; " +
-				"use WithSessionID + Run to resume",
+				"the CLI needs the turn on stdin",
 		)
 	}
 
-	var userMsg *ai.Message
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role != ai.RoleUser {
-			continue
-		}
-		m := msgs[i]
-		userMsg = &m
-		break
-	}
-	if userMsg == nil {
-		return nil, errors.New("claude: Run requires at least one user message")
+	if err := validateSessionID(a.cfg.sessionID); err != nil {
+		return nil, err
 	}
 
-	line, err := buildUserLine(*userMsg)
+	// The whole turn becomes one stdin line, because the CLI starts a
+	// turn for every user line it reads.
+	line, err := buildUserLine(msgs)
 	if err != nil {
 		return nil, err
 	}

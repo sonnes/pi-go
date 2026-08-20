@@ -324,6 +324,9 @@ func buildArgs(cfg config) []string {
 	}
 	if cfg.mcpConfig != "" {
 		a = append(a, "--mcp-config", cfg.mcpConfig)
+		if cfg.strictMCP {
+			a = append(a, "--strict-mcp-config")
+		}
 	}
 	if cfg.maxTurns > 0 {
 		a = append(a, "--max-turns", strconv.Itoa(cfg.maxTurns))
@@ -346,8 +349,15 @@ func buildArgs(cfg config) []string {
 		}
 		a = append(a, flag, cfg.systemPrompt)
 	}
+	// The CLI names a session once and resumes it after that. Passing
+	// --session-id for an ID it already holds is an error, so the flag
+	// follows whether this run creates the session or continues it.
 	if cfg.sessionID != "" {
-		a = append(a, "--resume", cfg.sessionID)
+		flag := "--resume"
+		if cfg.newSession {
+			flag = "--session-id"
+		}
+		a = append(a, flag, cfg.sessionID)
 	}
 	if len(cfg.beforeTool) > 0 {
 		// Route the tool-approval questions of the CLI to this process
