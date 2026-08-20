@@ -263,6 +263,52 @@ func TestRun_EventsAndPersistence(t *testing.T) {
 	assert.Equal(t, asst.Header().ID, da.LeafID())
 }
 
+func TestRun_PersistsThinkingAcrossFileStoreReload(t *testing.T) {
+	store, err := fs.New(t.TempDir())
+	require.NoError(t, err)
+
+	response := ai.NewEventStream(func(push func(ai.Event)) (*ai.Message, error) {
+		push(ai.Event{Type: ai.EventThinkStart})
+		push(ai.Event{Type: ai.EventThinkDelta, Delta: "Check the durable path."})
+		push(ai.Event{Type: ai.EventThinkEnd, Content: "Check the durable path."})
+
+		return &ai.Message{
+			Role: ai.RoleAssistant,
+			Content: []ai.Content{
+				ai.Thinking{
+					Thinking:  "Check the durable path.",
+					Signature: "signed-thought",
+				},
+				ai.Text{Text: "It survives."},
+			},
+			StopReason: ai.StopReasonStop,
+		}, nil
+	})
+	prov := &mockProvider{responses: []*ai.EventStream{response}}
+	da := openTestAgent(t, store, "s1", prov)
+
+	_, _, err = collect(t, da.Run(t.Context(), durable.Text("Remember your thinking.")))
+	require.NoError(t, err)
+	require.NoError(t, da.Close())
+
+	reopened, err := durable.New(
+		t.Context(),
+		testFactory(&mockProvider{}),
+		durable.WithStore(store),
+		durable.WithSessionID("s1"),
+	)
+	require.NoError(t, err)
+	defer reopened.Close()
+
+	messages := reopened.Messages()
+	require.Len(t, messages, 2)
+	require.Len(t, messages[1].Content, 2)
+	thinking, ok := ai.AsContent[ai.Thinking](messages[1].Content[0])
+	require.True(t, ok)
+	assert.Equal(t, "Check the durable path.", thinking.Thinking)
+	assert.Equal(t, "signed-thought", thinking.Signature)
+}
+
 func TestRun_ToolLoopPersistsEveryMessage(t *testing.T) {
 	echo := ai.DefineTool(
 		"echo",
