@@ -8,9 +8,19 @@ import { readdirSync } from "node:fs";
 // A learning progression rarely matches alphabetical order, so `order`
 // names the pages that need placing. Anything unlisted still appears,
 // appended alphabetically, which keeps "drop a file in and it shows up".
+//
+// A missing directory yields an empty group rather than a build failure.
+// The docs tree gets reorganised more often than this file does, and a
+// stale name here must not be able to take the whole site down.
 function slugsIn(dir, order = []) {
   const rank = (name) => order.indexOf(name) + 1 || Infinity;
-  return readdirSync(new URL(`../../docs/${dir}/`, import.meta.url))
+  let files;
+  try {
+    files = readdirSync(new URL(`../../docs/${dir}/`, import.meta.url));
+  } catch {
+    return [];
+  }
+  return files
     .filter((f) => /\.mdx?$/.test(f) && !/^README\.mdx?$/.test(f))
     .map((f) => f.replace(/\.mdx?$/, ""))
     .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
@@ -20,106 +30,65 @@ function slugsIn(dir, order = []) {
 export const sidebar = [
   {
     label: "Start here",
-    items: [
-      { slug: "docs", label: "Overview" },
-      { slug: "docs/quickstart" },
-    ],
+    items: [{ slug: "docs", label: "Overview" }],
   },
   {
     // Dependency order, not alphabetical: each page assumes only the
     // ones above it.
-    label: "Mental models",
-    items: slugsIn("concepts", [
-      "how-a-run-works",
+    label: "Concepts · ai",
+    items: slugsIn("concepts/ai", [
+      "content",
       "messages",
       "models",
       "providers",
-      "catalog",
       "options",
-      "prompt-caching",
       "tools",
-      "streams",
-      "agent-loop",
-      "sessions",
-      "transcript-tree",
-      "harness",
-      "oauth",
+      "caching",
+      "usage",
       "openrouter-dialect",
     ]),
   },
   {
-    // Capability order: each guide assumes the ones above it.
-    label: "Guides",
-    items: slugsIn("guides", [
-      "text-generation",
-      "structured-output",
-      "multimodal",
-      "tools",
-      "agents",
-      "built-in-tools",
-      "persistence",
-      "conversation-editing",
-      "file-configured-agents",
-      "cli-agents",
-      "authentication",
+    label: "Concepts · agent",
+    items: slugsIn("concepts/agent", [
+      "agent",
+      "agent-state",
+      "messages",
+      "streaming",
     ]),
   },
   {
-    label: "Customization",
-    items: [
-      { slug: "docs/extend", label: "Which seam?" },
-      ...slugsIn("extend", [
-        "hooks",
-        "harness",
-        "providers",
-        "storage",
-        "agents",
-      ]),
-    ],
+    label: "Concepts · durable",
+    items: slugsIn("concepts/durable", ["sessions", "events", "entries", "tree"]),
   },
   {
-    // Top-down, mirroring the stack.
-    label: "Layers",
-    items: [
-      { slug: "docs/layers", label: "Choosing a layer" },
-      ...slugsIn("layers", [
-        "front-door",
-        "composition",
-        "durability",
-        "loop",
-        "direct",
-      ]),
-    ],
+    label: "Concepts · auth",
+    items: slugsIn("concepts/auth", ["oauth"]),
   },
   {
-    label: "Architecture",
+    // Capability order: the features most people reach for come first.
+    label: "Capabilities",
     items: [
-      { slug: "docs/architecture", label: "Overview" },
-      ...slugsIn("architecture", [
-        "ai",
-        "providers",
-        "agent",
-        "catalog-and-pi",
-        "session-and-durable",
-        "harness",
-        "tools-and-sandbox",
+      { slug: "docs/capabilities", label: "Matrix overview" },
+      ...slugsIn("capabilities", [
+        "function-calling",
+        "streaming",
+        "structured-outputs",
+        "prompt-caching",
+        "reasoning",
+        "multimodal-input",
+        "multimodal-output",
+        "sampling",
+        "usage-and-tokens",
+        "citations",
+        "server-tools",
+        "stateful-conversations",
+        "files-api",
+        "async-execution",
+        "realtime-api",
+        "fine-tuning",
+        "auth",
       ]),
-    ],
-  },
-  {
-    label: "Reference",
-    items: [
-      { slug: "docs/reference/glossary" },
-      { slug: "docs/reference/modules" },
-      { slug: "docs/reference/cli" },
-      {
-        label: "Provider capabilities",
-        collapsed: true,
-        items: [
-          { slug: "docs/reference/capabilities", label: "Matrix overview" },
-          ...slugsIn("reference/capabilities"),
-        ],
-      },
     ],
   },
 ];
