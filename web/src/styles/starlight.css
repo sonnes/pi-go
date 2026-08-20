@@ -1,5 +1,8 @@
-/* Maps the Graphite tokens onto Starlight's own variables, then puts
-   the docs chrome on sheets so no text ever sits on the ruled ground. */
+/* Maps the Console tokens onto Starlight's own variables, then puts the
+   docs chrome into three panes that butt together and share one rule.
+
+   Monospace prose is the point of this design, but it costs reading speed.
+   The content column is held to 46rem to keep the line short. */
 
 :root {
   --sl-font: var(--font-prose);
@@ -14,64 +17,30 @@
   --sl-color-gray-6: var(--line);
   --sl-color-black: var(--panel);
 
-  --sl-color-accent: var(--warm);
+  --sl-color-accent: var(--accent);
   --sl-color-accent-low: var(--panel-soft);
   --sl-color-accent-high: var(--accent-ink);
 
   --sl-color-text: var(--copy);
   --sl-color-text-accent: var(--accent-ink);
-  --sl-color-text-invert: var(--panel);
+  --sl-color-text-invert: var(--ground);
   --sl-color-bg: transparent;
   --sl-color-bg-nav: var(--panel);
   --sl-color-bg-sidebar: var(--panel);
-  --sl-color-bg-inline-code: #b0492a0f;
+  --sl-color-bg-inline-code: transparent;
   --sl-color-hairline: var(--line);
   --sl-color-hairline-light: var(--line);
   --sl-color-hairline-shade: var(--line-strong);
 
-  --sl-content-width: 48rem;
-  --sl-text-h1: clamp(1.9rem, 3.4vw, 2.5rem);
-  --sl-text-h2: 1.32rem;
-  --sl-text-h3: 1.1rem;
-  --sl-nav-height: 3.3rem;
+  --sl-content-width: 46rem;
+  --sl-text-body: 0.85rem;
+  --sl-text-h1: clamp(1.4rem, 3vw, 1.9rem);
+  --sl-text-h2: 1.05rem;
+  --sl-text-h3: 0.92rem;
+  --sl-nav-height: var(--nav-height);
 }
 
-:root[data-theme="dark"] {
-  --sl-color-bg-inline-code: #dd8a5e1a;
-}
-
-/* headings are mono — the system's tell */
-.sl-markdown-content h1,
-.sl-markdown-content h2,
-.sl-markdown-content h3,
-.sl-markdown-content h4 {
-  font-family: var(--font-display);
-  font-weight: 500;
-  letter-spacing: -0.022em;
-  color: var(--text);
-}
-.sl-markdown-content h2 {
-  padding-top: 1.3rem;
-  border-top: 1px solid var(--line-strong);
-}
-
-.sl-markdown-content {
-  font-size: 1rem;
-  line-height: 1.62;
-}
-.sl-markdown-content a:not(:where(.not-content *)) {
-  color: var(--accent-ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--accent-line);
-}
-.sl-markdown-content a:hover:not(:where(.not-content *)) {
-  border-bottom-color: var(--accent-ink);
-}
-.sl-markdown-content code:not(:where(.not-content *)) {
-  color: var(--accent-ink);
-}
-
-/* ---------- sheets ---------- */
+/* ---------- panes ---------- */
 header.header {
   background: var(--panel);
   border-bottom: 1px solid var(--line-strong);
@@ -86,9 +55,11 @@ header.header {
 }
 .main-pane {
   background: var(--panel);
+}
+.right-sidebar {
   border-inline-start: 1px solid var(--line-strong);
 }
-/* the ruled ground shows only outside the sheet */
+/* the ruled ground shows only outside the panes */
 .page {
   max-width: var(--shell);
   margin-inline: auto;
@@ -96,9 +67,61 @@ header.header {
   background: var(--panel);
 }
 
-/* sidebar + right rail */
+/* ---------- headings carry the markdown mark ---------- */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+.sl-markdown-content h2::before {
+  content: "## ";
+  color: var(--accent);
+  font-weight: 400;
+}
+.sl-markdown-content h3::before {
+  content: "### ";
+  color: var(--accent);
+  font-weight: 400;
+}
+
+.sl-markdown-content {
+  font-size: var(--sl-text-body);
+  line-height: 1.75;
+}
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--accent-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-line);
+}
+.sl-markdown-content a:hover:not(:where(.not-content *)) {
+  background: var(--accent);
+  color: var(--ground);
+  border-bottom-color: var(--accent);
+}
+.sl-markdown-content code:not(:where(.not-content *)) {
+  color: var(--amber);
+  border: 0;
+  padding: 0;
+}
+
+/* ---------- sidebar reads as a file tree ---------- */
 .sidebar-content a {
-  font-size: 0.9rem;
+  font-size: 0.76rem;
+  position: relative;
+  padding-inline-start: 1.5rem;
+}
+.sidebar-content a::before {
+  content: "├─";
+  position: absolute;
+  inset-inline-start: 0.35rem;
+  color: var(--line-strong);
+}
+.sidebar-content li:last-child > a::before {
+  content: "└─";
 }
 .sidebar-content summary,
 .sidebar-content .large,
@@ -106,25 +129,29 @@ header.header {
   font-family: var(--font-mono);
   font-size: var(--micro-size);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--muted);
+  letter-spacing: 0.16em;
+  color: var(--accent);
   font-weight: 400;
 }
 .sidebar-content a[aria-current="page"],
 .sidebar-content a[aria-current="page"]:hover {
-  color: var(--accent-ink);
-  background: transparent;
-  border-inline-start-color: var(--warm);
+  color: var(--ground);
+  background: var(--accent);
+  border-inline-start-color: transparent;
   font-weight: 400;
+}
+.sidebar-content a[aria-current="page"]::before {
+  color: var(--ground);
 }
 .right-sidebar a[aria-current="true"] {
   color: var(--accent-ink);
 }
 
-/* search + edit link + pagination read as drafting chrome */
+/* ---------- chrome: square, flat, mono ---------- */
 site-search button[data-open-modal],
 .pagination-links a {
   font-family: var(--font-mono);
+  font-size: 0.72rem;
   border-radius: 0;
   border-color: var(--line-strong);
   background: var(--panel-soft);
@@ -137,7 +164,6 @@ site-search button[data-open-modal],
   color: var(--muted);
 }
 
-/* code blocks: square edges, sheet-coloured chrome */
 .expressive-code .frame,
 .expressive-code pre {
   border-radius: 0 !important;

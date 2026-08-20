@@ -1,7 +1,6 @@
 ---
 import Landing from "../layouts/Landing.astro";
 import CodeFrame from "../components/CodeFrame.astro";
-import WasmDemo from "../components/WasmDemo.astro";
 
 const base = import.meta.env.BASE_URL;
 const docs = `${base.replace(/\/$/, "")}/docs/`;
@@ -16,606 +15,440 @@ msg, err := pi.GenerateText(ctx, "claude-sonnet-4-5", ai.Prompt{
     Messages: []ai.Message{ai.UserMessage("Write a haiku about Go.")},
 })`;
 
-const agentTool = `
-type WeatherInput struct {
-    City string \`json:"city"\`
+const providerIface = `
+// The whole provider contract.
+type Provider interface {
+    Generate(ctx context.Context, p Prompt) (Stream, error)
 }
 
-var weatherTool = ai.DefineTool(
-    "get_weather",
-    "Get current weather for a city",
-    func(ctx context.Context, in WeatherInput) (WeatherOutput, error) {
-        return WeatherOutput{Temp: "22°C"}, nil
-    },
-)
+// A different provider is a different constructor,
+// not a different program.
+p := anthropic.New(anthropic.WithAPIKey(key))
+p = openai.New(openai.WithAPIKey(key))
+p = google.New(google.WithAPIKey(key))
 
-a, err := pi.Agent("claude-sonnet-4-5",
-    pi.WithTools(weatherTool),
-    pi.WithMaxTurns(5),
-)
-defer a.Close()
+a, err := pi.Agent(model, pi.WithProvider(p))`;
 
-s := a.Run(ctx, ai.UserMessage("What's the weather in Paris?"))
+const contextCode = `
+// The message slice belongs to you.
+msgs := state.Messages()
+msgs = keepLastTurns(msgs, 12)
+
+// Cache breakpoints are marks on a message.
+msgs[0].CacheControl = ai.CacheEphemeral
+
+// Compaction is a function you write.
+func compact(ctx context.Context, m []ai.Message) []ai.Message {
+    sum, _ := pi.GenerateText(ctx, small, ai.Prompt{
+        Messages: append(m, ai.UserMessage("Summarize.")),
+    })
+    return []ai.Message{ai.AssistantMessage(sum.Text())}
+}`;
+
+const streamCode = `
+ctx, cancel := context.WithCancel(ctx)
+defer cancel()
+
+s := a.Run(ctx, ai.UserMessage("ship it"))
+
 for e, err := range s.Events() {
-    if e.Type == agent.EventMessageUpdate {
-        fmt.Print(e.AssistantEvent.Delta)
+    if err != nil {
+        return err
+    }
+
+    switch e.Type {
+    case agent.EventTextDelta:
+        io.WriteString(w, e.Delta)
+    case agent.EventToolCall:
+        log.Printf("-> %s", e.Tool.Name)
+    case agent.EventTurnEnd:
+        cancel() // stop after this turn
     }
 }`;
 
-const durableHero = `
-// Monday, process A.
-da, err := pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
-    durable.WithStore(store),
-    durable.WithSessionID("user-42"),
-)
-da.Run(ctx, ai.UserMessage("My name is Ravi. Remember it.")).Wait()
-da.Close()
-
-// Thursday, process B. Same ID — same conversation.
-da, _ = pi.DurableAgent[ChatState](ctx, "claude-sonnet-4-5",
-    durable.WithStore(store),
-    durable.WithSessionID("user-42"),
-)
-msgs, _ := da.Run(ctx, ai.UserMessage("What's my name?")).Wait()`;
-
-const layers = [
-  {
-    id: "pi",
-    tag: "Front door",
-    name: "pkg/pi",
-    use: "One import; providers auto-wired from environment",
-    code: `a, err := pi.Agent("claude-sonnet-4-5",
-    pi.WithTools(weatherTool),
-)`,
-  },
-  {
-    id: "catalog",
-    tag: "Registry",
-    name: "pkg/catalog",
-    use: "Own your catalog: providers, models, agent factories",
-    code: `c := catalog.New()
-c.RegisterProvider(anthropic.New(anthropic.WithAPIKey(key)))
-c.RegisterAgent("claude", claude.Factory())
-
-a, err := c.Agent(ctx, "claude/sonnet")`,
-  },
-  {
-    id: "agent",
-    tag: "Agent loop",
-    name: "pkg/agent",
-    use: "Tools, hooks, turn management, run streams",
-    code: `a := agent.New(lm,
-    agent.WithTools(weatherTool),
-    agent.WithMaxTurns(5),
-)
-
-s := a.Run(ctx, ai.UserMessage("..."))
-msgs, err := s.Wait()`,
-  },
-  {
-    id: "ai",
-    tag: "Direct LLM",
-    name: "pkg/ai",
-    use: "Single calls: text, structured objects, images, speech",
-    code: `type Review struct {
-    Verdict string   \`json:"verdict"\`
-    Issues  []string \`json:"issues"\`
+const toolCode = `
+// Tools are generic functions. pi-go derives the
+// schema from the input type, so the two cannot differ.
+type WeatherIn struct {
+    City string \`json:"city"\`
 }
 
-out, err := ai.GenerateObject[Review](ctx, model, prompt)`,
-  },
-  {
-    id: "durable",
-    tag: "Durability",
-    name: "pkg/durable",
-    use: "Agents that survive restarts; branch, fork, compact",
-    code: `store := session.NewMemoryStore[ChatState]()
-
-da, err := pi.DurableAgent[ChatState](ctx, model,
-    durable.WithStore(store),
-    durable.WithSessionID("ticket-1183"),
-)`,
-  },
-];
-
-const toolSource = `
-type SearchInput struct {
-    Query string \`json:"query" jsonschema:"required"\`
-    Limit int    \`json:"limit,omitempty"\`
-}
-
-var search = ai.DefineTool(
-    "search_docs",
-    "Search the project documentation",
-    func(ctx context.Context, in SearchInput) (Hits, error) {
-        return index.Search(in.Query, in.Limit)
+weather := ai.DefineTool(
+    "get_weather",
+    "Get current weather for a city",
+    func(ctx context.Context, in WeatherIn) (WeatherOut, error) {
+        return WeatherOut{Temp: "22°C"}, nil
     },
-)`;
+)
 
-const toolSchema = `
-{
-  "name": "search_docs",
-  "description": "Search the project documentation",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "query": { "type": "string" },
-      "limit": { "type": "integer" }
-    },
-    "required": ["query"]
-  }
-}`;
-
-const dockerfile = `
-FROM golang:1.26 AS build
-WORKDIR /src
-COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /triage ./cmd/triage
-
-FROM gcr.io/distroless/static
-COPY --from=build /triage /triage
-ENTRYPOINT ["/triage"]`;
+a, _ := pi.Agent(model, pi.WithTools(weather))`;
 
 const providers = [
-  ["Anthropic Messages", "anthropic-messages"],
-  ["OpenAI Chat Completions", "openai-completions"],
-  ["OpenAI Responses", "openai-responses"],
-  ["Google Gemini", "google-generative"],
-  ["Claude CLI", "claude-cli"],
-  ["Codex CLI", "codex-cli"],
-  ["Cursor CLI", "cursor-cli"],
+  ["anthropic", "key · oauth", "yes", "yes"],
+  ["openai", "key · oauth", "yes", "yes"],
+  ["openairesponses", "key", "yes", "yes"],
+  ["google", "key", "yes", "yes"],
+  ["claudecli", "subprocess", "yes", "yes"],
+  ["codex", "subprocess", "yes", "yes"],
+  ["geminicli", "oauth", "yes", "partial"],
 ];
 
 const notBuilt = [
   [
-    "No MCP client",
-    "Implement the <code>Tool</code> interface over any transport, or wrap an existing CLI tool.",
+    "No prompt DSL",
+    "Prompts are Go strings and Go templates. You already know how to build a string.",
   ],
   [
-    "No permission UI",
-    "Deny or rewrite a call in <code>BeforeTool</code>, inline with your own approval flow.",
+    "No vector store",
+    "Retrieval is a function that returns messages. You bring the store that you already run.",
   ],
   [
-    "No sub-agent orchestrator",
-    "Agents are values. Spawn them in goroutines and let a tool return the child's result.",
+    "No global registry",
+    "There is no init-time magic and no import side effect. You pass the provider that you want.",
   ],
   [
-    "No RAG or vector store",
-    "Inject retrieved context in <code>BeforeCall</code>. Your index, your embedding choice.",
+    "No reflection at run time",
+    "pi-go derives a tool schema once, at definition, from the type. It scans nothing on each call.",
   ],
   [
-    "No plan mode",
-    "Write plans to files, or gate tools per phase with a hook and a mode flag.",
+    "No agent orchestrator",
+    "Sub-agents are goroutines that call agents. You compose them, and the examples show how.",
   ],
   [
-    "No telemetry pipeline",
-    "The five hooks plus run events are the seams. Emit OTel spans from them.",
+    "No telemetry",
+    "There is no phone-home and no analytics. You can wrap the transport to get traces.",
   ],
 ];
 ---
 
 <Landing
-  title="pi-go — agents in Go that survive the restart"
-  description="A provider-agnostic SDK for building AI agents in Go — from a single completion call to durable, session-backed agents."
+  title="pi-go — an agent SDK that is just Go"
+  description="A minimal agent SDK for Go. Ordinary packages, explicit types, seven providers behind one interface."
 >
-  {/* ============ 01 HERO ============ */}
-  <section class="band hero split">
-    <div>
-      <h1>Many ways to call a model.<br />This one <em>survives the restart</em>.</h1>
-      <p class="hero-sub">
-        A provider-agnostic SDK for building AI agents in Go — from a single completion call to
-        durable, session-backed agents that pick up exactly where they left off.
-      </p>
-
-      <div class="install">
-        <div class="tabs" data-tabs="install">
-          <button class="tab is-active" data-tab="front">Front door</button>
-          <button class="tab" data-tab="core">Core only</button>
-          <button class="tab" data-tab="prov">One provider</button>
-          <button class="tab" data-tab="cli">CLI</button>
-        </div>
-        <div class="install-row">
-          <span class="sig">$</span>
-          <code data-panel="install" data-for="front">go get github.com/sonnes/pi-go/pkg/pi</code>
-          <code data-panel="install" data-for="core" hidden>go get github.com/sonnes/pi-go/pkg/ai</code
-          >
-          <code data-panel="install" data-for="prov" hidden
-            >go get github.com/sonnes/pi-go/pkg/ai/provider/anthropic</code
-          >
-          <code data-panel="install" data-for="cli" hidden
-            >go install github.com/sonnes/pi-go/cmd/pi@latest</code
-          >
-          <button class="copy" data-copy>Copy</button>
-        </div>
-      </div>
-
-      <div class="hero-actions">
-        <a class="btn btn--primary" href={docs}>Read the documentation</a>
-        <a class="btn" href="#layers">Pick your layer</a>
-      </div>
-    </div>
-
-    <div>
-      <div class="tabs" data-tabs="hero" style="margin-bottom:0.75rem">
-        <button class="tab is-active" data-tab="one">One call</button>
-        <button class="tab" data-tab="agent">Agent + tool</button>
-        <button class="tab" data-tab="durable">Durable</button>
-      </div>
-
-      <div data-panel="hero" data-for="one">
-        <CodeFrame path="examples/onecall/main.go" code={oneCall}>
-          <div class="frame-out">
-            <span class="micro">stdout</span><br />
-            <span class="stream"
-              >Goroutines whisper,<br />channels carry what they know —<br />the compiler waits.</span
-            ><span class="caret"></span>
-          </div>
-        </CodeFrame>
-      </div>
-
-      <div data-panel="hero" data-for="agent" hidden>
-        <CodeFrame path="examples/agenttool/main.go" code={agentTool}>
-          <div class="frame-out">
-            <span class="micro">events</span><br />
-            <span class="d">message_start · tool_call get_weather</span><br />
-            <span class="d">tool_result 22°C</span><br />
-            <span class="stream">It's 22°C in Paris right now.</span><span class="caret"></span>
-          </div>
-        </CodeFrame>
-      </div>
-
-      <div data-panel="hero" data-for="durable" hidden>
-        <CodeFrame path="examples/durable/main.go" code={durableHero}>
-          <div class="frame-out">
-            <span class="micro">stdout · process b</span><br />
-            <span class="stream">Your name is Ravi.</span><span class="caret"></span>
-          </div>
-        </CodeFrame>
-      </div>
-    </div>
-  </section>
-
-  {/* ============ 02 WHY ============ */}
-  <section class="band" id="why">
-    <div class="kicker"><span class="micro"><span class="num">02</span> / Why pi-go</span></div>
-    <div class="grid grid--4">
-      <div class="card">
-        <span class="idx">01</span>
-        <h3>One import to start</h3>
-        <p>
-          <code>pkg/pi</code> owns a default catalog and auto-wires providers from environment
-          credentials on first use. Model specs are <code>"provider/model"</code>, or a bare model ID
-          when only one provider serves it.
-        </p>
-      </div>
-      <div class="card">
-        <span class="idx">02</span>
-        <h3>Tools are Go types</h3>
-        <p>
-          <code>DefineTool</code> and <code>GenerateObject[T]</code> derive JSON schemas from Go types
-          at init time. A type that can't be schematized panics at startup — not mid-conversation.
-        </p>
-      </div>
-      <div class="card">
-        <span class="idx">03</span>
-        <h3>Everything streams</h3>
-        <p>
-          Every call returns a stream. Range over <code>Events()</code> or block on
-          <code>Wait()</code>. <code>GenerateText</code> is literally <code>StreamText(...).Wait()</code
-          >.
-        </p>
-      </div>
-      <div class="card">
-        <span class="idx">04</span>
-        <h3>Ships as one binary</h3>
-        <p>
-          <code>go build</code> puts the loop, the tools, the prompts and the provider client in a
-          single file. Cross-compile it; run it on <code>scratch</code>.
-        </p>
-      </div>
-    </div>
-  </section>
-
-  {/* ============ 03 LAYERS ============ */}
-  <section class="band split" id="layers">
-    <div>
-      <div class="kicker">
-        <span class="micro"><span class="num">03</span> / Pick your layer</span>
-      </div>
-      <h2 style="font-size:clamp(1.45rem,2.5vw,2rem)">
-        The SDK is a stack.<br />Start at the top; drop down when you need control.
-      </h2>
-      <p style="margin-top:1rem">
-        No framework, no lock-in at any level. Each layer is a normal Go package you can use on its
-        own — and the layer below is always reachable.
-      </p>
-      <div class="layers" style="margin-top:1.5rem" data-tabs="layer">
-        {
-          layers.map((l, i) => (
-            <button class={`layer${i === 0 ? " is-active" : ""}`} data-tab={l.id}>
-              <span>
-                <span class="layer-tag">{l.tag}</span>
-                <span class="layer-name">{l.name}</span>
-              </span>
-              <span class="layer-use">{l.use}</span>
-            </button>
-          ))
-        }
-      </div>
-    </div>
-
-    <div>
-      {
-        layers.map((l, i) => (
-          <div data-panel="layer" data-for={l.id} hidden={i !== 0}>
-            <CodeFrame path={l.name} code={l.code} copy={false} />
-          </div>
-        ))
-      }
-    </div>
-  </section>
-
-  {/* ============ 04 TYPED TOOLS ============ */}
-  <section class="band" id="tools">
-    <div class="kicker"><span class="micro"><span class="num">04</span> / Typed tools</span></div>
-    <h2 style="font-size:clamp(1.45rem,2.5vw,2rem);max-width:30ch">
-      Go types in. JSON Schema out. No runtime schema builders.
-    </h2>
-    <div class="split" style="margin-top:1.8rem;--split:1fr 1fr">
-      <CodeFrame path="tools.go" code={toolSource} copy={false} />
-      <CodeFrame
-        path="derived at init — sent to the provider"
-        code={toolSchema}
-        lang="json"
-        badge="generated"
-        copy={false}
-      />
-    </div>
-    <p style="margin-top:1.4rem">
-      Tool errors become results the model can reason about, not Go errors that kill the run. Each
-      tool declares whether it is safe to run in parallel — no single global mode.
+  {/* ============ HERO ============ */}
+  <header class="hero">
+    <p class="hero-prompt">$ pi-go --version</p>
+    <h1>There are many agent SDKs<br />this one is <em>Go you can read</em></h1>
+    <p class="hero-sub">
+      Ordinary packages, explicit types, no framework to learn.<br />
+      Three of them — you can read the whole thing in an afternoon.
     </p>
-  </section>
 
-  {/* ============ 05 DURABLE ============ */}
-  <section class="band split" id="durable">
-    <div>
-      <div class="kicker">
-        <span class="micro"><span class="num">05</span> / Durable sessions</span>
+    <div class="install">
+      <div class="tabs" data-tabs="install">
+        <button class="tab is-active" data-tab="get">go get</button>
+        <button class="tab" data-tab="core">core only</button>
+        <button class="tab" data-tab="prov">one provider</button>
+        <button class="tab" data-tab="cli">cli</button>
       </div>
-      <h2 style="font-size:clamp(1.45rem,2.5vw,2rem)">The session ID is the memory boundary.</h2>
-      <p style="margin-top:1rem">
-        A ticket number, a user ID, a thread key — your application decides what it means. The same
-        ID always resumes the same conversation, in any process.
-      </p>
-      <p>
-        Persistence is per message: run input is stored before the run starts, and every message the
-        loop produces is stored when it completes. Run events double as durability receipts — a
-        <code>message_end</code> is forwarded only after its entries are in the store, so anything a
-        consumer saw complete survives a crash.
-      </p>
-      <p>
-        The transcript is an append-only tree with a leaf pointer. Nothing is ever mutated or
-        deleted, and one mechanism covers a whole family of operations.
-      </p>
-    </div>
-    <div>
-      <div class="tree" data-static-tree>
-        <span class="d">session</span> user-42<br />
-        ├─ <b>e1</b> user &nbsp;&nbsp;&nbsp;"My name is Ravi."<br />
-        ├─ <b>e2</b> assistant "Noted."<br />
-        ├─ <b>e3</b> user &nbsp;&nbsp;&nbsp;"What's my name?"<br />
-        │ &nbsp;&nbsp;└─ <b>e4</b> assistant "Ravi." <i>← leaf</i><br />
-        └─ <b>e3'</b> user &nbsp;&nbsp;"Actually, call me R." <i>← Branch(e2)</i><br />
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <b>e4'</b> assistant "Got it, R."
-      </div>
-      <figcaption data-static-tree><b>Fig. 01</b> Entry tree after one branch</figcaption>
-
-      <WasmDemo />
-
-      <div class="grid grid--2" style="margin-top:1.5rem">
-        <div class="card">
-          <h3 style="font-size:1.02rem">Branch</h3>
-          <p>Move the leaf earlier; the next turn grows a sibling. Edit, retry and rewind are all branches.</p>
-        </div>
-        <div class="card">
-          <h3 style="font-size:1.02rem">Fork</h3>
-          <p>Lift the active path into a separate session for what-if exploration.</p>
-        </div>
-        <div class="card">
-          <h3 style="font-size:1.02rem">Compact</h3>
-          <p>Append a summary that shrinks the model context. Nothing is deleted; rewind still works.</p>
-        </div>
-        <div class="card">
-          <h3 style="font-size:1.02rem">Append</h3>
-          <p>Persist app-defined entries — artifacts, UI state — that are never sent to the model.</p>
-        </div>
+      <div class="install-row">
+        <span class="sig">$</span>
+        <code data-panel="install" data-for="get">go get github.com/sonnes/pi-go/pkg/pi</code>
+        <code data-panel="install" data-for="core" hidden
+          >go get github.com/sonnes/pi-go/pkg/ai</code
+        >
+        <code data-panel="install" data-for="prov" hidden
+          >go get github.com/sonnes/pi-go/pkg/ai/provider/anthropic</code
+        >
+        <code data-panel="install" data-for="cli" hidden
+          >go install github.com/sonnes/pi-go/cmd/pi@latest</code
+        >
+        <button class="copy" data-copy>Copy</button>
       </div>
     </div>
-  </section>
 
-  {/* ============ 06 ONE BINARY ============ */}
-  <section class="band split" id="binary">
-    <div>
-      <div class="kicker"><span class="micro"><span class="num">06</span> / One binary</span></div>
-      <h2 style="font-size:clamp(1.45rem,2.5vw,2rem)">Your agent is a binary, not a runtime.</h2>
-      <p style="margin-top:1rem">
-        <code>go build</code> and the whole agent is one file: the loop, the tools, the prompts, the
-        provider client. Nothing to install on the target box — no Node, no venv, no
-        <code>node_modules</code>, no interpreter to keep in step with production.
-      </p>
-      <p>
-        Cross-compile to wherever it runs. One <code>GOOS</code>/<code>GOARCH</code> pair per target,
-        from your laptop, no cross toolchain, no base image to match.
-      </p>
-      <div class="chips">
-        <span class="is-lit">linux/amd64</span>
-        <span class="is-lit">linux/arm64</span>
-        <span>darwin/arm64</span>
-        <span>windows/amd64</span>
-        <span>freebsd/amd64</span>
-        <span>+ 30 more</span>
+    <p class="hero-meta">MIT · Go 1.26 · one Go module for each provider</p>
+
+    <div class="hero-actions">
+      <a class="btn btn--primary" href={docs}>Read the documentation</a>
+      <a class="btn" href="https://github.com/sonnes/pi-go">GitHub</a>
+    </div>
+  </header>
+
+  {/* ============ STORY GRID ============ */}
+  <div class="story" data-story>
+    <div class="story-demo">
+      <div class="story-stage" data-stage>
+        <CodeFrame path="one_call.go" code={oneCall} copy={false} />
       </div>
-      <p class="note">
-        The honest edge: subprocess agents shell out to <code>claude</code>, <code>codex</code> or
-        <code>cursor</code>, so those need the CLI on the box. Everything that talks to a provider
-        API travels inside the binary.
-      </p>
     </div>
 
-    <div>
-      <div class="tabs" data-tabs="ship" style="margin-bottom:0.75rem">
-        <button class="tab is-active" data-tab="build">Build</button>
-        <button class="tab" data-tab="container">Container</button>
-      </div>
+    <div class="story-copy">
+      {/* -- 01 -- */}
+      <section class="story-section is-active" data-section="why">
+        <div class="kicker"><span class="num">01</span> Why pi-go</div>
+        <h2>A library, not a framework</h2>
+        <p>pi-go is a set of small Go packages. You call them. They do not call you.</p>
+        <p>
+          There is no runtime to start, no configuration file to learn, and no plugin lifecycle to
+          fit your program into.
+        </p>
+        <p>
+          Start with one function. <code>pi.GenerateText</code> takes a model name and a prompt, and
+          returns a message. When you need tools, sessions, or streams, you use a lower layer. The
+          types stay the same.
+        </p>
+        <p>
+          <strong>Three layers:</strong>
+          <code>pkg/ai</code> for the types, <code>pkg/agent</code> for the loop, and
+          <code>pkg/pi</code> for the shortcuts. Use as many as you need.
+        </p>
+        <div class="section-demo" data-demo>
+          <CodeFrame path="one_call.go" code={oneCall} copy={false} />
+        </div>
+      </section>
 
-      <div data-panel="ship" data-for="build">
-        <figure>
+      {/* -- 02 -- */}
+      <section class="story-section" data-section="provider">
+        <div class="kicker"><span class="num">02</span> Providers</div>
+        <h2>Change the provider, not your agent</h2>
+        <p>
+          <code>ai.Provider</code> has one method. Every provider in the repository is that interface
+          and nothing more.
+        </p>
+        <p>
+          API keys and OAuth use the same transport middleware. A subscription login and an API key
+          look the same to your code.
+        </p>
+        <p>
+          pi-go refreshes an OAuth token and stores the result. If the refresh fails, the request
+          fails. It does not retry in silence.
+        </p>
+        <p>
+          Each provider is a separate Go module. You can import Anthropic without the Google SDK.
+        </p>
+        <div class="section-demo" data-demo>
+          <CodeFrame path="provider.go" code={providerIface} copy={false} />
+        </div>
+      </section>
+
+      {/* -- 03 -- */}
+      <section class="story-section" data-section="models">
+        <div class="kicker"><span class="num">03</span> Coverage</div>
+        <h2>Seven providers, hundreds of models</h2>
+        <p>
+          pi-go includes Anthropic, OpenAI, OpenAI Responses, Google, Claude CLI, Codex, and Gemini
+          CLI. Some talk to an API over HTTP. Others start a command line tool as a subprocess.
+        </p>
+        <p>
+          The <a href={`${docs}capabilities/`}>capability matrix</a> is in the repository. It records
+          what each upstream API supports, and what pi-go implements, for each feature.
+        </p>
+        <p>
+          You can add your own models with a catalog entry. You can add your own provider with one
+          method.
+        </p>
+        <div class="section-demo" data-demo>
+          <div class="codeframe">
+            <div class="frame-head">
+              <span class="frame-path">providers</span>
+              <span class="frame-badge"><i class="dot"></i>7 modules</span>
+            </div>
+            <table class="matrix">
+              <thead>
+                <tr><th>Provider</th><th>Auth</th><th>Stream</th><th>Tools</th></tr>
+              </thead>
+              <tbody>
+                {
+                  providers.map(([id, auth, stream, tools]) => (
+                    <tr>
+                      <td class="mono">{id}</td>
+                      <td>{auth}</td>
+                      <td class="ok">{stream}</td>
+                      <td>{tools}</td>
+                    </tr>
+                  ))
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* -- 04 -- */}
+      <section class="story-section" data-section="sessions">
+        <div class="kicker"><span class="num">04</span> Sessions</div>
+        <h2>A session is an append-only log</h2>
+        <p>
+          A session is a list of events. pi-go writes each event once and never changes it. State is
+          the result of a replay.
+        </p>
+        <p>
+          That makes the history honest. You can find the turn where a run went wrong, instead of a
+          summary of it.
+        </p>
+        <p>
+          Because the log only grows, a branch costs nothing. Fork at any message, try the other
+          approach, and keep both. The tree is the session.
+        </p>
+        <p>
+          The file store holds one event log for each session. There is nothing to migrate, and you
+          can read it with <code>grep</code>.
+        </p>
+        <div class="section-demo" data-demo>
+          <div class="codeframe">
+            <div class="frame-head">
+              <span class="frame-path">session.tree</span>
+              <span class="frame-badge"><i class="dot"></i>append only</span>
+            </div>
+            <div class="tree">
+              <span class="d">session</span> user-42<br />
+              ├─ <b>e1</b> user &nbsp;&nbsp;&nbsp;"My name is Ravi."<br />
+              ├─ <b>e2</b> assistant "Noted."<br />
+              ├─ <b>e3</b> user &nbsp;&nbsp;&nbsp;"What is my name?"<br />
+              │ &nbsp;&nbsp;└─ <b>e4</b> assistant "Ravi." <i>← leaf</i><br />
+              └─ <b>e3'</b> user &nbsp;&nbsp;"Actually, call me R." <i>← Branch(e2)</i><br />
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <b>e4'</b> assistant "Got it, R."
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* -- 05 -- */}
+      <section class="story-section" data-section="context">
+        <div class="kicker"><span class="num">05</span> Context</div>
+        <h2>Context engineering, not context management</h2>
+        <p>
+          The message slice belongs to you. pi-go never changes it. pi-go never adds a hidden system
+          prompt. pi-go never removes a message to save you tokens.
+        </p>
+        <p>
+          <strong>Cache breakpoints</strong> are marks on a message. You control where a prompt cache
+          starts, instead of waiting to find out.
+        </p>
+        <p>
+          <strong>Compaction</strong> is a function that you write. You can summarize by topic, keep
+          the last turns, or remove tool output and keep the tool calls.
+        </p>
+        <div class="section-demo" data-demo>
+          <CodeFrame path="context.go" code={contextCode} copy={false} />
+        </div>
+      </section>
+
+      {/* -- 06 -- */}
+      <section class="story-section" data-section="stream">
+        <div class="kicker"><span class="num">06</span> Streaming</div>
+        <h2>Stream, steer, and stop</h2>
+        <p>
+          Events come back as a Go iterator. Text deltas, tool calls, tool results, usage, and turn
+          boundaries all arrive as typed events on one channel.
+        </p>
+        <p>
+          A <code>context.CancelFunc</code> stops a run. There is no separate stop API, no goroutine to
+          signal, and no partial state left behind.
+        </p>
+        <p>
+          You can send a message while the agent works. The message arrives after the current tool, or
+          after the turn, depending on which one you ask for.
+        </p>
+        <div class="section-demo" data-demo>
+          <CodeFrame path="stream.go" code={streamCode} copy={false} />
+        </div>
+      </section>
+
+      {/* -- 07 -- */}
+      <section class="story-section" data-section="modes">
+        <div class="kicker"><span class="num">07</span> Modes</div>
+        <h2>Four ways to run it</h2>
+        <p>
+          <strong>Library.</strong> The main one. You import the packages into your own service.
+        </p>
+        <p>
+          <strong>CLI.</strong> The <code>pi</code> command gives you login, model selection, and an
+          interactive chat over the same core.
+        </p>
+        <p>
+          <strong>Subprocess agents.</strong> pi-go drives Claude Code, Codex, or Gemini CLI as
+          providers, and keeps your own session log around them.
+        </p>
+        <p>
+          <strong>WASM.</strong> The core packages build for <code>js/wasm</code>. The demos on this
+          site run that way.
+        </p>
+        <div class="section-demo" data-demo>
           <div class="cast">
-            <div class="cast-bar"><i></i><i></i><i></i><span>build</span></div>
-            <pre><span class="p">$</span> CGO_ENABLED=0 go build -ldflags="-s -w" -o triage ./cmd/triage
-<span class="p">$</span> ls -lh triage
-<span class="d">-rwxr-xr-x</span>  <span class="t">9.5M</span>  triage
+            <div class="cast-bar"><span>four_modes.sh</span></div>
+            <pre><span class="d"># 1. library — import it</span>
+<span class="t">import</span> "github.com/sonnes/pi-go/pkg/pi"
 
-<span class="d"># same source, a different machine</span>
-<span class="p">$</span> GOOS=linux GOARCH=arm64 go build -o triage.arm64 ./cmd/triage
-<span class="p">$</span> scp triage.arm64 box:/usr/local/bin/triage
+<span class="d"># 2. cli — interactive terminal chat</span>
+<span class="p">$</span> pi chat
+
+<span class="d"># 3. subprocess agents — drive another harness</span>
+<span class="p">$</span> pi run --agent codex "fix the flaky test"
+
+<span class="d"># 4. wasm — the same core in the browser</span>
+<span class="p">$</span> GOOS=js GOARCH=wasm go build ./cmd/pi
 <span class="p">$</span> <span class="caret"></span></pre>
           </div>
-          <figcaption><b>Fig. 02</b> go1.26.4 · one provider linked · measured</figcaption>
-        </figure>
-        <p class="note" style="margin-top:1.1rem">
-          You pay for what you link. One provider is 9.5M; the <code>pkg/pi</code> front door is 27M
-          because it wires all four API providers for auto-detection. Drop a layer and the binary
-          drops with it.
-        </p>
-      </div>
+        </div>
+      </section>
 
-      <div data-panel="ship" data-for="container" hidden>
-        <CodeFrame path="Dockerfile" code={dockerfile} lang="dockerfile" badge="builds" />
-        <p class="note" style="margin-top:1.1rem">
-          <code>distroless/static</code> for the CA roots the provider TLS handshake needs — the one
-          thing a static binary can't bring itself. On <code>scratch</code>, copy
-          <code>ca-certificates.crt</code> in.
-        </p>
-      </div>
-    </div>
-  </section>
-
-  {/* ============ 07 PROVIDERS ============ */}
-  <section class="band" id="providers">
-    <div class="kicker"><span class="micro"><span class="num">07</span> / Providers</span></div>
-    <div class="split">
-      <div>
-        <h2 style="font-size:clamp(1.45rem,2.5vw,2rem)">One Go module per provider.</h2>
-        <p style="margin-top:1rem">
-          You import — and depend on — only the SDKs you use. OpenRouter is served by the Responses
-          adapter through a dialect flag.
+      {/* -- 08 -- */}
+      <section class="story-section" data-section="primitives">
+        <div class="kicker"><span class="num">08</span> Primitives</div>
+        <h2>Primitives, not features</h2>
+        <p>
+          Tools are generic functions. pi-go derives the JSON schema from the input struct, so the
+          schema and the handler cannot differ.
         </p>
         <p>
-          Authenticate with API keys, or OAuth. Pi can reuse an existing Claude Code or Codex CLI
-          subscription login, including on headless machines.
+          Tests record real HTTP traffic and replay it. Each provider runs against captured responses
+          from the real API. A change upstream shows up as a failed test.
         </p>
-        <a class="btn" href={`${docs}reference/capabilities/`} style="margin-top:0.5rem">Capability matrix →</a>
-      </div>
-      <table class="matrix">
-        <thead>
-          <tr><th>Provider</th><th>API identifier</th></tr>
-        </thead>
-        <tbody>
-          {providers.map(([name, id]) => (
-            <tr>
-              <td>{name}</td>
-              <td class="mono">{id}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  {/* ============ 08 SUBPROCESS AGENTS ============ */}
-  <section class="band split" id="cli">
-    <div>
-      <div class="kicker">
-        <span class="micro"><span class="num">08</span> / Subprocess agents</span>
-      </div>
-      <h2 style="font-size:clamp(1.45rem,2.5vw,2rem)">agent.Agent is a contract, not a class.</h2>
-      <p style="margin-top:1rem">
-        The same spec string routes to different backends. <code>"claude/sonnet"</code> runs a Claude
-        Code subprocess, <code>"codex/gpt-5-codex"</code> a Codex one, and a plain model ID runs the
-        in-process loop against the provider's API — all behind one interface, so mocks are trivial.
-      </p>
-      <p>
-        Subprocess agents work with subscription logins instead of API keys. The bundled
-        <code>pi</code> CLI is a test-drive for all of it.
-      </p>
-    </div>
-    <div>
-      <figure>
-        <div class="cast">
-          <div class="cast-bar"><i></i><i></i><i></i><span>pi cli</span></div>
-          <pre><span class="p">$</span> pi --model claude/sonnet "add a test for Branch"
-
-<span class="d">→ agent claude/sonnet · subprocess · subscription login</span>
-<span class="t">read</span>  pkg/session/entry.go
-<span class="t">read</span>  pkg/session/entry_test.go
-<span class="t">write</span> pkg/session/entry_test.go  <span class="d">+34</span>
-<span class="t">bash</span>  make test
-<span class="d">      ok  github.com/sonnes/pi-go/pkg/session  0.412s</span>
-
-Added TestBranchMovesLeaf covering the sibling case.
-<span class="p">$</span> <span class="caret"></span></pre>
+        <p>
+          Retries, rate limits, sub-agents, and planning are functions that you compose. There is an
+          example for each one.
+        </p>
+        <div class="section-demo" data-demo>
+          <CodeFrame path="tools.go" code={toolCode} copy={false} />
         </div>
-        <figcaption><b>Fig. 03</b> asciinema cast · claude subprocess agent</figcaption>
-      </figure>
+      </section>
     </div>
-  </section>
+  </div>
 
-  {/* ============ 09 DIDN'T BUILD ============ */}
+  {/* ============ WHAT WE DID NOT BUILD ============ */}
   <section class="band" id="not-built">
-    <div class="kicker">
-      <span class="micro"><span class="num">09</span> / What we didn't build</span>
+    <div class="band-head">
+      <div class="kicker"><span class="num">09</span> Scope</div>
+      <h2>What we did not build</h2>
+      <p>
+        Each item below is a deliberate omission. Each one costs a few lines in your own code. Each
+        one costs the library more complexity than it saves you.
+      </p>
     </div>
-    <h2 style="font-size:clamp(1.45rem,2.5vw,2rem);max-width:34ch">
-      The loop is small on purpose. Five hooks reach everything it does.
-    </h2>
-    <p style="margin:1rem 0 1.8rem">
-      <code>BeforeCall</code>, <code>BeforeTool</code>, <code>AfterTool</code>, <code>AfterTurn</code
-      >, <code>BeforeStop</code> — one signature each. Anything below isn't missing; it's yours to
-      compose.
-    </p>
-    <div class="nb">
+    <div class="cards cards--scope">
       {
         notBuilt.map(([title, body]) => (
-          <div class="nb-item">
-            <h4>{title}</h4>
-            <p set:html={body} />
+          <div class="card">
+            <h3>{title}</h3>
+            <p>{body}</p>
           </div>
         ))
       }
     </div>
   </section>
 
-  {/* ============ 10 GET INVOLVED ============ */}
+  {/* ============ GET INVOLVED ============ */}
   <section class="band" id="involved">
-    <div class="kicker"><span class="micro"><span class="num">10</span> / Get involved</span></div>
-    <div class="grid grid--3">
+    <div class="band-head">
+      <div class="kicker"><span class="num">10</span> Community</div>
+      <h2>Get involved</h2>
+    </div>
+    <div class="cards cards--links">
       <div class="card">
         <h3>Documentation</h3>
-        <p style="margin-bottom:0.9rem">Concepts, capability matrix, and guides for every layer.</p>
-        <a class="btn btn--primary" href={docs}>Read the docs</a>
+        <p>Concept guides for every package, and a capability matrix for every feature.</p>
+        <a class="btn" href={docs}>Read the docs</a>
       </div>
       <div class="card">
         <h3>API reference</h3>
-        <p style="margin-bottom:0.9rem">
-          Every type and function, generated from source on pkg.go.dev.
-        </p>
-        <a class="btn" href="https://pkg.go.dev/github.com/sonnes/pi-go">pkg.go.dev/pi-go</a>
+        <p>Every type and function, generated from the source on pkg.go.dev.</p>
+        <a class="btn" href="https://pkg.go.dev/github.com/sonnes/pi-go">pkg.go.dev</a>
       </div>
       <div class="card">
         <h3>Issues</h3>
-        <p style="margin-bottom:0.9rem">Bugs, provider gaps and feature discussion on GitHub.</p>
+        <p>Bugs, provider gaps, and API friction. The capability matrix is the roadmap.</p>
         <a class="btn" href="https://github.com/sonnes/pi-go/issues">sonnes/pi-go</a>
       </div>
     </div>

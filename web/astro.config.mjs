@@ -49,6 +49,38 @@ export default defineConfig({
       description:
         "A provider-agnostic SDK for building AI agents in Go — from a single completion call to durable, session-backed agents.",
       customCss: ["./src/styles/tokens.css", "./src/styles/starlight.css"],
+      // The docs pages do not go through Landing.astro, so the font has to
+      // be requested here as well.
+      head: [
+        {
+          // Light is the default, on the docs as on the landing page. This
+          // seeds Starlight's own storage key before its theme script reads
+          // it, so a dark OS preference no longer decides for the reader.
+          // The toggle still works and still wins.
+          tag: "script",
+          content:
+            "try{if(!localStorage.getItem('starlight-theme'))localStorage.setItem('starlight-theme','light')}catch(e){}",
+        },
+        {
+          tag: "link",
+          attrs: { rel: "preconnect", href: "https://fonts.googleapis.com" },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "preconnect",
+            href: "https://fonts.gstatic.com",
+            crossorigin: true,
+          },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "stylesheet",
+            href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap",
+          },
+        },
+      ],
       components: {
         // Renders summary as a lede and read_when as a callout.
         PageTitle: "./src/components/PageTitle.astro",

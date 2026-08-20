@@ -1,106 +1,113 @@
-/* pi-go — Blueprint system, Graphite palette, light-first.
-   Type: JetBrains Mono (display, code, micro) + Inter (prose).
+/* pi-go — Console system, light-first.
+   Type: JetBrains Mono everywhere, including prose.
 
-   Two rules the layout obeys:
-   1. The ruled ground is a drafting table. It is never behind text.
-   2. Every text-bearing region sits on an opaque sheet with an edge. */
+   Three rules the layout obeys:
+   1. The ruled ground is paper. It is never behind body text.
+   2. Panes butt against each other and share one hairline rule.
+   3. Nothing is rounded and nothing casts a shadow. */
 
 :root {
   color-scheme: light;
 
-  /* ground + sheets */
-  --ground: #f4f4f3;
-  --bg-canvas: #eeefee;
-  --panel: #ffffff;
-  --panel-soft: #f7f7f6;
+  /* ground + panes */
+  --ground: #f2f1ee;
+  --panel: #fbfaf8;
+  --panel-soft: #edece8;
 
-  --line: #16181a1a;
-  --line-strong: #16181a2e;
+  --line: #ddd9d2;
+  --line-strong: #b6b1a8;
 
   /* ink */
-  --text: #16181a;
-  --copy: #16181ad6;
-  --muted: #5f6669;
-  --muted-soft: #5f6669a8;
-  --muted-strong: #3d4346;
+  --text: #1c2128;
+  --copy: #3b444f;
+  --muted: #6f7885;
+  --muted-soft: #6f788599;
+  --muted-strong: #4a535f;
 
-  /* structure: graphite does the drawing */
-  --accent: #33393d;
-  --accent-faint: #33393d0a;
-  --accent-line: #33393d33;
-
-  /* signal: one warm mark, and the only link colour */
-  --warm: #b0492a;
-  --warm-faint: #b0492a0f;
-  --accent-ink: #96401f;
+  /* signal */
+  --accent: #2f6394;
+  --accent-ink: #2f6394;
+  --accent-line: #2f639440;
+  --accent-faint: #2f63940d;
   --green: #2f6b45;
-  --red: #b03a25;
+  --amber: #9a6512;
+  --rust: #b0492a;
+  --warm: #2f6394;
+  --warm-faint: #2f63940d;
+  --red: #b0492a;
 
   /* ruling — texture, not information */
-  --rule-minor: #16181a08;
-  --rule-major: #16181a12;
+  --pat-minor: #1c212808;
+  --pat-major: #1c212812;
 
   /* type */
-  --font-display: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-prose: "Inter", system-ui, -apple-system, sans-serif;
-  --micro-size: 0.66rem;
+  --font-display: var(--font-mono);
+  --font-prose: var(--font-mono);
+  --micro-size: 0.64rem;
 
   /* layout */
-  --shell: 84rem;
-  --shell-pad: 2rem;
-  --split: minmax(0, 1.4fr) minmax(21rem, 34rem);
-  --split-gap: clamp(2rem, 3.5vw, 3.75rem);
-  --sheet-gap: 1.15rem;
+  --shell: 86rem;
+  --shell-pad: 1.5rem;
+  --nav-height: 2.9rem;
+  --split: minmax(0, 1fr) minmax(0, 1fr);
+  --split-gap: 0;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --ground: #101213;
-  --bg-canvas: #17191b;
-  --panel: #1b1e20;
-  --panel-soft: #212426;
+  --ground: #0d1116;
+  --panel: #161d27;
+  --panel-soft: #1b2330;
 
-  --line: #ffffff17;
-  --line-strong: #ffffff2e;
+  --line: #2a3543;
+  --line-strong: #3d4a5c;
 
-  --text: #e6e8e8;
-  --copy: #e6e8e8c4;
-  --muted: #969c9f;
-  --muted-soft: #969c9f96;
-  --muted-strong: #c3c8ca;
+  --text: #dfe4ea;
+  --copy: #b6bfca;
+  --muted: #7d8898;
+  --muted-soft: #7d889999;
+  --muted-strong: #a9b3c0;
 
-  --accent: #c3cacd;
-  --accent-faint: #c3cacd0f;
-  --accent-line: #c3cacd33;
+  --accent: #6a9fcc;
+  --accent-ink: #6a9fcc;
+  --accent-line: #6a9fcc45;
+  --accent-faint: #6a9fcc12;
+  --green: #5db87a;
+  --amber: #e8993a;
+  --rust: #e8704f;
+  --warm: #6a9fcc;
+  --warm-faint: #6a9fcc12;
+  --red: #e8704f;
 
-  --warm: #dd8a5e;
-  --warm-faint: #dd8a5e1a;
-  --accent-ink: #e59b72;
-  --green: #6dbd8a;
-  --red: #e0715a;
-
-  --rule-minor: #ffffff08;
-  --rule-major: #ffffff10;
+  --pat-minor: #ffffff08;
+  --pat-major: #ffffff10;
 }
 
-/* ---------- the drafting table ---------- */
+/* ---------- the ruled ground ---------- */
 body {
   background-color: var(--ground);
   background-image:
-    linear-gradient(var(--rule-minor) 1px, transparent 1px),
-    linear-gradient(90deg, var(--rule-minor) 1px, transparent 1px),
-    linear-gradient(var(--rule-major) 1px, transparent 1px),
-    linear-gradient(90deg, var(--rule-major) 1px, transparent 1px);
+    linear-gradient(var(--pat-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pat-minor) 1px, transparent 1px),
+    linear-gradient(var(--pat-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pat-major) 1px, transparent 1px);
   background-size:
-    16px 16px,
-    16px 16px,
-    96px 96px,
-    96px 96px;
+    14px 14px,
+    14px 14px,
+    112px 112px,
+    112px 112px;
   color: var(--text);
   font-family: var(--font-prose);
+  font-size: 14px;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--ground);
 }
 
 /* ---------- shared chrome ---------- */
@@ -108,7 +115,7 @@ body {
   font-family: var(--font-mono);
   font-size: var(--micro-size);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   color: var(--muted);
   font-weight: 400;
 }
@@ -123,68 +130,84 @@ body {
 .site-nav-inner {
   display: flex;
   align-items: center;
-  gap: 2rem;
-  height: 3.3rem;
+  gap: 1.5rem;
+  height: var(--nav-height);
   max-width: var(--shell);
   margin: 0 auto;
   padding-inline: var(--shell-pad);
 }
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.4rem;
   text-decoration: none;
   margin-right: auto;
+  color: var(--text);
 }
 .brand-mark {
   font-family: var(--font-display);
-  font-size: 1.3rem;
-  font-weight: 500;
-  letter-spacing: -0.05em;
-  color: var(--text);
-}
-.brand-mark em {
-  font-style: normal;
-  color: var(--warm);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
 }
 .brand-suffix {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-  border: 1px solid var(--line-strong);
-  padding: 0.1rem 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
 }
+/* the cursor after the wordmark — the one animated thing on the page */
+.brand-suffix::after {
+  content: "▊";
+  color: var(--accent);
+  margin-left: 0.2rem;
+  animation: pi-blink 1.2s steps(2, start) infinite;
+}
+@keyframes pi-blink {
+  to {
+    visibility: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-suffix::after {
+    animation: none;
+  }
+}
+
 .site-nav-links {
   display: flex;
-  gap: 1.35rem;
+  gap: 0.15rem;
   align-items: center;
 }
 .site-nav-links a {
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   text-decoration: none;
   color: var(--muted);
-  padding: 0.2rem 0;
-  border-bottom: 1px solid transparent;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid transparent;
 }
-.site-nav-links a:hover,
-.site-nav-links a[aria-current] {
-  color: var(--text);
-  border-bottom-color: var(--warm);
+.site-nav-links a:hover {
+  color: var(--accent);
+  border-color: var(--line-strong);
 }
+.site-nav-links a[aria-current="page"] {
+  color: var(--ground);
+  background: var(--accent);
+}
+
 .theme-toggle {
   display: flex;
   border: 1px solid var(--line-strong);
-  overflow: hidden;
 }
 .theme-toggle button {
   font-family: var(--font-mono);
   font-size: 0.58rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  padding: 0.3rem 0.5rem;
+  padding: 0.25rem 0.5rem;
   color: var(--muted);
   background: none;
   border: 0;
@@ -192,7 +215,7 @@ body {
 }
 .theme-toggle button[aria-pressed="true"] {
   background: var(--accent);
-  color: var(--panel);
+  color: var(--ground);
 }
 
 .btn {
@@ -200,38 +223,42 @@ body {
   align-items: center;
   gap: 0.5rem;
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   text-decoration: none;
-  padding: 0.58rem 1rem;
+  padding: 0.5rem 0.9rem;
   border: 1px solid var(--line-strong);
   color: var(--text);
 }
 .btn:hover {
   border-color: var(--accent);
+  color: var(--accent);
 }
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--panel);
+  color: var(--ground);
 }
 .btn--primary:hover {
   background: var(--text);
   border-color: var(--text);
+  color: var(--ground);
 }
 
 .site-footer {
   background: var(--panel);
-  border: 1px solid var(--line-strong);
-  max-width: var(--shell);
-  margin: 0 auto var(--sheet-gap);
-  padding-block: 1.6rem;
+  border-top: 1px solid var(--line-strong);
+  margin-top: 4rem;
 }
 .site-footer .foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 1.2rem 2rem;
+  gap: 0.8rem 1.5rem;
   align-items: center;
-  padding-inline: var(--shell-pad);
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 1.3rem var(--shell-pad);
 }
 .site-footer .foot-links {
   display: flex;
@@ -240,16 +267,16 @@ body {
 }
 .site-footer a {
   text-decoration: none;
+  color: var(--muted);
 }
 .site-footer a:hover {
-  color: var(--accent-ink);
+  color: var(--accent);
 }
 
 @media (max-width: 62rem) {
   :root {
-    --split: 1fr;
+    --split: minmax(0, 1fr);
     --shell-pad: 1.15rem;
-    --sheet-gap: 0.75rem;
   }
   .site-nav-links a:nth-child(n + 4) {
     display: none;

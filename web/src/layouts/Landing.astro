@@ -22,17 +22,16 @@ const docs = `${base.replace(/\/$/, "")}/docs/`;
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <script is:inline>
       // Match Starlight's storage key so the docs and the landing page
-      // agree on the theme across navigations.
+      // agree on the theme across navigations. Light is the default: only
+      // an explicit choice turns the site dark.
       const stored = localStorage.getItem("starlight-theme");
       if (stored === "dark" || stored === "light") {
         document.documentElement.dataset.theme = stored;
-      } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        document.documentElement.dataset.theme = "dark";
       }
     </script>
   </head>
@@ -40,12 +39,12 @@ const docs = `${base.replace(/\/$/, "")}/docs/`;
     <header class="site-nav">
       <div class="site-nav-inner">
         <a class="brand" href={base}>
-          <span class="brand-mark">p<em>i</em></span>
-          <span class="brand-suffix">go</span>
+          <span class="brand-mark">π</span>
+          <span class="brand-suffix">pi-go</span>
         </a>
         <nav class="site-nav-links">
           <a href={base} aria-current="page">Home</a>
-          <a href={docs}>Docs</a>
+          <a href={docs}>Documentation</a>
           <a href={`${docs}capabilities/`}>Capabilities</a>
           <a href="https://pkg.go.dev/github.com/sonnes/pi-go">pkg.go.dev</a>
           <a href="https://github.com/sonnes/pi-go">GitHub</a>
@@ -63,7 +62,6 @@ const docs = `${base.replace(/\/$/, "")}/docs/`;
 
     <footer class="site-footer">
       <div class="foot">
-        <span class="brand-mark" style="font-size:1.15rem">p<em>i</em></span>
         <span class="micro">MIT License · Ravi Atluri &amp; contributors</span>
         <div class="foot-links">
           <a class="micro" href={docs}>Docs</a>
@@ -74,9 +72,10 @@ const docs = `${base.replace(/\/$/, "")}/docs/`;
     </footer>
 
     <script is:inline>
-      // Theme toggle, panel switchers (install / hero / layers / ship),
-      // and copy buttons. No other JavaScript ships on this page.
+      // Theme toggle, install tabs, copy buttons, and the story grid.
+      // No other JavaScript ships on this page.
       const root = document.documentElement;
+
       const syncTheme = () => {
         document.querySelectorAll("[data-theme-set]").forEach((b) => {
           b.setAttribute("aria-pressed", String(b.dataset.themeSet === root.dataset.theme));
@@ -114,6 +113,65 @@ const docs = `${base.replace(/\/$/, "")}/docs/`;
           setTimeout(() => (btn.textContent = was), 1200);
         });
       });
+
+      /* The story grid: a sticky demo pane beside a scrolling narrative.
+         The section nearest the middle of the viewport is active. It holds
+         full ink, the rest dim, and the pane swaps to that section's demo. */
+      const grid = document.querySelector("[data-story]");
+      if (grid && !window.matchMedia("(max-width: 62rem)").matches) {
+        const sections = [...grid.querySelectorAll("[data-section]")];
+        const stage = grid.querySelector("[data-stage]");
+        const demos = {};
+        sections.forEach((s) => {
+          const slot = s.querySelector("[data-demo]");
+          if (slot) demos[s.dataset.section] = slot.innerHTML;
+        });
+
+        let current = sections[0]?.dataset.section ?? null;
+
+        const activate = (id) => {
+          if (id === current) return;
+          current = id;
+          sections.forEach((s) => s.classList.toggle("is-active", s.dataset.section === id));
+          if (!demos[id]) return;
+          stage.classList.add("is-swapping");
+          setTimeout(() => {
+            stage.innerHTML = demos[id];
+            stage.classList.remove("is-swapping");
+          }, 140);
+        };
+
+        const pick = () => {
+          const mid = window.innerHeight / 2;
+          let best = null;
+          let bestDist = Infinity;
+          for (const s of sections) {
+            const r = s.getBoundingClientRect();
+            const d = Math.abs(r.top + r.height / 2 - mid);
+            if (d < bestDist) {
+              bestDist = d;
+              best = s;
+            }
+          }
+          if (best) activate(best.dataset.section);
+        };
+
+        let ticking = false;
+        addEventListener(
+          "scroll",
+          () => {
+            if (ticking) return;
+            ticking = true;
+            requestAnimationFrame(() => {
+              pick();
+              ticking = false;
+            });
+          },
+          { passive: true },
+        );
+        addEventListener("resize", pick);
+        pick();
+      }
     </script>
   </body>
 </html>
