@@ -206,13 +206,13 @@ func convertToolResultMessage(
 	}
 }
 
-// filterFunctionTools returns only the function-kind tools. It removes the
-// server tools. The Codex dialect uses it, because the Codex backend rejects
-// server tool types such as web_search.
+// filterFunctionTools returns every non-server tool. Function tools use either
+// [ai.ToolKindFunction] or the backwards-compatible empty kind. The Codex
+// dialect uses this filter because the backend rejects server tools.
 func filterFunctionTools(tools []ai.ToolInfo) []ai.ToolInfo {
 	out := make([]ai.ToolInfo, 0, len(tools))
 	for _, t := range tools {
-		if t.Kind == ai.ToolKindFunction {
+		if t.Kind != ai.ToolKindServer {
 			out = append(out, t)
 		}
 	}

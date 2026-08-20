@@ -543,6 +543,21 @@ func TestConvertOpenRouterTools_FunctionAndServerMixed(t *testing.T) {
 	assert.Equal(t, "openrouter:web_search", got[1]["type"])
 }
 
+func TestFilterFunctionTools_AcceptsFunctionZeroValue(t *testing.T) {
+	tools := []ai.ToolInfo{
+		{Name: "implicit_function"},
+		{Name: "explicit_function", Kind: ai.ToolKindFunction},
+		{Name: "server", Kind: ai.ToolKindServer},
+	}
+
+	got := filterFunctionTools(tools)
+	names := make([]string, 0, len(got))
+	for _, tool := range got {
+		names = append(names, tool.Name)
+	}
+	assert.Equal(t, []string{"implicit_function", "explicit_function"}, names)
+}
+
 func TestServerToolNameByType_KeyedByCallerName(t *testing.T) {
 	tools := []ai.ToolInfo{
 		{Name: "get_weather"}, // A function tool. The map ignores it.
