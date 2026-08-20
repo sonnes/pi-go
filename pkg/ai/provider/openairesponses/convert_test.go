@@ -171,6 +171,7 @@ func TestConvertInput_AssistantToolCall(t *testing.T) {
 	assert.Equal(t, "function_call", callRaw["type"])
 	assert.Equal(t, "call_123", callRaw["call_id"])
 	assert.Equal(t, "get_weather", callRaw["name"])
+	assert.NotContains(t, callRaw, "id", "call IDs are not Responses item IDs")
 }
 
 func TestConvertInput_AssistantThinking(t *testing.T) {

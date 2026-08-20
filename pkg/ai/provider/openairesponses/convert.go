@@ -159,17 +159,13 @@ func convertAssistantMessage(
 
 		case ai.ToolCall:
 			args, _ := json.Marshal(v.Arguments)
-			item := responses.ResponseInputItemUnionParam{
+			items = append(items, responses.ResponseInputItemUnionParam{
 				OfFunctionCall: &responses.ResponseFunctionToolCallParam{
 					CallID:    v.ID,
 					Name:      v.Name,
 					Arguments: string(args),
 				},
-			}
-			if v.ID != "" {
-				item.OfFunctionCall.ID = param.NewOpt(v.ID)
-			}
-			items = append(items, item)
+			})
 		}
 	}
 
